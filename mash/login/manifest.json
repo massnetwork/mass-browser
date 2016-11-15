@@ -1,0 +1,17 @@
+{
+  "name": "service:login",
+  "display_name": "Login",
+  "interface_provider_specs": {
+    "service_manager:connector": {
+      "provides": {
+        "login:login": [ "mash::login::mojom::Login" ]
+      },
+      "requires": {
+        "*": [ "app" ],
+        "service:mash_init": [ "mash_init:init" ],
+        "service:ui": [ "ui:user_access_manager" ],
+        "service:service_manager": [ "service_manager:all_users" ]
+      }
+    }
+  }
+}

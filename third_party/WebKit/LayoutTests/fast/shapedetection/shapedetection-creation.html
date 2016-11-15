@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<script src=../../resources/testharness.js></script>
+<script src=../../resources/testharnessreport.js></script>
+<script>
+
+// This test verifies that DetectedFace can be created
+test(function() {
+  var detectedFace = new DetectedFace();
+  assert_true(detectedFace instanceof DetectedFace);
+}, 'DetectedFace instance can be created.');
+
+// This test verifies that FaceDetector can be created
+test(function() {
+  var faceDetector = new FaceDetector();
+  assert_true(faceDetector instanceof FaceDetector);
+}, 'FaceDetector instance can be created.');
+
+</script>

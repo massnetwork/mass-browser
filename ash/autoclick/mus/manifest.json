@@ -1,0 +1,16 @@
+{
+  "name": "service:accessibility_autoclick",
+  "display_name": "Autoclick",
+  "interface_provider_specs": {
+    "service_manager:connector": {
+      "provides": {
+        "mash:launchable": [ "mash::mojom::Launchable" ],
+        "ash:autoclick": [ "ash::autoclick::mojom::AutoclickController" ]
+      },
+      "requires": {
+        "*": [ "app" ],
+        "service:service_manager": [ "service_manager:service_manager" ]
+      }
+    }
+  }
+}

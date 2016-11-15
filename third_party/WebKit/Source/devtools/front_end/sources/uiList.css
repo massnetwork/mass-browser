@@ -1,0 +1,84 @@
+/*
+ * Copyright 2015 The Chromium Authors. All rights reserved.
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file.
+ */
+
+.list-item {
+    padding: 3px 8px 3px 20px;
+    position: relative;
+    min-height: 18px;
+    line-height: 15px;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.list-item:not(.label) {
+    border-top: 1px solid #efefef;
+}
+
+.label + .list-item {
+    border-top: 0;
+}
+
+.list-item:not(.ignore-hover):hover {
+    background-color: #eee;
+}
+
+.list-item > .title,
+.list-item > .subtitle {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.list-item > .subtitle {
+    color: #888;
+    margin-left: auto;
+    padding-left: 10px;
+}
+
+.list-item > .subtitle a {
+    color: inherit;
+}
+
+.list-item.label::before {
+    content: " ";
+    width: 100%;
+    border-top: 1px solid #d8d8d8;
+    margin-top: 8px;
+    position: absolute;
+    z-index: -1;
+    left: 0;
+}
+
+.list-item.label .title {
+    font-weight: bold;
+    color: #999;
+    background-color: white;
+    margin-left: -5px;
+    padding: 0 5px;
+}
+
+.list-item.dimmed {
+    opacity: 0.6;
+    font-style: italic;
+}
+
+.list-item.selected::before {
+    background-image: url(Images/smallIcons.png);
+    background-size: 190px 30px;
+    background-position: -180px 0;
+    content: "";
+    position: absolute;
+    top: 5px;
+    left: 4px;
+    width: 10px;
+    height: 10px;
+}
+
+@media (-webkit-min-device-pixel-ratio: 1.1) {
+.list-item.selected::before {
+    background-image: url(Images/smallIcons_2x.png);
+}
+} /* media */

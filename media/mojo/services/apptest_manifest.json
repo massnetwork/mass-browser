@@ -1,0 +1,12 @@
+{
+  "name": "service:media_apptests",
+  "display_name": "Media Apptests",
+  "interface_provider_specs": {
+    "service_manager:connector": {
+      "requires": {
+        "*": [ "app" ],
+        "service:media": [ "media:interface_factory" ]
+      }
+    }
+  }
+}

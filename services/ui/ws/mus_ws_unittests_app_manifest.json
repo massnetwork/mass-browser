@@ -1,0 +1,21 @@
+{
+  "name": "service:mus_ws_unittests_app",
+  "display_name": "Mus Window Server Unittests",
+  "interface_provider_specs": {
+    "service_manager:connector": {
+      "provides": {
+        "ui:window_tree_client": [
+          "ui::mojom::WindowTreeClient"
+        ]
+      },
+      "requires": {
+        "*": [ "app" ],
+        "service:mus_ws_unittests_app": [ "ui:window_tree_client" ],
+        "service:ui": [
+          "ui:window_tree_host_factory",
+          "ui:window_manager"
+        ]
+      }
+    }
+  }
+}

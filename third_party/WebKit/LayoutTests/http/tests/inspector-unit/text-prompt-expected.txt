@@ -1,0 +1,4 @@
+This tests if the TextPrompt autocomplete works properly.
+Text:hey
+TextWithCurrentSuggestion:heyoo
+

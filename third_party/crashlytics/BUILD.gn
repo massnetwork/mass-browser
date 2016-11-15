@@ -1,0 +1,30 @@
+
+import("//build/config/android/rules.gni")
+
+android_aar_prebuilt("crashlytics_java") {
+  aar_path = "lib/crashlytics-2.6.5.aar"
+  ignore_manifest = true  # Ignored because manifest merging is not supported (http://crbug.com/643967)
+}
+
+android_aar_prebuilt("fabric_java") {
+  aar_path = "lib/fabric-1.3.14.aar"
+  ignore_manifest = true  # Ignored because manifest merging is not supported (http://crbug.com/643967)
+}
+
+android_aar_prebuilt("answers_java") {
+  aar_path = "lib/answers-1.3.9.aar"
+  ignore_manifest = true  # Ignored because manifest merging is not supported (http://crbug.com/643967)
+}
+
+android_aar_prebuilt("beta_java") {
+  aar_path = "lib/beta-1.2.2.aar"
+  ignore_manifest = true  # Ignored because manifest merging is not supported (http://crbug.com/643967)
+}
+
+
+android_aar_prebuilt("crashlytics_core_java") {
+  aar_path = "lib/crashlytics-core-2.3.14.aar"
+  ignore_manifest = true  # Ignored because manifest merging is not supported (http://crbug.com/643967)
+}
+
+

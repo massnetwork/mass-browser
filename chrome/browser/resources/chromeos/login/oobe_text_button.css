@@ -1,0 +1,25 @@
+/* Copyright 2016 The Chromium Authors. All rights reserved.
+   Use of this source code is governed by a BSD-style license that can be
+   found in the LICENSE file. */
+
+#textButton {
+  height: 28px;
+  margin: 0;
+  padding: 0 16px;
+}
+
+#textButton:not([inverse]):not([disabled]) {
+  background-color: white
+  color: var(--google-blue-500);
+}
+
+#textButton[inverse]:not([disabled]) {
+  background-color: var(--google-blue-500);
+  color: white;
+}
+
+::content * {
+  font: var(--oobe-roboto-medium), sans-serif;
+  font-size: 12px;
+  text-transform: none;
+}
