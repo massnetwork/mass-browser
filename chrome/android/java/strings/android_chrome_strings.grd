@@ -1854,6 +1854,19 @@ To obtain new licenses, connect to the internet and play your downloaded content
       <message name="IDS_FRE_WELCOME" desc="Text for greeting the user on Mass Browser First Run">
         Welcome to Mass Browser
       </message>
+      <message name="IDS_FRE_NO_UNWANTED_ADS" desc="Text for greeting the user on Mass Browser First Run">
+        No unwanted ads
+      </message>
+      <message name="IDS_FRE_NO_DATA_HARVESTING" desc="Text for greeting the user on Mass Browser First Run">
+        No data harvesting
+      </message>
+      <message name="IDS_FRE_FINAL_MAKE_MONEY" desc="Text for greeting the user on Mass Browser First Run">
+        Finally you can make \nmoney just browsing \ninternet
+      </message>
+      <message name="IDS_FRE_LAUNCH_MASS_BROWSER" desc="Text for greeting the user on Mass Browser First Run">
+        LAUNCH MASS BROWSER
+      </message>
+
 
       <!-- Account Signin Strings -->
       <message name="IDS_CHOOSE_ACCOUNT_SIGN_IN" desc="Sign in button for choose google account dialog [CHAR-LIMIT=20]">
@@ -2345,10 +2358,9 @@ To obtain new licenses, connect to the internet and play your downloaded content
       <message name="IDS_NEW_TAB_INCOGNITO_HEADER" desc="Header shown when a user opens an incognito tab explaining incognito mode">
         You’ve gone incognito.
       </message>
+      <!-- However, you aren’t invisible. Going incognito doesn’t hide your browsing from your employer, your internet service provider, or the websites you visit. -->
       <message name="IDS_NEW_TAB_INCOGNITO_MESSAGE" desc="Message shown when a user opens an incognito tab explaining incognito mode">
         Pages you view in incognito tabs won’t stick around in your browser’s history, cookie store, or search history after you’ve closed all of your incognito tabs. Any files you download or bookmarks you create will be kept.
-
-However, you aren’t invisible. Going incognito doesn’t hide your browsing from your employer, your internet service provider, or the websites you visit.
       </message>
 
       <!-- Contextual Search -->

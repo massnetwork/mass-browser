@@ -29,7 +29,7 @@ import org.chromium.ui.text.SpanApplier.SpanInfo;
  */
 public class ToSAndUMAFirstRunFragment extends FirstRunPage {
     private Button mAcceptButton;
-    private CheckBox mSendReportCheckBox;
+//    private CheckBox mSendReportCheckBox;
     private TextView mTosAndPrivacy;
 
     @Override
@@ -43,29 +43,29 @@ public class ToSAndUMAFirstRunFragment extends FirstRunPage {
         super.onViewCreated(view, savedInstanceState);
 
         mAcceptButton = (Button) view.findViewById(R.id.terms_accept);
-        mSendReportCheckBox = (CheckBox) view.findViewById(R.id.send_report_checkbox);
+//        mSendReportCheckBox = (CheckBox) view.findViewById(R.id.send_report_checkbox);
         mTosAndPrivacy = (TextView) view.findViewById(R.id.tos_and_privacy);
 
         mAcceptButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
-                getPageDelegate().acceptTermsOfService(mSendReportCheckBox.isChecked());
+                getPageDelegate().acceptTermsOfService(true/*mSendReportCheckBox.isChecked()*/);
             }
         });
 
-        if (ChromeVersionInfo.isOfficialBuild()) {
-            int paddingStart = getResources().getDimensionPixelSize(
-                    R.dimen.fre_tos_checkbox_padding);
-            ApiCompatibilityUtils.setPaddingRelative(mSendReportCheckBox,
-                    ApiCompatibilityUtils.getPaddingStart(mSendReportCheckBox) + paddingStart,
-                    mSendReportCheckBox.getPaddingTop(),
-                    ApiCompatibilityUtils.getPaddingEnd(mSendReportCheckBox),
-                    mSendReportCheckBox.getPaddingBottom());
-
-            mSendReportCheckBox.setChecked(FirstRunActivity.DEFAULT_METRICS_AND_CRASH_REPORTING);
-        } else {
-            mSendReportCheckBox.setVisibility(View.GONE);
-        }
+//        if (ChromeVersionInfo.isOfficialBuild()) {
+//            int paddingStart = getResources().getDimensionPixelSize(
+//                    R.dimen.fre_tos_checkbox_padding);
+//            ApiCompatibilityUtils.setPaddingRelative(mSendReportCheckBox,
+//                    ApiCompatibilityUtils.getPaddingStart(mSendReportCheckBox) + paddingStart,
+//                    mSendReportCheckBox.getPaddingTop(),
+//                    ApiCompatibilityUtils.getPaddingEnd(mSendReportCheckBox),
+//                    mSendReportCheckBox.getPaddingBottom());
+//
+//            mSendReportCheckBox.setChecked(FirstRunActivity.DEFAULT_METRICS_AND_CRASH_REPORTING);
+//        } else {
+//            mSendReportCheckBox.setVisibility(View.GONE);
+//        }
 
         mTosAndPrivacy.setMovementMethod(LinkMovementMethod.getInstance());
 

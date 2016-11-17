@@ -22,7 +22,7 @@ public class FirstRunView extends FrameLayout {
 
     private View mMainLayout;
     private LinearLayout mImageAndContent;
-    private LinearLayout mContentWrapper;
+//    private LinearLayout mContentWrapper;
 
     /**
      * Constructor for inflating via XML.
@@ -39,7 +39,7 @@ public class FirstRunView extends FrameLayout {
 
         mMainLayout = findViewById(R.id.fre_main_layout);
         mImageAndContent = (LinearLayout) findViewById(R.id.fre_image_and_content);
-        mContentWrapper = (LinearLayout) findViewById(R.id.fre_content_wrapper);
+//        mContentWrapper = (LinearLayout) findViewById(R.id.fre_content_wrapper);
 
 
     }
@@ -61,8 +61,8 @@ public class FirstRunView extends FrameLayout {
         int width = MeasureSpec.getSize(widthMeasureSpec);
         int height = MeasureSpec.getSize(heightMeasureSpec);
 
-        MarginLayoutParams contentWrapperLayout =
-                (MarginLayoutParams) mContentWrapper.getLayoutParams();
+//        MarginLayoutParams contentWrapperLayout =
+//                (MarginLayoutParams) mContentWrapper.getLayoutParams();
 
         int imageAndContentPaddingStart = 0;
         int halfContentHeight = 0;
@@ -71,24 +71,24 @@ public class FirstRunView extends FrameLayout {
         if (isHorizontalModeEnabled()
                 && width >= 2 * getResources().getDimension(R.dimen.signin_image_carousel_width)
                 && width > height) {
-            mImageAndContent.setOrientation(LinearLayout.HORIZONTAL);
+//            mImageAndContent.setOrientation(LinearLayout.HORIZONTAL);
             imageAndContentPaddingStart = getResources().getDimensionPixelSize(R.dimen.fre_margin);
 
-            contentWrapperLayout.width = 0;
-            contentWrapperLayout.height = LayoutParams.WRAP_CONTENT;
-            contentWrapperLayout.topMargin = 0;
+//            contentWrapperLayout.width = LayoutParams.WRAP_CONTENT;
+//            contentWrapperLayout.height = LayoutParams.WRAP_CONTENT;
+//            contentWrapperLayout.topMargin = 0;
 
             halfContentHeight = getResources().getDimensionPixelSize(R.dimen.fre_title_text_size)
                     + getResources().getDimensionPixelSize(R.dimen.fre_vertical_spacing)
                     + getResources().getDimensionPixelSize(R.dimen.fre_image_height) / 2;
 
         } else {
-            mImageAndContent.setOrientation(LinearLayout.VERTICAL);
+//            mImageAndContent.setOrientation(LinearLayout.VERTICAL);
 
-            contentWrapperLayout.width = LayoutParams.WRAP_CONTENT;
-            contentWrapperLayout.height = 0;
-            contentWrapperLayout.topMargin =
-                    getResources().getDimensionPixelSize(R.dimen.fre_vertical_spacing);
+//            contentWrapperLayout.width = LayoutParams.WRAP_CONTENT;
+//            contentWrapperLayout.height = LayoutParams.WRAP_CONTENT;
+//            contentWrapperLayout.topMargin =
+//                    getResources().getDimensionPixelSize(R.dimen.fre_vertical_spacing);
 
             halfContentHeight = getResources().getDimensionPixelSize(R.dimen.fre_title_text_size)
                     + getResources().getDimensionPixelSize(R.dimen.fre_vertical_spacing)
@@ -108,7 +108,7 @@ public class FirstRunView extends FrameLayout {
                 ApiCompatibilityUtils.getPaddingEnd(mImageAndContent),
                 mImageAndContent.getPaddingBottom());
 
-        mContentWrapper.setLayoutParams(contentWrapperLayout);
+//        mContentWrapper.setLayoutParams(contentWrapperLayout);
 
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }

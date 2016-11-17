@@ -28,7 +28,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="@dimen/fre_image_height"
                     android:contentDescription="@null"
-                    android:src="@drawable/fre_product_logo" />
+                    android:src="@drawable/m" />
 
             <!-- The orientation of this view is changed dynamically to give a nicer layout when in
             landscape mode on devices with small screens. -->
@@ -51,7 +51,7 @@
 
 
                 <!-- fre_button_bar_height = 52dp = layout_height + layout_marginBottom -->
-                <org.chromium.ui.widget.ButtonCompat
+                <Button
                         android:id="@+id/terms_accept"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
@@ -60,12 +60,10 @@
                         android:paddingStart="@dimen/fre_button_padding"
                         android:paddingEnd="@dimen/fre_button_padding"
                         android:text="@string/fre_accept_continue"
+                        android:background="@drawable/btn_continue_round"
                         android:textAllCaps="true"
                         android:textColor="@android:color/white"
-                        android:textSize="@dimen/fre_button_text_size"
-                        android:background="@drawable/btn_continue_round"
-                        chrome:buttonColor="@color/light_active_color"
-                        chrome:buttonRaised="false"/>
+                        android:textSize="@dimen/fre_button_text_size"/>
 
 
                 <LinearLayout
@@ -76,8 +74,9 @@
                     android:layout_marginEnd="@dimen/fre_content_margin"
                     android:layout_marginStart="@dimen/fre_content_margin"
                     android:orientation="vertical" >
-                
-                    <org.chromium.ui.widget.TextViewWithClickableSpans
+
+
+                <org.chromium.ui.widget.TextViewWithClickableSpans
                         android:id="@+id/tos_and_privacy"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -87,14 +86,14 @@
                         android:textColor="@color/fre_text_color"
                         android:textSize="@dimen/fre_normal_text_size" />
 
-                    <CheckBox
-                        android:id="@+id/send_report_checkbox"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:lineSpacingMultiplier="1.4"
-                        android:text="@string/fre_send_report_check"
-                        android:textColor="@color/fre_text_color"
-                        android:textSize="@dimen/fre_normal_text_size" />
+                    <!--<CheckBox-->
+                        <!--android:id="@+id/send_report_checkbox"-->
+                        <!--android:layout_width="wrap_content"-->
+                        <!--android:layout_height="wrap_content"-->
+                        <!--android:lineSpacingMultiplier="1.4"-->
+                        <!--android:text="@string/fre_send_report_check"-->
+                        <!--android:textColor="@color/fre_text_color"-->
+                        <!--android:textSize="@dimen/fre_normal_text_size" />-->
                     </LinearLayout>
             </LinearLayout>
         </LinearLayout>

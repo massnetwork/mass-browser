@@ -39,7 +39,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="19dp"
                 android:contentDescription="@null"
-                android:src="@drawable/incognito_splash"/>
+                android:src="@drawable/incognito_splash_new"/>
 
             <TextView
                 android:layout_width="wrap_content"
@@ -66,11 +66,15 @@
                 android:id="@+id/learn_more"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="?attr/listChoiceBackgroundIndicator"
+                android:background="@drawable/btn_next_round_line"
                 android:clickable="true"
                 android:focusable="true"
                 android:fontFamily="sans-serif-medium"
-                android:padding="16dp"
+                android:layout_marginTop="16dp"
+                android:paddingBottom="8dp"
+                android:paddingTop="8dp"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
                 android:text="@string/learn_more"
                 android:textAllCaps="true"
                 android:textColor="#03a9f4"

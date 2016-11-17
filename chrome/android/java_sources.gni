@@ -373,6 +373,11 @@ chrome_java_sources = [
   "java/src/org/chromium/chrome/browser/firstrun/ProfileDataCache.java",
   "java/src/org/chromium/chrome/browser/firstrun/ToSAckedReceiver.java",
   "java/src/org/chromium/chrome/browser/firstrun/ToSAndUMAFirstRunFragment.java",
+
+  "java/src/org/chromium/chrome/browser/firstrun/NoUnwantedAdsFragment.java",
+  "java/src/org/chromium/chrome/browser/firstrun/NoDataHarvestingFragment.java",
+  "java/src/org/chromium/chrome/browser/firstrun/FinallyMakeMoneyFragment.java",
+
   "java/src/org/chromium/chrome/browser/fullscreen/ChromeFullscreenManager.java",
   "java/src/org/chromium/chrome/browser/fullscreen/FullscreenHtmlApiHandler.java",
   "java/src/org/chromium/chrome/browser/fullscreen/FullscreenManager.java",

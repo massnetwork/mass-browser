@@ -127,17 +127,25 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunPageD
             mFreProgressStates.add(FRE_PROGRESS_WELCOME_SHOWN);
         }
 
-        // An optional Data Saver page.
-        if (mFreProperties.getBoolean(SHOW_DATA_REDUCTION_PAGE)) {
-            mPages.add(pageOf(DataReductionProxyFirstRunFragment.class));
-            mFreProgressStates.add(FRE_PROGRESS_DATA_SAVER_SHOWN);
-        }
+        mPages.add(pageOf(NoUnwantedAdsFragment.class));
+        mFreProgressStates.add(2);
+
+        mPages.add(pageOf(NoDataHarvestingFragment.class));
+        mFreProgressStates.add(3);
+
+        mPages.add(pageOf(FinallyMakeMoneyFragment.class));
+        mFreProgressStates.add(4);
+//        // An optional Data Saver page.
+//        if (mFreProperties.getBoolean(SHOW_DATA_REDUCTION_PAGE)) {
+//            mPages.add(pageOf(DataReductionProxyFirstRunFragment.class));
+//            mFreProgressStates.add(FRE_PROGRESS_DATA_SAVER_SHOWN);
+//        }
 
         // An optional sign-in page.
-        if (mFreProperties.getBoolean(SHOW_SIGNIN_PAGE)) {
-            mPages.add(pageOf(AccountFirstRunFragment.class));
-            mFreProgressStates.add(FRE_PROGRESS_SIGNIN_SHOWN);
-        }
+//        if (mFreProperties.getBoolean(SHOW_SIGNIN_PAGE)) {
+//            mPages.add(pageOf(AccountFirstRunFragment.class));
+//            mFreProgressStates.add(FRE_PROGRESS_SIGNIN_SHOWN);
+//        }
     }
 
     // Activity:

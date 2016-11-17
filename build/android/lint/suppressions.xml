@@ -93,6 +93,9 @@ Still reading?
   </issue>
   <issue id="IconDensities">
     <ignore regexp=": data_reduction_illustration.png, google_icon_sprite.png, physical_web_logo.png, physical_web_logo_anim1.png, physical_web_logo_anim2.png$"/>
+    <ignore regexp="chrome/android/java/res/drawable-hdpi"/>
+    <ignore regexp="chrome/android/java/res/drawable-mdpi"/>
+    <ignore regexp="chrome/android/java/res/drawable-xhdpi"/>
     <ignore regexp="chrome/android/java/res/drawable-xxhdpi"/>
     <ignore regexp="chrome/android/java/res/drawable-xxxhdpi"/>
     <ignore regexp="chromecast/internal"/>
@@ -245,6 +248,7 @@ Still reading?
   </issue>
   <issue id="TypographyDashes" severity="Error">
     <ignore regexp="chrome/android/java/res/values/strings.xml"/>
+    <ignore regexp="chrome/android/java/res_chromium/values/channel_constants.xml"/>
     <ignore regexp="chrome/app/policy/android/values-v21/restriction_values.xml"/>
   </issue>
   <issue id="Typos" severity="Error">
@@ -343,6 +347,7 @@ Still reading?
     <ignore regexp="chrome/android/java/res/drawable-mdpi/google_icon_sprite.png"/>
     <ignore regexp="chrome/android/java/res/drawable-mdpi/physical_web_logo_anim1.png"/>
     <ignore regexp="chrome/android/java/res/drawable-mdpi/physical_web_logo_anim2.png"/>
+    <ignore regexp="chrome/android/java/res/drawable-mdpi/untitled_5.png"/>
     <ignore regexp="chrome/android/java/res/drawable-nodpi/missing.png"/>
     <ignore regexp="chrome/android/java/res/drawable/accessibility_tab_switcher_divider.xml"/>
     <ignore regexp="chrome/android/java/res/drawable/btn_back.xml"/>
@@ -446,6 +451,8 @@ Still reading?
     <ignore regexp="chrome/android/java/res/xml/sync_customization_preferences.xml"/>
     <ignore regexp="chrome/android/java/res/xml/website_preferences.xml"/>
     <ignore regexp="chrome/android/java/res_chromium/drawable-hdpi/product_logo_name.png"/>
+    <ignore regexp="chrome/android/java/res_chromium/drawable/btn_continue_round.xml"/>
+    <ignore regexp="chrome/android/java/res_chromium/values/channel_constants.xml"/>
     <ignore regexp="chrome/android/webapk/shell_apk/res/mipmap-hdpi/app_icon.png"/>
     <ignore regexp="chromecast/browser/android/apk/res/values/strings.xml"/>
     <ignore regexp="chromecast/internal"/>

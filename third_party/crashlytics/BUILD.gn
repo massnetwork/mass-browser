@@ -26,5 +26,3 @@ android_aar_prebuilt("crashlytics_core_java") {
   aar_path = "lib/crashlytics-core-2.3.14.aar"
   ignore_manifest = true  # Ignored because manifest merging is not supported (http://crbug.com/643967)
 }
-
-

@@ -7,4 +7,5 @@
     <!-- The application name displayed to the user. -->
     <string name="app_name" translatable="false">Mass Browser</string>
     <string name="bookmark_widget_title" translatable="false">Mass Browser bookmarks</string>
+    <string name="com.crashlytics.android.build_id" translatable="false">c5009aca-59f3-4b87-8b88-a85984a83db8</string>
 </resources>
