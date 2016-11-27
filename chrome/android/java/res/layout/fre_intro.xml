@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<org.chromium.chrome.browser.firstrun.FirstRunView
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+    <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginBottom="@dimen/fre_vertical_spacing"
+            android:fillViewport="true">
+
+        <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal">
+
+            <android.support.v4.view.ViewPager
+                    android:id="@+id/viewpager"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"/>
+
+
+            <LinearLayout
+                    android:id="@+id/indicator"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:orientation="horizontal">
+                <View android:layout_height="8dp"
+                      android:layout_width="8dp"
+                      android:layout_margin="8dp"
+                      android:background="@drawable/point_black"/>
+
+                <View android:layout_height="8dp"
+                      android:layout_width="8dp"
+                      android:layout_margin="8dp"
+                      android:background="@drawable/point_gray"/>
+
+
+                <View android:layout_height="8dp"
+                      android:layout_width="8dp"
+                      android:layout_margin="8dp"
+                      android:background="@drawable/point_gray"/>
+
+            </LinearLayout>
+
+
+            <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="32dp"
+                    android:layout_gravity="center_horizontal">
+
+                <Button android:id="@+id/skip_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_gravity="bottom|center_horizontal"
+                        android:paddingStart="@dimen/fre_button_padding"
+                        android:paddingEnd="@dimen/fre_button_padding"
+                        android:text="@string/skip"
+                        android:layout_marginEnd="16dp"
+                        android:background="@drawable/btn_next_round_line"
+                        android:textAllCaps="true"
+                        android:textColor="#068ffc"
+                        android:textSize="@dimen/fre_button_text_size"/>
+
+                <Button android:id="@+id/next_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_gravity="bottom|center_horizontal"
+                        android:paddingStart="@dimen/fre_button_padding"
+                        android:paddingEnd="@dimen/fre_button_padding"
+                        android:layout_marginStart="16dp"
+                        android:text="@string/next"
+                        android:background="@drawable/btn_next_round_line"
+                        android:textAllCaps="true"
+                        android:textColor="#068ffc"
+                        android:textSize="@dimen/fre_button_text_size"/>
+
+                <Button android:id="@+id/launch_browser"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_gravity="bottom|center_horizontal"
+                        android:paddingStart="@dimen/fre_content_margin"
+                        android:paddingEnd="@dimen/fre_content_margin"
+                        android:layout_marginStart="16dp"
+                        android:text="@string/launch_browser"
+                        android:background="@drawable/btn_continue_round"
+                        android:textAllCaps="true"
+                        android:textColor="@android:color/white"
+                        android:textSize="@dimen/fre_button_text_size"/>
+            </LinearLayout>
+
+
+        </LinearLayout>
+    </ScrollView>
+
+</org.chromium.chrome.browser.firstrun.FirstRunView>

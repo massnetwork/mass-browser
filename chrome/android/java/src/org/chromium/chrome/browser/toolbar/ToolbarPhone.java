@@ -2095,7 +2095,7 @@ public class ToolbarPhone extends ToolbarLayout
                     ? mTabSwitcherButtonDrawableLight : mTabSwitcherButtonDrawable);
             if (mTabSwitcherAnimationTabStackDrawable != null) {
                 mTabSwitcherAnimationTabStackDrawable.setTint(
-                        mUseLightToolbarDrawables ? mLightModeTint : mDarkModeTint);
+                        mUseLightToolbarDrawables ? mDarkModeTint : mLightModeTint);
             }
         }
 

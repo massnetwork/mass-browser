@@ -14,6 +14,7 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.text.TextPaint;
 
+import android.util.TypedValue;
 import org.chromium.base.ApiCompatibilityUtils;
 import org.chromium.base.VisibleForTesting;
 import org.chromium.chrome.R;
@@ -35,6 +36,10 @@ public class TabSwitcherDrawable extends TintedDrawable {
     private int mTabCount;
     private boolean mIncognito;
 
+    private int mTextPadding;
+
+    private ColorStateList mTintText;
+
     /**
      * Creates a {@link TabSwitcherDrawable}.
      * @param resources A {@link Resources} instance.
@@ -51,6 +56,10 @@ public class TabSwitcherDrawable extends TintedDrawable {
         super(resources, bitmap);
         setTint(ApiCompatibilityUtils.getColorStateList(resources,
                 useLight ? R.color.light_mode_tint : R.color.dark_mode_tint));
+
+        mTintText = ApiCompatibilityUtils.getColorStateList(resources,
+                useLight ? R.color.dark_mode_tint : R.color.light_mode_tint);
+
         mSingleDigitTextSize =
                 resources.getDimension(R.dimen.toolbar_tab_count_text_size_1_digit);
         mDoubleDigitTextSize =
@@ -61,6 +70,8 @@ public class TabSwitcherDrawable extends TintedDrawable {
         mTextPaint.setTextAlign(Align.CENTER);
         mTextPaint.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
         mTextPaint.setColor(getColorForState());
+
+        mTextPadding = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 2, resources.getDisplayMetrics());
     }
 
     @Override
@@ -79,9 +90,9 @@ public class TabSwitcherDrawable extends TintedDrawable {
             mTextPaint.getTextBounds(textString, 0, textString.length(), mTextBounds);
 
             Rect drawableBounds = getBounds();
-            int textX = drawableBounds.width() / 2;
+            int textX = drawableBounds.width() / 2 + mTextPadding;
             int textY = drawableBounds.height() / 2 + (mTextBounds.bottom - mTextBounds.top) / 2
-                    - mTextBounds.bottom;
+                    - mTextBounds.bottom + mTextPadding;
 
             canvas.drawText(textString, textX, textY, mTextPaint);
         }
@@ -119,7 +130,7 @@ public class TabSwitcherDrawable extends TintedDrawable {
     }
 
     private int getColorForState() {
-        return mTint.getColorForState(getState(), 0);
+        return mTintText.getColorForState(getState(), 0);
     }
 
     @Override

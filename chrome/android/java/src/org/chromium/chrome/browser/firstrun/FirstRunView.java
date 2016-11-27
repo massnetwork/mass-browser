@@ -98,15 +98,17 @@ public class FirstRunView extends FrameLayout {
 
         // Add padding to get it roughly centered.
         int topPadding = Math.max(0, (height / 2) - halfContentHeight);
-
-        mMainLayout.setPadding(mMainLayout.getPaddingLeft(), topPadding,
-                mMainLayout.getPaddingRight(), mMainLayout.getPaddingBottom());
-
-        ApiCompatibilityUtils.setPaddingRelative(mImageAndContent,
-                imageAndContentPaddingStart,
-                mImageAndContent.getPaddingTop(),
-                ApiCompatibilityUtils.getPaddingEnd(mImageAndContent),
-                mImageAndContent.getPaddingBottom());
+        if(mMainLayout != null) {
+            mMainLayout.setPadding(mMainLayout.getPaddingLeft(), topPadding,
+                    mMainLayout.getPaddingRight(), mMainLayout.getPaddingBottom());
+        }
+        if(mImageAndContent != null) {
+            ApiCompatibilityUtils.setPaddingRelative(mImageAndContent,
+                    imageAndContentPaddingStart,
+                    mImageAndContent.getPaddingTop(),
+                    ApiCompatibilityUtils.getPaddingEnd(mImageAndContent),
+                    mImageAndContent.getPaddingBottom());
+        }
 
 //        mContentWrapper.setLayoutParams(contentWrapperLayout);
 

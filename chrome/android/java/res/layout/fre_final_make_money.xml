@@ -1,79 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
-<org.chromium.chrome.browser.firstrun.FirstRunView
-        xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-    <ScrollView
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_marginBottom="@dimen/fre_button_bar_height"
-            android:fillViewport="true">
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
 
-        <LinearLayout
-                android:id="@+id/fre_main_layout"
+    <FrameLayout android:layout_width="match_parent"
+                 android:layout_height="wrap_content">
+        <ImageView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center_horizontal">
+                android:contentDescription="@null"
+                android:src="@drawable/intro_3_bg"/>
 
-            <ImageView
-                    android:id="@+id/image"
-                    android:layout_width="160dp"
-                    android:layout_height="@dimen/fre_image_height"
-                    android:contentDescription="@null"
-                    android:src="@drawable/cycle_gray"/>
-            <LinearLayout
-                    android:id="@+id/fre_image_and_content"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center_horizontal"
-                    android:layout_marginTop="@dimen/fre_vertical_spacing">
+        <ImageView
+                android:id="@+id/image"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:layout_gravity="bottom|center_horizontal"
+                android:contentDescription="@null"
+                android:src="@drawable/intro_3_splash"/>
+    </FrameLayout>
 
-                <TextView
-                        android:id="@+id/title"
-                        android:text="@string/fre_final_make_money"
-                        style="@style/FreTitle"/>
+    <LinearLayout
+            android:id="@+id/fre_image_and_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:layout_marginTop="@dimen/fre_vertical_spacing">
 
-                <View android:layout_width="wrap_content"
-                      android:layout_height="0dp"
-                      android:layout_weight="1"/>
-
-                <Button android:id="@+id/next_button"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:layout_marginBottom="16dp"
-                        android:layout_gravity="bottom|center_horizontal"
-                        android:paddingStart="@dimen/fre_button_padding"
-                        android:paddingEnd="@dimen/fre_button_padding"
-                        android:text="@string/fre_launch_mass_browser"
-                        android:background="@drawable/btn_continue_round"
-                        android:textAllCaps="true"
-                        android:textColor="@android:color/white"
-                        android:textSize="@dimen/fre_button_text_size"/>
-                <LinearLayout android:layout_width="wrap_content"
-                              android:layout_height="wrap_content"
-                              android:orientation="horizontal">
-
-                    <View android:layout_height="8dp"
-                          android:layout_width="8dp"
-                          android:layout_margin="8dp"
-                          android:background="@drawable/point_gray"/>
-
-
-                    <View android:layout_height="8dp"
-                          android:layout_width="8dp"
-                          android:layout_margin="8dp"
-                          android:background="@drawable/point_gray"/>
-
-                    <View android:layout_height="8dp"
-                          android:layout_width="8dp"
-                          android:layout_margin="8dp"
-                          android:background="@drawable/point_blue"/>
-
-                </LinearLayout>
-            </LinearLayout>
-        </LinearLayout>
-    </ScrollView>
-
-</org.chromium.chrome.browser.firstrun.FirstRunView>
+        <TextView
+                android:id="@+id/title"
+                android:text="@string/fre_final_make_money"
+                style="@style/FreTitle"
+                android:lineSpacingMultiplier="1"/>
+    </LinearLayout>
+</LinearLayout>

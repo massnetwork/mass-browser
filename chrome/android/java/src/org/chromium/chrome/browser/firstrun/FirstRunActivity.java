@@ -127,14 +127,9 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunPageD
             mFreProgressStates.add(FRE_PROGRESS_WELCOME_SHOWN);
         }
 
-        mPages.add(pageOf(NoUnwantedAdsFragment.class));
+        mPages.add(pageOf(IntroFragment.class));
         mFreProgressStates.add(2);
 
-        mPages.add(pageOf(NoDataHarvestingFragment.class));
-        mFreProgressStates.add(3);
-
-        mPages.add(pageOf(FinallyMakeMoneyFragment.class));
-        mFreProgressStates.add(4);
 //        // An optional Data Saver page.
 //        if (mFreProperties.getBoolean(SHOW_DATA_REDUCTION_PAGE)) {
 //            mPages.add(pageOf(DataReductionProxyFirstRunFragment.class));

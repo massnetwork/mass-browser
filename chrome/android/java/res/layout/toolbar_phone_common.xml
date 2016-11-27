@@ -26,6 +26,16 @@
         android:contentDescription="@string/accessibility_toolbar_btn_home"
         android:visibility="gone" />
 
+
+    <TextView
+            android:id="@+id/coins"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:drawableStart="@drawable/ic_masscoin"
+            android:textStyle="bold"
+            android:text="47,25"
+            android:textColor="#068ffc"/>
+
     <org.chromium.chrome.browser.omnibox.LocationBarPhone
         android:id="@+id/location_bar"
         android:layout_width="match_parent"

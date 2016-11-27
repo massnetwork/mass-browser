@@ -176,6 +176,12 @@ CHAR-LIMIT guidelines:
       <message name="IDS_NEXT" desc="Generic label for a button to advance to the next item. [CHAR-LIMIT=20]">
         Next
       </message>
+      <message name="IDS_SKIP" desc="Generic label for a button to advance to the next item. [CHAR-LIMIT=20]">
+        Skip
+      </message>
+      <message name="IDS_LAUNCH_BROWSER" desc="Generic label for a button to advance to the next item. [CHAR-LIMIT=20]">
+        Launch Mass Browser
+      </message>
       <message name="IDS_CONTINUE_BUTTON" desc="Generic label for a button to continue to the next screen. Used in multiple contexts. [CHAR-LIMIT=20]">
         Continue
       </message>
@@ -1861,7 +1867,7 @@ To obtain new licenses, connect to the internet and play your downloaded content
         No data harvesting
       </message>
       <message name="IDS_FRE_FINAL_MAKE_MONEY" desc="Text for greeting the user on Mass Browser First Run">
-        Finally you can make \nmoney just browsing \ninternet
+        Your attention is valued now.\n Make money just by surfing \n the internet
       </message>
       <message name="IDS_FRE_LAUNCH_MASS_BROWSER" desc="Text for greeting the user on Mass Browser First Run">
         LAUNCH MASS BROWSER
