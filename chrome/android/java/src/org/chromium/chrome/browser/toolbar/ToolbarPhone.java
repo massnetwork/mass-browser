@@ -49,7 +49,9 @@ import org.chromium.base.SysUtils;
 import org.chromium.base.VisibleForTesting;
 import org.chromium.base.metrics.RecordUserAction;
 import org.chromium.chrome.R;
+import org.chromium.chrome.browser.coins.CoinType;
 import org.chromium.chrome.browser.coins.CoinsDialogFragment;
+import org.chromium.chrome.browser.coins.CoinsSingleton;
 import org.chromium.chrome.browser.compositor.Invalidator;
 import org.chromium.chrome.browser.compositor.layouts.LayoutUpdateHost;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
@@ -420,7 +422,18 @@ public class ToolbarPhone extends ToolbarLayout
 //        mHomeButton.setOnClickListener(this);
 
         mCoinTextView.setOnClickListener(this);
+        CoinsSingleton.getInstance().setChangeListener(new CoinsSingleton.ChangeListener() {
+            @Override
+            public void onTypeChanged(CoinType newType) {
+                mCoinTextView.setCompoundDrawablesWithIntrinsicBounds(newType.getIconRes(), 0, 0, 0);
+                mCoinTextView.setText(String.valueOf(CoinsSingleton.getInstance().getValue()));
+            }
 
+            @Override
+            public void onValueChanged(float newBaseValue, float newTypeValue) {
+                mCoinTextView.setText(String.valueOf(CoinsSingleton.getInstance().getValue()));
+            }
+        });
         mMenuButton.setOnKeyListener(new KeyboardNavigationListener() {
             @Override
             public View getNextFocusForward() {

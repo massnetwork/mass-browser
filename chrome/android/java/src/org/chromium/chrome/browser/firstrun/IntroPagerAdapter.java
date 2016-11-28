@@ -14,6 +14,7 @@ public class IntroPagerAdapter extends PagerAdapter {
 
     private int[] layouts = new int[] {R.layout.fre_no_unwanted_ads, R.layout.fre_no_data_harvesting, R.layout.fre_final_make_money};
     private Context mContext;
+    private View[] views = new View[layouts.length];
 
     public IntroPagerAdapter(Context context) {
         mContext = context;
@@ -23,6 +24,7 @@ public class IntroPagerAdapter extends PagerAdapter {
     public Object instantiateItem(ViewGroup collection, int position) {
         LayoutInflater inflater = LayoutInflater.from(mContext);
         ViewGroup layout = (ViewGroup) inflater.inflate(layouts[position], collection, false);
+        views[position] = layout;
         collection.addView(layout);
         return layout;
     }
@@ -30,6 +32,7 @@ public class IntroPagerAdapter extends PagerAdapter {
     @Override
     public void destroyItem(ViewGroup container, int position, Object object) {
         container.removeView((View) object);
+        views[position] = null;
     }
 
     @Override
@@ -40,5 +43,12 @@ public class IntroPagerAdapter extends PagerAdapter {
     @Override
     public boolean isViewFromObject(View view, Object object) {
         return view == object;
+    }
+
+    public void updateView(int position, float positionOffset) {
+        views[position].findViewById(R.id.image).setAlpha((1 -  positionOffset) * (1 -  positionOffset));
+        if(position + 1 < views.length && views[position + 1] != null) {
+            views[position + 1].findViewById(R.id.image).setAlpha(positionOffset * positionOffset);
+        }
     }
 }
