@@ -376,6 +376,7 @@ chrome_java_sources = [
 
   "java/src/org/chromium/chrome/browser/firstrun/IntroFragment.java",
   "java/src/org/chromium/chrome/browser/firstrun/IntroPagerAdapter.java",
+  "java/src/org/chromium/chrome/browser/coins/CoinsDialogFragment.java",
 
   "java/src/org/chromium/chrome/browser/fullscreen/ChromeFullscreenManager.java",
   "java/src/org/chromium/chrome/browser/fullscreen/FullscreenHtmlApiHandler.java",

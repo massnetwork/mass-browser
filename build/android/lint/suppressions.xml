@@ -172,6 +172,7 @@ Still reading?
   </issue>
   <issue id="MissingTranslation">
     <ignore regexp="blimp/client/app/android/java/res/values/arrays.xml"/>
+    <ignore regexp="chrome/android/java/res/values/arrays.xml"/>
     <ignore regexp="chrome/android/java/res/values/strings.xml"/>
     <ignore regexp="chromecast/internal"/>
     <ignore regexp="restriction_values.xml.*"/>

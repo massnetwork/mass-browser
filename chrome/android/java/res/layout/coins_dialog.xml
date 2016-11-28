@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:orientation="vertical"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:padding="24dp">
+
+    <TextView android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="@string/your_balance"
+              android:layout_marginBottom="17dp"
+              android:textColor="@android:color/black"
+              android:textSize="20sp"/>
+
+
+    <RadioGroup
+            android:id="@+id/coin_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/coin_round">
+        <RadioButton
+                android:id="@+id/masscoin"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:drawablePadding="5dp"
+                android:layout_weight="1"
+                android:button="@null"
+                android:checked="true"
+                android:drawableStart="@drawable/ic_masscoin"
+                android:text="@string/_100"/>
+        <View android:layout_width="1dp"
+              android:layout_height="match_parent"
+              android:background="#d8d8d8"/>
+        <RadioButton
+                android:id="@+id/bitcoin"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:drawablePadding="5dp"
+                android:button="@null"
+                android:drawableStart="@drawable/ic_bitcoin"
+                android:text="@string/_1"/>
+        <View android:layout_width="1dp"
+              android:layout_height="match_parent"
+              android:background="#d8d8d8"/>
+        <RadioButton
+                android:id="@+id/dollar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:drawablePadding="5dp"
+                android:button="@null"
+                android:drawableStart="@drawable/ic_dollar"
+                android:text="@string/_1_dollar"/>
+    </RadioGroup>
+
+    <TextView android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:layout_marginBottom="24dp"
+              android:textColor="@android:color/black"
+              android:textSize="14sp"
+              android:text="@string/you_can_see_your_balance"/>
+
+    <View android:layout_width="match_parent"
+          android:layout_height="2dp"
+          android:background="#ededed"/>
+
+    <TextView android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="@string/withdrawals"
+              android:layout_marginBottom="16dp"
+              android:layout_marginTop="24dp"
+              android:textColor="@android:color/black"
+              android:textSize="20sp"/>
+    <LinearLayout android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="horizontal">
+
+        <Spinner android:layout_width="wrap_content"
+                 android:layout_height="wrap_content"
+                 android:layout_weight="1"
+                 android:entries="@array/withdrawals"/>
+
+        <Button android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:enabled="false"
+                android:layout_weight="1"
+                android:layout_marginBottom="17dp"
+                android:text="@string/withdraw"/>
+
+    </LinearLayout>
+
+    <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/black"
+            android:textSize="14sp"
+            android:text="@string/feature_in_march_2017"/>
+
+
+</LinearLayout>

@@ -11,6 +11,7 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.animation.ValueAnimator.AnimatorUpdateListener;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
@@ -48,6 +49,7 @@ import org.chromium.base.SysUtils;
 import org.chromium.base.VisibleForTesting;
 import org.chromium.base.metrics.RecordUserAction;
 import org.chromium.chrome.R;
+import org.chromium.chrome.browser.coins.CoinsDialogFragment;
 import org.chromium.chrome.browser.compositor.Invalidator;
 import org.chromium.chrome.browser.compositor.layouts.LayoutUpdateHost;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
@@ -114,7 +116,8 @@ public class ToolbarPhone extends ToolbarLayout
     private ViewGroup mToolbarButtonsContainer;
     private ImageView mToggleTabStackButton;
     private NewTabButton mNewTabButton;
-    private TintedImageButton mHomeButton;
+//    private TintedImageButton mHomeButton;
+    private TextView mCoinTextView;
     private TextView mUrlBar;
     private View mUrlActionContainer;
     private ImageView mToolbarShadow;
@@ -320,7 +323,8 @@ public class ToolbarPhone extends ToolbarLayout
 
         mToolbarButtonsContainer = (ViewGroup) findViewById(R.id.toolbar_buttons);
 
-        mHomeButton = (TintedImageButton) findViewById(R.id.home_button);
+//        mHomeButton = (TintedImageButton) findViewById(R.id.home_button);
+        mCoinTextView = (TextView) findViewById(R.id.coins_text_view);
 
         mUrlBar = (TextView) findViewById(R.id.url_bar);
 
@@ -413,7 +417,9 @@ public class ToolbarPhone extends ToolbarLayout
 
         enableTabSwitchingResources();
 
-        mHomeButton.setOnClickListener(this);
+//        mHomeButton.setOnClickListener(this);
+
+        mCoinTextView.setOnClickListener(this);
 
         mMenuButton.setOnKeyListener(new KeyboardNavigationListener() {
             @Override
@@ -487,8 +493,12 @@ public class ToolbarPhone extends ToolbarLayout
                 RecordUserAction.record("MobileNewTabOpened");
                 // TODO(kkimlabs): Record UMA action for homepage button.
             }
-        } else if (mHomeButton == v) {
-            openHomepage();
+        }
+//        else if (mHomeButton == v) {
+//            openHomepage();
+//        }
+        else if(mCoinTextView == v) {
+            new CoinsDialogFragment().show(((Activity)getContext()).getFragmentManager(), null);
         }
     }
 
@@ -632,7 +642,9 @@ public class ToolbarPhone extends ToolbarLayout
 
     private int getBoundsAfterAccountingForLeftButton() {
         int padding = mToolbarSidePadding;
-        if (mHomeButton.getVisibility() != GONE) padding = mHomeButton.getMeasuredWidth();
+//        if (mHomeButton.getVisibility() != GONE) padding = mHomeButton.getMeasuredWidth();
+        if (mCoinTextView.getVisibility() != GONE) padding = mCoinTextView.getMeasuredWidth();
+
         return padding;
     }
 
@@ -862,8 +874,11 @@ public class ToolbarPhone extends ToolbarLayout
         // accepting click events.
         int toolbarButtonVisibility = mUrlExpansionPercent == 1f ? INVISIBLE : VISIBLE;
         mToolbarButtonsContainer.setVisibility(toolbarButtonVisibility);
-        if (mHomeButton.getVisibility() != GONE) {
-            mHomeButton.setVisibility(toolbarButtonVisibility);
+//        if (mHomeButton.getVisibility() != GONE) {
+//            mHomeButton.setVisibility(toolbarButtonVisibility);
+//        }
+        if (mCoinTextView.getVisibility() != GONE) {
+            mCoinTextView.setVisibility(toolbarButtonVisibility);
         }
 
         // Force an invalidation of the location bar to properly handle the clipping of the URL
@@ -882,7 +897,8 @@ public class ToolbarPhone extends ToolbarLayout
         mLocationBar.setTranslationY(0);
         if (!mUrlFocusChangeInProgress) {
             mToolbarButtonsContainer.setTranslationY(0);
-            mHomeButton.setTranslationY(0);
+//            mHomeButton.setTranslationY(0);
+            mCoinTextView.setTranslationY(0);
         }
         mToolbarShadow.setAlpha(1f);
         mLocationBar.setAlpha(1);
@@ -966,7 +982,8 @@ public class ToolbarPhone extends ToolbarLayout
         int transY = mTabSwitcherState == STATIC_TAB ? Math.min(mNtpSearchBoxTranslation.y, 0) : 0;
 
         mToolbarButtonsContainer.setTranslationY(transY);
-        mHomeButton.setTranslationY(transY);
+//        mHomeButton.setTranslationY(transY);
+        mCoinTextView.setTranslationY(transY);
     }
 
     private void setAncestorsShouldClipChildren(boolean clip) {
@@ -1005,13 +1022,13 @@ public class ToolbarPhone extends ToolbarLayout
         canvas.clipRect(mBackgroundOverlayBounds);
 
         float previousAlpha = 0.f;
-        if (mHomeButton.getVisibility() != View.GONE) {
-            // Draw the New Tab button used in the URL view.
-            previousAlpha = mHomeButton.getAlpha();
-            mHomeButton.setAlpha(previousAlpha * floatAlpha);
-            drawChild(canvas, mHomeButton, SystemClock.uptimeMillis());
-            mHomeButton.setAlpha(previousAlpha);
-        }
+//        if (mHomeButton.getVisibility() != View.GONE) {
+//            // Draw the New Tab button used in the URL view.
+//            previousAlpha = mHomeButton.getAlpha();
+//            mHomeButton.setAlpha(previousAlpha * floatAlpha);
+//            drawChild(canvas, mHomeButton, SystemClock.uptimeMillis());
+//            mHomeButton.setAlpha(previousAlpha);
+//        }
 
         // Draw the location/URL bar.
         previousAlpha = mLocationBar.getAlpha();
@@ -1131,7 +1148,7 @@ public class ToolbarPhone extends ToolbarLayout
                 // appropriate bounds based on whether the child is to the left or right of the
                 // location bar.
                 boolean isLeft = (child == mNewTabButton
-                        || child == mHomeButton) ^ LocalizationUtils.isLayoutRtl();
+                        /*|| child == mHomeButton*/) ^ LocalizationUtils.isLayoutRtl();
 
                 int clipBottom = mLocationBarBackgroundBounds.bottom
                         + mLocationBarBackgroundPadding.bottom + translationY;
@@ -1347,14 +1364,15 @@ public class ToolbarPhone extends ToolbarLayout
 
     @Override
     public void updateButtonVisibility() {
-        if (mIsHomeButtonEnabled) {
-            mHomeButton.setVisibility(urlHasFocus() || isTabSwitcherAnimationRunning()
-                    ? INVISIBLE : VISIBLE);
-            mBrowsingModeViews.add(mHomeButton);
-        } else {
-            mHomeButton.setVisibility(GONE);
-            mBrowsingModeViews.remove(mHomeButton);
-        }
+//        if (mIsHomeButtonEnabled) {
+//            mHomeButton.setVisibility(urlHasFocus() || isTabSwitcherAnimationRunning()
+//                    ? INVISIBLE : VISIBLE);
+//            mBrowsingModeViews.add(mHomeButton);
+//        } else {
+//            mHomeButton.setVisibility(GONE);
+//            mBrowsingModeViews.remove(mHomeButton);
+//        }
+        mCoinTextView.setVisibility(urlHasFocus() || isTabSwitcherAnimationRunning() ? INVISIBLE : VISIBLE);
     }
 
     private ObjectAnimator createEnterTabSwitcherModeAnimation() {
@@ -1808,7 +1826,7 @@ public class ToolbarPhone extends ToolbarLayout
 
     @Override
     protected void updateTabCountVisuals(int numberOfTabs) {
-        if (mHomeButton != null) mHomeButton.setEnabled(true);
+//        if (mHomeButton != null) mHomeButton.setEnabled(true);
 
         if (mToggleTabStackButton == null) return;
 
@@ -2105,7 +2123,7 @@ public class ToolbarPhone extends ToolbarLayout
             setAppMenuUpdateBadgeDrawable(mUseLightToolbarDrawables);
         }
         ColorStateList tint = mUseLightToolbarDrawables ? mLightModeTint : mDarkModeTint;
-        if (mIsHomeButtonEnabled) mHomeButton.setTint(tint);
+//        if (mIsHomeButtonEnabled) mHomeButton.setTint(tint);
 
         mLocationBar.updateVisualsForState();
         // Remove the side padding for incognito to ensure the badge icon aligns correctly with the

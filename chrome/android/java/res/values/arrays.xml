@@ -11,4 +11,10 @@
     <item>@string/monospace</item>
   </string-array>
 
+  <string-array name="withdrawals">
+    <item>Euros</item>
+    <item>US Dollars</item>
+    <item>Russian Rubles</item>
+  </string-array>
+
 </resources>
