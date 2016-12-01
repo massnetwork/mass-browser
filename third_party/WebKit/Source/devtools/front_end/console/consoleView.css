@@ -156,10 +156,10 @@
     flex: 1;
 }
 
-.console-warning-level .repeated-message,
 .console-error-level .repeated-message,
 .console-revokedError-level .repeated-message,
 .console-log-level .repeated-message,
+.console-warning-level .repeated-message,
 .console-debug-level .repeated-message,
 .console-info-level .repeated-message {
     display: flex;
@@ -349,13 +349,14 @@
 }
 
 #console-messages .link,
-#console-messages a {
+#console-messages .devtools-link {
     color: rgb(33%, 33%, 33%);
     cursor: pointer;
+    word-break: break-all;
 }
 
 #console-messages .link:hover,
-#console-messages a:hover {
+#console-messages .devtools-link:hover {
     color: rgb(15%, 15%, 15%);
 }
 
@@ -387,7 +388,6 @@
 }
 
 .console-object-preview {
-    font-style: italic;
     white-space: normal;
     word-wrap: break-word;
 }
@@ -464,13 +464,14 @@
     flex: none;
 }
 
-.console-message-stack-trace-triangle {
+.console-message-stack-trace-toggle .console-message-text::before {
+    content: " ";
     -webkit-user-select: none;
     -webkit-mask-image: url(Images/toolbarButtonGlyphs.png);
     -webkit-mask-size: 352px 168px;
     color: transparent;
     text-shadow: none;
-    margin-right: 0;
+    padding-right: 8px;
     height: 12px;
     background-color: rgb(110, 110, 110);
     width: 12px;
@@ -479,11 +480,11 @@
 }
 
 @media (-webkit-min-device-pixel-ratio: 1.1) {
-.console-message-stack-trace-triangle {
+.console-message-stack-trace-toggle .console-message-text::before {
     -webkit-mask-image: url(Images/toolbarButtonGlyphs_2x.png);
 }
 } /* media */
 
-.console-message-stack-trace-toggle.expanded .console-message-stack-trace-triangle {
+.console-message-stack-trace-toggle.expanded .console-message-text::before {
     -webkit-mask-position: -20px -96px;
 }

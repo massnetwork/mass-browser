@@ -13,7 +13,6 @@
 #include "base/android/jni_string.h"
 #include "base/command_line.h"
 #include "base/format_macros.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "chrome/browser/android/resource_mapper.h"
@@ -384,11 +383,36 @@ ScopedJavaLocalRef<jstring> PersonalDataManagerAndroid::SetProfile(
   return ConvertUTF8ToJavaString(env, profile.guid());
 }
 
+ScopedJavaLocalRef<jstring> PersonalDataManagerAndroid::SetProfileToLocal(
+    JNIEnv* env,
+    const JavaParamRef<jobject>& unused_obj,
+    const JavaParamRef<jobject>& jprofile) {
+  AutofillProfile profile;
+  PopulateNativeProfileFromJava(jprofile, env, &profile);
+
+  AutofillProfile* target_profile =
+      personal_data_manager_->GetProfileByGUID(ConvertJavaStringToUTF8(
+          env, Java_AutofillProfile_getGUID(env, jprofile).obj()));
+
+  if (target_profile != nullptr &&
+      target_profile->record_type() == AutofillProfile::LOCAL_PROFILE) {
+    profile.set_guid(target_profile->guid());
+    personal_data_manager_->UpdateProfile(profile);
+  } else {
+    personal_data_manager_->AddProfile(profile);
+  }
+
+  return ConvertUTF8ToJavaString(env, profile.guid());
+}
+
 ScopedJavaLocalRef<jobjectArray>
 PersonalDataManagerAndroid::GetProfileLabelsForSettings(
     JNIEnv* env,
     const JavaParamRef<jobject>& unused_obj) {
-  return GetProfileLabels(env, false, false,
+  return GetProfileLabels(env, false /* address_only */,
+                          false /* include_name_in_label */,
+                          true /* include_organization_in_label */,
+                          true /* include_country_in_label */,
                           personal_data_manager_->GetProfiles());
 }
 
@@ -396,18 +420,41 @@ ScopedJavaLocalRef<jobjectArray>
 PersonalDataManagerAndroid::GetProfileLabelsToSuggest(
     JNIEnv* env,
     const JavaParamRef<jobject>& unused_obj,
-    jboolean include_name_in_label) {
-  return GetProfileLabels(env, true, include_name_in_label,
+    jboolean include_name_in_label,
+    jboolean include_organization_in_label,
+    jboolean include_country_in_label) {
+  return GetProfileLabels(env, true /* address_only */, include_name_in_label,
+                          include_organization_in_label,
+                          include_country_in_label,
                           personal_data_manager_->GetProfilesToSuggest());
 }
 
 base::android::ScopedJavaLocalRef<jstring>
-PersonalDataManagerAndroid::GetAddressLabelForPaymentRequest(
+PersonalDataManagerAndroid::GetShippingAddressLabelWithCountryForPaymentRequest(
     JNIEnv* env,
     const base::android::JavaParamRef<jobject>& unused_obj,
     const base::android::JavaParamRef<jobject>& jprofile) {
+  return GetShippingAddressLabelForPaymentRequest(
+      env, jprofile, true /* include_country_in_label */);
+}
+
+base::android::ScopedJavaLocalRef<jstring> PersonalDataManagerAndroid::
+    GetShippingAddressLabelWithoutCountryForPaymentRequest(
+        JNIEnv* env,
+        const base::android::JavaParamRef<jobject>& unused_obj,
+        const base::android::JavaParamRef<jobject>& jprofile) {
+  return GetShippingAddressLabelForPaymentRequest(
+      env, jprofile, false /* include_country_in_label */);
+}
+
+base::android::ScopedJavaLocalRef<jstring>
+PersonalDataManagerAndroid::GetBillingAddressLabelForPaymentRequest(
+    JNIEnv* env,
+    const base::android::JavaParamRef<jobject>& unused_obj,
+    const base::android::JavaParamRef<jobject>& jprofile) {
+  // The company name and country are not included in the billing address label.
   std::vector<ServerFieldType> label_fields;
-  label_fields.push_back(COMPANY_NAME);
+  label_fields.push_back(NAME_FULL);
   label_fields.push_back(ADDRESS_HOME_LINE1);
   label_fields.push_back(ADDRESS_HOME_LINE2);
   label_fields.push_back(ADDRESS_HOME_DEPENDENT_LOCALITY);
@@ -415,7 +462,6 @@ PersonalDataManagerAndroid::GetAddressLabelForPaymentRequest(
   label_fields.push_back(ADDRESS_HOME_STATE);
   label_fields.push_back(ADDRESS_HOME_ZIP);
   label_fields.push_back(ADDRESS_HOME_SORTING_CODE);
-  label_fields.push_back(ADDRESS_HOME_COUNTRY);
 
   AutofillProfile profile;
   PopulateNativeProfileFromJava(jprofile, env, &profile);
@@ -766,10 +812,17 @@ ScopedJavaLocalRef<jobjectArray> PersonalDataManagerAndroid::GetCreditCardGUIDs(
   return base::android::ToJavaArrayOfStrings(env, guids);
 }
 
+bool PersonalDataManagerAndroid::AreRulesLoadedForRegion(
+    const std::string& region_code) {
+  return address_validator_.AreRulesLoadedForRegion(region_code);
+}
+
 ScopedJavaLocalRef<jobjectArray> PersonalDataManagerAndroid::GetProfileLabels(
     JNIEnv* env,
     bool address_only,
     bool include_name_in_label,
+    bool include_organization_in_label,
+    bool include_country_in_label,
     std::vector<AutofillProfile*> profiles) {
   std::unique_ptr<std::vector<ServerFieldType>> suggested_fields;
   size_t minimal_fields_shown = 2;
@@ -777,7 +830,8 @@ ScopedJavaLocalRef<jobjectArray> PersonalDataManagerAndroid::GetProfileLabels(
     suggested_fields.reset(new std::vector<ServerFieldType>);
     if (include_name_in_label)
       suggested_fields->push_back(NAME_FULL);
-    suggested_fields->push_back(COMPANY_NAME);
+    if (include_organization_in_label)
+      suggested_fields->push_back(COMPANY_NAME);
     suggested_fields->push_back(ADDRESS_HOME_LINE1);
     suggested_fields->push_back(ADDRESS_HOME_LINE2);
     suggested_fields->push_back(ADDRESS_HOME_DEPENDENT_LOCALITY);
@@ -785,7 +839,8 @@ ScopedJavaLocalRef<jobjectArray> PersonalDataManagerAndroid::GetProfileLabels(
     suggested_fields->push_back(ADDRESS_HOME_STATE);
     suggested_fields->push_back(ADDRESS_HOME_ZIP);
     suggested_fields->push_back(ADDRESS_HOME_SORTING_CODE);
-    suggested_fields->push_back(ADDRESS_HOME_COUNTRY);
+    if (include_country_in_label)
+      suggested_fields->push_back(ADDRESS_HOME_COUNTRY);
     minimal_fields_shown = suggested_fields->size();
   }
 
@@ -800,9 +855,32 @@ ScopedJavaLocalRef<jobjectArray> PersonalDataManagerAndroid::GetProfileLabels(
   return base::android::ToJavaArrayOfStrings(env, labels);
 }
 
-bool PersonalDataManagerAndroid::AreRulesLoadedForRegion(
-    const std::string& region_code) {
-  return address_validator_.AreRulesLoadedForRegion(region_code);
+base::android::ScopedJavaLocalRef<jstring>
+PersonalDataManagerAndroid::GetShippingAddressLabelForPaymentRequest(
+    JNIEnv* env,
+    const base::android::JavaParamRef<jobject>& jprofile,
+    bool include_country_in_label) {
+  // The full name is not included in the label for shipping address. It is
+  // added separately instead.
+  std::vector<ServerFieldType> label_fields;
+  label_fields.push_back(COMPANY_NAME);
+  label_fields.push_back(ADDRESS_HOME_LINE1);
+  label_fields.push_back(ADDRESS_HOME_LINE2);
+  label_fields.push_back(ADDRESS_HOME_DEPENDENT_LOCALITY);
+  label_fields.push_back(ADDRESS_HOME_CITY);
+  label_fields.push_back(ADDRESS_HOME_STATE);
+  label_fields.push_back(ADDRESS_HOME_ZIP);
+  label_fields.push_back(ADDRESS_HOME_SORTING_CODE);
+  if (include_country_in_label)
+    label_fields.push_back(ADDRESS_HOME_COUNTRY);
+
+  AutofillProfile profile;
+  PopulateNativeProfileFromJava(jprofile, env, &profile);
+
+  return ConvertUTF16ToJavaString(
+      env, profile.ConstructInferredLabel(
+               label_fields, label_fields.size(),
+               g_browser_process->GetApplicationLocale()));
 }
 
 // Returns whether the Autofill feature is enabled.

@@ -22,7 +22,6 @@
 #include "base/single_thread_task_runner.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/thread.h"
 #include "base/threading/thread_restrictions.h"
@@ -79,7 +78,7 @@
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/session_tab_helper.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/ssl/chrome_security_state_model_client.h"
+#include "chrome/browser/ssl/security_state_tab_helper.h"
 #include "chrome/browser/sync/profile_sync_service_factory.h"
 #include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/tab_contents/retargeting_details.h"
@@ -167,7 +166,8 @@
 #include "components/history/core/browser/top_sites.h"
 #include "components/prefs/pref_service.h"
 #include "components/search/search.h"
-#include "components/security_state/security_state_model.h"
+#include "components/security_state/content/content_utils.h"
+#include "components/security_state/core/security_state.h"
 #include "components/sessions/core/session_types.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/startup_metric_utils/browser/startup_metric_utils.h"
@@ -203,6 +203,7 @@
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/manifest_handlers/background_info.h"
+#include "extensions/features/features.h"
 #include "net/base/filename_util.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/cookies/cookie_monster.h"
@@ -242,7 +243,6 @@ using content::RenderWidgetHostView;
 using content::SiteInstance;
 using content::WebContents;
 using extensions::Extension;
-using security_state::SecurityStateModel;
 using ui::WebDialogDelegate;
 using web_modal::WebContentsModalDialogManager;
 using blink::WebWindowFeatures;
@@ -1279,13 +1279,13 @@ bool Browser::CanDragEnter(content::WebContents* source,
 blink::WebSecurityStyle Browser::GetSecurityStyle(
     WebContents* web_contents,
     content::SecurityStyleExplanations* security_style_explanations) {
-  ChromeSecurityStateModelClient* model_client =
-      ChromeSecurityStateModelClient::FromWebContents(web_contents);
-  DCHECK(model_client);
-  security_state::SecurityStateModel::SecurityInfo security_info;
-  model_client->GetSecurityInfo(&security_info);
-  return model_client->GetSecurityStyle(security_info,
-                                        security_style_explanations);
+  SecurityStateTabHelper* helper =
+      SecurityStateTabHelper::FromWebContents(web_contents);
+  DCHECK(helper);
+  security_state::SecurityInfo security_info;
+  helper->GetSecurityInfo(&security_info);
+  return security_state::GetSecurityStyle(security_info,
+                                          security_style_explanations);
 }
 
 void Browser::ShowCertificateViewerInDevTools(
@@ -1431,9 +1431,9 @@ void Browser::VisibleSecurityStateChanged(WebContents* source) {
   if (tab_strip_model_->GetActiveWebContents() == source)
     UpdateToolbar(false);
 
-  ChromeSecurityStateModelClient* security_model =
-      ChromeSecurityStateModelClient::FromWebContents(source);
-  security_model->VisibleSecurityStateChanged();
+  SecurityStateTabHelper* helper =
+      SecurityStateTabHelper::FromWebContents(source);
+  helper->VisibleSecurityStateChanged();
 }
 
 void Browser::AddNewContents(WebContents* source,
@@ -1549,12 +1549,12 @@ bool Browser::ShouldFocusLocationBarByDefault(WebContents* source) {
   const content::NavigationEntry* entry =
       source->GetController().GetActiveEntry();
   if (entry) {
-    GURL url = entry->GetURL();
-    GURL virtual_url = entry->GetVirtualURL();
+    const GURL& url = entry->GetURL();
+    const GURL& virtual_url = entry->GetVirtualURL();
     if ((url.SchemeIs(content::kChromeUIScheme) &&
-        url.host() == chrome::kChromeUINewTabHost) ||
+         url.host_piece() == chrome::kChromeUINewTabHost) ||
         (virtual_url.SchemeIs(content::kChromeUIScheme) &&
-        virtual_url.host() == chrome::kChromeUINewTabHost)) {
+         virtual_url.host_piece() == chrome::kChromeUINewTabHost)) {
       return true;
     }
   }
@@ -1851,6 +1851,18 @@ void Browser::SwapTabContents(content::WebContents* old_contents,
                               content::WebContents* new_contents,
                               bool did_start_load,
                               bool did_finish_load) {
+  // Copies the background color from an old WebContents to a new one that
+  // replaces it on the screen. This allows the new WebContents to use the
+  // old one's background color as the starting background color, before having
+  // loaded any contents. As a result, we avoid flashing white when navigating
+  // from a site whith a dark background to another site with a dark background.
+  if (old_contents && new_contents) {
+    RenderWidgetHostView* old_view = old_contents->GetMainFrame()->GetView();
+    RenderWidgetHostView* new_view = new_contents->GetMainFrame()->GetView();
+    if (old_view && new_view)
+      new_view->SetBackgroundColor(old_view->background_color());
+  }
+
   int index = tab_strip_model_->GetIndexOfWebContents(old_contents);
   DCHECK_NE(TabStripModel::kNoTab, index);
   tab_strip_model_->ReplaceWebContentsAt(index, new_contents);
@@ -2000,7 +2012,7 @@ void Browser::Observe(int type,
   }
 }
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 ///////////////////////////////////////////////////////////////////////////////
 // Browser, extensions::ExtensionRegistryObserver implementation:
 
@@ -2044,7 +2056,7 @@ void Browser::OnExtensionUnloaded(
       // schemes, e.g. https://mail.google.com if you have the Gmail app
       // installed.
       if ((web_contents->GetURL().SchemeIs(extensions::kExtensionScheme) &&
-           web_contents->GetURL().host() == extension->id()) ||
+           web_contents->GetURL().host_piece() == extension->id()) ||
           (extensions::TabHelper::FromWebContents(web_contents)
                ->extension_app() == extension)) {
         tab_strip_model_->CloseWebContentsAt(i, TabStripModel::CLOSE_NONE);
@@ -2054,7 +2066,7 @@ void Browser::OnExtensionUnloaded(
     }
   }
 }
-#endif  // defined(ENABLE_EXTENSIONS)
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 ///////////////////////////////////////////////////////////////////////////////
 // Browser, translate::ContentTranslateDriver::Observer implementation:

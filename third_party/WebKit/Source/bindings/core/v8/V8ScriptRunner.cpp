@@ -33,11 +33,11 @@
 #include "core/dom/Document.h"
 #include "core/dom/ExecutionContext.h"
 #include "core/fetch/CachedMetadata.h"
-#include "core/fetch/ScriptResource.h"
 #include "core/frame/LocalFrame.h"
-#include "core/inspector/InspectorInstrumentation.h"
+#include "core/frame/PerformanceMonitor.h"
 #include "core/inspector/InspectorTraceEvents.h"
 #include "core/inspector/ThreadDebugger.h"
+#include "core/loader/resource/ScriptResource.h"
 #include "platform/Histogram.h"
 #include "platform/ScriptForbiddenScope.h"
 #include "platform/tracing/TraceEvent.h"
@@ -472,8 +472,7 @@ v8::MaybeLocal<v8::Script> V8ScriptRunner::compileScript(
       v8::Integer::New(isolate, scriptStartPosition.m_line.zeroBasedInt()),
       v8::Integer::New(isolate, scriptStartPosition.m_column.zeroBasedInt()),
       v8Boolean(accessControlStatus == SharableCrossOrigin, isolate),
-      v8::Local<v8::Integer>(), v8Boolean(false, isolate),
-      v8String(isolate, sourceMapUrl),
+      v8::Local<v8::Integer>(), v8String(isolate, sourceMapUrl),
       v8Boolean(accessControlStatus == OpaqueResource, isolate));
 
   V8CompileHistogram::Cacheability cacheabilityIfNoHandler =
@@ -519,12 +518,12 @@ v8::MaybeLocal<v8::Value> V8ScriptRunner::runCompiledScript(
     }
     v8::MicrotasksScope microtasksScope(isolate,
                                         v8::MicrotasksScope::kRunMicrotasks);
-    InspectorInstrumentation::willExecuteScript(context);
+    PerformanceMonitor::willExecuteScript(context);
     ThreadDebugger::willExecuteScript(isolate,
                                       script->GetUnboundScript()->GetId());
     result = script->Run(isolate->GetCurrentContext());
     ThreadDebugger::didExecuteScript(isolate);
-    InspectorInstrumentation::didExecuteScript(context);
+    PerformanceMonitor::didExecuteScript(context);
   }
 
   crashIfIsolateIsDead(isolate);
@@ -632,13 +631,13 @@ v8::MaybeLocal<v8::Value> V8ScriptRunner::callFunction(
 
   v8::MicrotasksScope microtasksScope(isolate,
                                       v8::MicrotasksScope::kRunMicrotasks);
-  InspectorInstrumentation::willExecuteScript(context);
+  PerformanceMonitor::willCallFunction(context);
   ThreadDebugger::willExecuteScript(isolate, function->ScriptId());
   v8::MaybeLocal<v8::Value> result =
       function->Call(isolate->GetCurrentContext(), receiver, argc, args);
   crashIfIsolateIsDead(isolate);
   ThreadDebugger::didExecuteScript(isolate);
-  InspectorInstrumentation::didExecuteScript(context);
+  PerformanceMonitor::didCallFunction(context, function);
   if (!depth)
     TRACE_EVENT_END0("devtools.timeline", "FunctionCall");
   return result;

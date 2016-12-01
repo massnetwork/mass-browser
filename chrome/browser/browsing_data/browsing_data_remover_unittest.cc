@@ -80,6 +80,7 @@
 #include "content/public/test/test_browser_thread.h"
 #include "content/public/test/test_browser_thread_bundle.h"
 #include "content/public/test/test_utils.h"
+#include "extensions/features/features.h"
 #include "net/cookies/cookie_store.h"
 #include "net/http/http_network_session.h"
 #include "net/http/http_transaction_factory.h"
@@ -88,6 +89,7 @@
 #include "net/ssl/ssl_client_cert_type.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_getter.h"
+#include "ppapi/features/features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -108,11 +110,11 @@
 #include "components/signin/core/account_id/account_id.h"
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/mock_extension_special_storage_policy.h"
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 #include "chrome/browser/browsing_data/mock_browsing_data_flash_lso_helper.h"
 #endif
 
@@ -1060,7 +1062,7 @@ class RemovePermissionPromptCountsTest {
   DISALLOW_COPY_AND_ASSIGN(RemovePermissionPromptCountsTest);
 };
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // A small modification to MockBrowsingDataFlashLSOHelper so that it responds
 // immediately and does not wait for the Notify() call. Otherwise it would
 // deadlock BrowsingDataRemover::RemoveImpl.
@@ -1132,7 +1134,7 @@ class BrowsingDataRemoverTest : public testing::Test {
   ~BrowsingDataRemoverTest() override {}
 
   void TearDown() override {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
     mock_policy_ = nullptr;
 #endif
 
@@ -1213,7 +1215,7 @@ class BrowsingDataRemoverTest : public testing::Test {
   }
 
   MockExtensionSpecialStoragePolicy* CreateMockPolicy() {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
     mock_policy_ = new MockExtensionSpecialStoragePolicy;
     return mock_policy_.get();
 #else
@@ -1223,7 +1225,7 @@ class BrowsingDataRemoverTest : public testing::Test {
   }
 
   storage::SpecialStoragePolicy* mock_policy() {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
     return mock_policy_.get();
 #else
     return nullptr;
@@ -1233,7 +1235,7 @@ class BrowsingDataRemoverTest : public testing::Test {
   // If |kOrigin1| is protected when extensions are enabled, the expected
   // result for tests where the OriginMatcherFunction result is variable.
   bool ShouldRemoveForProtectedOriginOne() const {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
     return false;
 #else
     return true;
@@ -1253,7 +1255,7 @@ class BrowsingDataRemoverTest : public testing::Test {
 
   StoragePartitionRemovalData storage_partition_removal_data_;
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   scoped_refptr<MockExtensionSpecialStoragePolicy> mock_policy_;
 #endif
 
@@ -1447,7 +1449,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveChannelIDsForServerIdentifiers) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveUnprotectedLocalStorageForever) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   MockExtensionSpecialStoragePolicy* policy = CreateMockPolicy();
   // Protect kOrigin1.
   policy->AddProtected(kOrigin1.GetOrigin());
@@ -1477,7 +1479,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveUnprotectedLocalStorageForever) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveProtectedLocalStorageForever) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   // Protect kOrigin1.
   MockExtensionSpecialStoragePolicy* policy = CreateMockPolicy();
   policy->AddProtected(kOrigin1.GetOrigin());
@@ -1508,7 +1510,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveProtectedLocalStorageForever) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveLocalStorageForLastWeek) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   CreateMockPolicy();
 #endif
 
@@ -1732,7 +1734,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedDataForeverBoth) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedDataForeverOnlyTemporary) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   CreateMockPolicy();
 #endif
 
@@ -1776,7 +1778,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedDataForeverOnlyTemporary) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedDataForeverOnlyPersistent) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   CreateMockPolicy();
 #endif
 
@@ -1820,7 +1822,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedDataForeverOnlyPersistent) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedDataForeverNeither) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   CreateMockPolicy();
 #endif
 
@@ -1985,7 +1987,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedDataForLastWeek) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedUnprotectedOrigins) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   MockExtensionSpecialStoragePolicy* policy = CreateMockPolicy();
   // Protect kOrigin1.
   policy->AddProtected(kOrigin1.GetOrigin());
@@ -2031,7 +2033,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedUnprotectedOrigins) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedProtectedSpecificOrigin) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   MockExtensionSpecialStoragePolicy* policy = CreateMockPolicy();
   // Protect kOrigin1.
   policy->AddProtected(kOrigin1.GetOrigin());
@@ -2083,7 +2085,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedProtectedSpecificOrigin) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedProtectedOrigins) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   MockExtensionSpecialStoragePolicy* policy = CreateMockPolicy();
   // Protect kOrigin1.
   policy->AddProtected(kOrigin1.GetOrigin());
@@ -2131,7 +2133,7 @@ TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedProtectedOrigins) {
 }
 
 TEST_F(BrowsingDataRemoverTest, RemoveQuotaManagedIgnoreExtensionsAndDevTools) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   CreateMockPolicy();
 #endif
 
@@ -2821,7 +2823,7 @@ TEST_F(BrowsingDataRemoverTest, ClearPermissionPromptCounts) {
   }
 }
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 TEST_F(BrowsingDataRemoverTest, RemovePluginData) {
   RemovePluginDataTester tester(GetProfile());
 

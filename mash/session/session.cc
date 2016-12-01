@@ -7,9 +7,15 @@
 #include "base/bind.h"
 #include "base/command_line.h"
 #include "base/message_loop/message_loop.h"
+#include "content/public/common/service_names.mojom.h"
+#include "mash/login/public/interfaces/constants.mojom.h"
 #include "mash/login/public/interfaces/login.mojom.h"
+#include "mash/quick_launch/public/interfaces/constants.mojom.h"
+#include "mash/screenlock/public/interfaces/constants.mojom.h"
 #include "services/service_manager/public/cpp/connection.h"
 #include "services/service_manager/public/cpp/connector.h"
+#include "services/service_manager/public/cpp/interface_registry.h"
+#include "services/service_manager/public/cpp/service_context.h"
 
 namespace {
 
@@ -27,11 +33,12 @@ namespace session {
 Session::Session() : screen_locked_(false) {}
 Session::~Session() {}
 
-void Session::OnStart(const service_manager::ServiceInfo& info) {
+void Session::OnStart() {
   StartWindowManager();
   StartQuickLaunch();
+
   // Launch a chrome window for dev convience; don't do this in the long term.
-  connector()->Connect("service:content_browser");
+  context()->connector()->Connect(content::mojom::kBrowserServiceName);
 }
 
 bool Session::OnConnect(const service_manager::ServiceInfo& remote_info,
@@ -44,7 +51,8 @@ void Session::Logout() {
   // TODO(beng): Notify connected listeners that login is happening, potentially
   // give them the option to stop it.
   mash::login::mojom::LoginPtr login;
-  connector()->ConnectToInterface("service:login", &login);
+  context()->connector()->ConnectToInterface(login::mojom::kServiceName,
+                                             &login);
   login->ShowLoginUI();
   // This kills the user environment.
   base::MessageLoop::current()->QuitWhenIdle();
@@ -52,7 +60,8 @@ void Session::Logout() {
 
 void Session::SwitchUser() {
   mash::login::mojom::LoginPtr login;
-  connector()->ConnectToInterface("service:login", &login);
+  context()->connector()->ConnectToInterface(login::mojom::kServiceName,
+                                             &login);
   login->SwitchUser();
 }
 
@@ -90,27 +99,27 @@ void Session::Create(const service_manager::Identity& remote_identity,
 
 void Session::StartWindowManager() {
   StartRestartableService(
-      "service:ash",
+      "ash",
       base::Bind(&Session::StartWindowManager,
                  base::Unretained(this)));
 }
 
 void Session::StartQuickLaunch() {
   StartRestartableService(
-      "service:quick_launch",
+      quick_launch::mojom::kServiceName,
       base::Bind(&Session::StartQuickLaunch,
                  base::Unretained(this)));
 }
 
 void Session::StartScreenlock() {
   StartRestartableService(
-      "service:screenlock",
+      screenlock::mojom::kServiceName,
       base::Bind(&Session::StartScreenlock,
                  base::Unretained(this)));
 }
 
 void Session::StopScreenlock() {
-  auto connection = connections_.find("service:screenlock");
+  auto connection = connections_.find("screenlock");
   DCHECK(connections_.end() != connection);
   connections_.erase(connection);
 }
@@ -121,7 +130,7 @@ void Session::StartRestartableService(
   // TODO(beng): This would be the place to insert logic that counted restarts
   //             to avoid infinite crash-restart loops.
   std::unique_ptr<service_manager::Connection> connection =
-      connector()->Connect(url);
+      context()->connector()->Connect(url);
   // Note: |connection| may be null if we've lost our connection to the service
   // manager.
   if (connection) {

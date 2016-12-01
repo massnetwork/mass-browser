@@ -59,7 +59,7 @@ bool IsCacheableNTP(const content::WebContents* contents) {
   const content::NavigationEntry* entry =
       contents->GetController().GetLastCommittedEntry();
   return search::NavEntryIsInstantNTP(contents, entry) &&
-         entry->GetURL() != GURL(chrome::kChromeSearchLocalNtpUrl);
+         entry->GetURL() != chrome::kChromeSearchLocalNtpUrl;
 }
 
 bool IsNTP(const content::WebContents* contents) {
@@ -204,6 +204,9 @@ void SearchTabHelper::OnTabActivated() {
   ipc_router_.OnTabActivated();
 
   if (search::IsInstantNTP(web_contents_)) {
+    if (instant_service_)
+      instant_service_->OnNewTabPageOpened();
+
     // Force creation of NTPUserDataLogger, if we loaded an NTP. The
     // NTPUserDataLogger tries to detect whether the NTP is being created at
     // startup or from the user opening a new tab, and if we wait until later,

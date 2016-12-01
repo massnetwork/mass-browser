@@ -16,6 +16,7 @@
 #include "net/quic/core/quic_flags.h"
 #include "net/quic/core/quic_simple_buffer_allocator.h"
 #include "net/quic/core/quic_utils.h"
+#include "net/quic/platform/api/quic_socket_address.h"
 #include "net/quic/test_tools/quic_packet_creator_peer.h"
 #include "net/quic/test_tools/quic_packet_generator_peer.h"
 #include "net/quic/test_tools/quic_test_utils.h"
@@ -106,7 +107,7 @@ class QuicPacketGeneratorTest : public ::testing::Test {
       : framer_(AllSupportedVersions(),
                 QuicTime::Zero(),
                 Perspective::IS_CLIENT),
-        generator_(42, &framer_, &random_, &buffer_allocator_, &delegate_),
+        generator_(42, &framer_, &buffer_allocator_, &delegate_),
         creator_(QuicPacketGeneratorPeer::GetPacketCreator(&generator_)) {
     creator_->SetEncrypter(ENCRYPTION_FORWARD_SECURE, new NullEncrypter());
     creator_->set_encryption_level(ENCRYPTION_FORWARD_SECURE);
@@ -115,12 +116,12 @@ class QuicPacketGeneratorTest : public ::testing::Test {
   ~QuicPacketGeneratorTest() override {
     for (SerializedPacket& packet : packets_) {
       delete[] packet.encrypted_buffer;
-      QuicUtils::ClearSerializedPacket(&packet);
+      ClearSerializedPacket(&packet);
     }
   }
 
   void SavePacket(SerializedPacket* packet) {
-    packet->encrypted_buffer = QuicUtils::CopyBuffer(*packet);
+    packet->encrypted_buffer = CopyBuffer(*packet);
     packets_.push_back(*packet);
     packet->encrypted_buffer = nullptr;
     packet->retransmittable_frames.clear();
@@ -203,11 +204,10 @@ class QuicPacketGeneratorTest : public ::testing::Test {
   }
 
   QuicIOVector MakeIOVector(StringPiece s) {
-    return ::net::MakeIOVector(s, &iov_);
+    return ::net::test::MakeIOVector(s, &iov_);
   }
 
   QuicFramer framer_;
-  MockRandom random_;
   SimpleBufferAllocator buffer_allocator_;
   StrictMock<MockDelegate> delegate_;
   QuicPacketGenerator generator_;

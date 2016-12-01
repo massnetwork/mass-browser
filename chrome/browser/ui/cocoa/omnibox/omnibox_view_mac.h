@@ -14,7 +14,7 @@
 #include "base/strings/string16.h"
 #include "chrome/browser/ui/cocoa/location_bar/autocomplete_text_field.h"
 #include "components/omnibox/browser/omnibox_view.h"
-#include "components/security_state/security_state_model.h"
+#include "components/security_state/core/security_state.h"
 #include "third_party/skia/include/core/SkColor.h"
 
 class CommandUpdater;
@@ -25,10 +25,6 @@ namespace content {
 class WebContents;
 }
 
-namespace ui {
-class Clipboard;
-}
-
 // Implements OmniboxView on an AutocompleteTextField.
 class OmniboxViewMac : public OmniboxView,
                        public AutocompleteTextFieldObserver {
@@ -36,7 +32,7 @@ class OmniboxViewMac : public OmniboxView,
   static SkColor BaseTextColorSkia(bool in_dark_mode);
   static NSColor* BaseTextColor(bool in_dark_mode);
   static NSColor* GetSecureTextColor(
-      security_state::SecurityStateModel::SecurityLevel security_level,
+      security_state::SecurityLevel security_level,
       bool in_dark_mode);
 
   OmniboxViewMac(OmniboxEditController* controller,
@@ -89,8 +85,6 @@ class OmniboxViewMac : public OmniboxView,
   bool OnAfterPossibleChange(bool allow_keyword_ui_change) override;
   gfx::NativeView GetNativeView() const override;
   gfx::NativeView GetRelativeWindowForPopup() const override;
-  void SetGrayTextAutocompletion(const base::string16& input) override;
-  base::string16 GetGrayTextAutocompletion() const override;
   int GetTextWidth() const override;
   int GetWidth() const override;
   bool IsImeComposing() const override;
@@ -112,6 +106,7 @@ class OmniboxViewMac : public OmniboxView,
   void OnDidChange() override;
   void OnDidEndEditing() override;
   void OnInsertText() override;
+  void OnBeforeDrawRect() override;
   void OnDidDrawRect() override;
   bool OnDoCommandBySelector(SEL cmd) override;
   void OnSetFocus(bool control_down) override;
@@ -218,8 +213,6 @@ class OmniboxViewMac : public OmniboxView,
   // Was the delete key pressed with an empty selection at the end of the edit?
   bool delete_at_end_pressed_;
 
-  base::string16 suggest_text_;
-
   // State used to coalesce changes to text and selection to avoid drawing
   // transient state.
   bool in_coalesced_update_block_;
@@ -231,6 +224,9 @@ class OmniboxViewMac : public OmniboxView,
   // The time of the first character insert operation that has not yet been
   // painted. Used to measure omnibox responsiveness with a histogram.
   base::TimeTicks insert_char_time_;
+
+  // The time when OnBeforeDrawRect() was called.
+  base::TimeTicks draw_rect_start_time_;
 
   DISALLOW_COPY_AND_ASSIGN(OmniboxViewMac);
 };

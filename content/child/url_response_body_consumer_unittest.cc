@@ -58,7 +58,8 @@ class TestRequestPeer : public RequestPeer {
                           bool was_ignored_by_handler,
                           bool stale_copy_in_cache,
                           const base::TimeTicks& completion_time,
-                          int64_t total_transfer_size) override {
+                          int64_t total_transfer_size,
+                          int64_t encoded_body_size) override {
     EXPECT_FALSE(context_->complete);
     context_->complete = true;
     context_->error_code = error_code;
@@ -127,7 +128,7 @@ class URLResponseBodyConsumerTest : public ::testing::Test,
     return dispatcher_->StartAsync(
         std::move(request), 0, nullptr, GURL(),
         base::MakeUnique<TestRequestPeer>(context),
-        blink::WebURLRequest::LoadingIPCType::ChromeIPC, nullptr);
+        blink::WebURLRequest::LoadingIPCType::ChromeIPC, nullptr, nullptr);
   }
 
   void Run(TestRequestPeer::Context* context) {
@@ -150,6 +151,7 @@ TEST_F(URLResponseBodyConsumerTest, ReceiveData) {
   scoped_refptr<URLResponseBodyConsumer> consumer(new URLResponseBodyConsumer(
       request_id, dispatcher_.get(), std::move(data_pipe.consumer_handle),
       message_loop_.task_runner()));
+  consumer->Start(message_loop_.task_runner().get());
 
   mojo::ScopedDataPipeProducerHandle writer =
       std::move(data_pipe.producer_handle);
@@ -175,6 +177,7 @@ TEST_F(URLResponseBodyConsumerTest, OnCompleteThenClose) {
   scoped_refptr<URLResponseBodyConsumer> consumer(new URLResponseBodyConsumer(
       request_id, dispatcher_.get(), std::move(data_pipe.consumer_handle),
       message_loop_.task_runner()));
+  consumer->Start(message_loop_.task_runner().get());
 
   consumer->OnComplete(ResourceRequestCompletionStatus());
   mojo::ScopedDataPipeProducerHandle writer =
@@ -207,6 +210,7 @@ TEST_F(URLResponseBodyConsumerTest, CloseThenOnComplete) {
   scoped_refptr<URLResponseBodyConsumer> consumer(new URLResponseBodyConsumer(
       request_id, dispatcher_.get(), std::move(data_pipe.consumer_handle),
       message_loop_.task_runner()));
+  consumer->Start(message_loop_.task_runner().get());
 
   ResourceRequestCompletionStatus status;
   status.error_code = net::ERR_FAILED;

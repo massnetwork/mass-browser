@@ -29,7 +29,6 @@
 #include "chrome/browser/chromeos/login/screens/reset_screen.h"
 #include "chrome/browser/chromeos/policy/enrollment_config.h"
 
-class PrefRegistrySimple;
 class PrefService;
 
 namespace pairing_chromeos {
@@ -40,19 +39,14 @@ class SharkConnectionListener;
 
 namespace chromeos {
 
-class AutoEnrollmentCheckScreen;
-class EnrollmentScreen;
 class ErrorScreen;
 struct Geoposition;
 class LoginDisplayHost;
 class LoginScreenContext;
 class OobeUI;
 class SimpleGeolocationProvider;
-class SupervisedUserCreationScreen;
 class TimeZoneProvider;
 struct TimeZoneResponseData;
-class UpdateScreen;
-class UserImageScreen;
 
 // Class that manages control flow between wizard screens. Wizard controller
 // interacts with screen controllers to move the user between screens.
@@ -154,6 +148,7 @@ class WizardController : public BaseScreenDelegate,
   static const char kKioskAutolaunchScreenName[];
   static const char kErrorScreenName[];
   static const char kTermsOfServiceScreenName[];
+  static const char kArcTermsOfServiceScreenName[];
   static const char kAutoEnrollmentCheckScreenName[];
   static const char kWrongHWIDScreenName[];
   static const char kSupervisedUserCreationScreenName[];
@@ -178,6 +173,7 @@ class WizardController : public BaseScreenDelegate,
   void ShowEnableDebuggingScreen();
   void ShowKioskEnableScreen();
   void ShowTermsOfServiceScreen();
+  void ShowArcTermsOfServiceScreen();
   void ShowWrongHWIDScreen();
   void ShowAutoEnrollmentCheckScreen();
   void ShowSupervisedUserCreationScreen();
@@ -209,6 +205,7 @@ class WizardController : public BaseScreenDelegate,
   void OnWrongHWIDWarningSkipped();
   void OnTermsOfServiceDeclined();
   void OnTermsOfServiceAccepted();
+  void OnArcTermsOfServiceFinished();
   void OnControllerPairingFinished();
   void OnAutoEnrollmentCheckCompleted();
 

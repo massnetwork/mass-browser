@@ -63,6 +63,8 @@ class UI_BASE_X_EXPORT XVisualManager {
  public:
   static XVisualManager* GetInstance();
 
+  // Picks the best argb or opaque visual given |want_argb_visual|.  If the
+  // default visual is returned, |colormap| is set to CopyFromParent.
   void ChooseVisualForWindow(bool want_argb_visual,
                              Visual** visual,
                              int* depth,

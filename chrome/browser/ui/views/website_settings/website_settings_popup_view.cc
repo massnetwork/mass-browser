@@ -25,6 +25,7 @@
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/views/collected_cookies_views.h"
 #include "chrome/browser/ui/views/website_settings/chosen_object_row.h"
+#include "chrome/browser/ui/views/website_settings/non_accessible_image_view.h"
 #include "chrome/browser/ui/views/website_settings/permission_selector_row.h"
 #include "chrome/browser/ui/website_settings/website_settings.h"
 #include "chrome/common/pref_names.h"
@@ -223,7 +224,7 @@ PopupHeaderView::PopupHeaderView(
   const gfx::FontList& font_list = rb.GetFontListWithDelta(1);
   summary_label_ = new views::Label(base::string16(), font_list);
   summary_label_->SetMultiLine(true);
-  summary_label_->SetBorder(views::Border::CreateEmptyBorder(
+  summary_label_->SetBorder(views::CreateEmptyBorder(
       kHeaderPaddingTop - kHeaderPaddingForCloseButton, 0, 0, 0));
   layout->AddView(summary_label_, 1, 1, views::GridLayout::LEADING,
                   views::GridLayout::TRAILING);
@@ -330,7 +331,7 @@ void PopupHeaderView::AddResetDecisionsLabel() {
 
   // Now that it contains a label, the container needs padding at the top.
   reset_decisions_label_container_->SetBorder(
-      views::Border::CreateEmptyBorder(8, 0, 0, 0));
+      views::CreateEmptyBorder(8, 0, 0, 0));
 
   InvalidateLayout();
 }
@@ -369,7 +370,7 @@ InternalPageInfoPopupView::InternalPageInfoPopupView(
   SetLayoutManager(new views::BoxLayout(views::BoxLayout::kHorizontal, kSpacing,
                                         kSpacing, kSpacing));
   set_margins(gfx::Insets());
-  views::ImageView* icon_view = new views::ImageView();
+  views::ImageView* icon_view = new NonAccessibleImageView();
   ui::ResourceBundle& rb = ui::ResourceBundle::GetSharedInstance();
   icon_view->SetImage(rb.GetImageSkiaNamed(icon));
   AddChildView(icon_view);
@@ -418,7 +419,7 @@ void WebsiteSettingsPopupView::ShowPopup(
     Profile* profile,
     content::WebContents* web_contents,
     const GURL& url,
-    const security_state::SecurityStateModel::SecurityInfo& security_info) {
+    const security_state::SecurityInfo& security_info) {
   gfx::NativeView parent_window =
       anchor_view ? nullptr : web_contents->GetNativeView();
   if (url.SchemeIs(content::kChromeUIScheme) ||
@@ -452,7 +453,7 @@ WebsiteSettingsPopupView::WebsiteSettingsPopupView(
     Profile* profile,
     content::WebContents* web_contents,
     const GURL& url,
-    const security_state::SecurityStateModel::SecurityInfo& security_info)
+    const security_state::SecurityInfo& security_info)
     : content::WebContentsObserver(web_contents),
       BubbleDialogDelegateView(anchor_view, views::BubbleBorder::TOP_LEFT),
       profile_(profile),
@@ -619,7 +620,7 @@ void WebsiteSettingsPopupView::SetCookieInfo(
     info.is_incognito =
         Profile::FromBrowserContext(web_contents()->GetBrowserContext())
             ->IsOffTheRecord();
-    views::ImageView* icon = new views::ImageView();
+    views::ImageView* icon = new NonAccessibleImageView();
     const gfx::Image& image = WebsiteSettingsUI::GetPermissionIcon(info);
     icon->SetImage(image.ToImageSkia());
     layout->AddView(

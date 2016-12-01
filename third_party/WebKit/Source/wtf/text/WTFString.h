@@ -27,6 +27,7 @@
 // on systems without case-sensitive file systems.
 
 #include "wtf/Allocator.h"
+#include "wtf/Compiler.h"
 #include "wtf/HashTableDeletedValueType.h"
 #include "wtf/WTFExport.h"
 #include "wtf/text/ASCIIFastPath.h"
@@ -84,6 +85,8 @@ class WTF_EXPORT String {
 
   // Construct a string with UTF-16 data, from a null-terminated source.
   String(const UChar*);
+  String(const char16_t* chars)
+      : String(reinterpret_cast<const UChar*>(chars)) {}
 
   // Construct a string with latin1 data.
   String(const LChar* characters, unsigned length);
@@ -185,7 +188,9 @@ class WTF_EXPORT String {
                : kNotFound;
   }
 
-  // Unicode aware case insensitive string matching.
+  // Unicode aware case insensitive string matching. Non-ASCII characters might
+  // match to ASCII characters. This function is rarely used to implement web
+  // platform features.
   size_t findIgnoringCase(const StringView& value, unsigned start = 0) const {
     return m_impl ? m_impl->findIgnoringCase(value, start) : kNotFound;
   }
@@ -278,7 +283,10 @@ class WTF_EXPORT String {
   String left(unsigned len) const { return substring(0, len); }
   String right(unsigned len) const { return substring(length() - len, len); }
 
-  // Returns a lowercase/uppercase version of the string
+  // Returns a lowercase/uppercase version of the string. These functions might
+  // convert non-ASCII characters to ASCII characters. For example, lower() for
+  // U+212A is 'k', upper() for U+017F is 'S'.
+  // These functions are rarely used to implement web platform features.
   String lower() const;
   String upper() const;
 
@@ -298,7 +306,7 @@ class WTF_EXPORT String {
   // Return the string with case folded for case insensitive comparison.
   String foldCase() const;
 
-  static String format(const char*, ...) WTF_ATTRIBUTE_PRINTF(1, 2);
+  PRINTF_FORMAT(1, 2) static String format(const char*, ...);
 
   // Returns an uninitialized string. The characters needs to be written
   // into the buffer returned in data before the returned string is used.

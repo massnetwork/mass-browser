@@ -42,7 +42,7 @@ NetworkErrorResponseHandler(const net::test_server::HttpRequest& request) {
 class SSLErrorClassificationTest : public ::testing::Test {
  public:
   SSLErrorClassificationTest()
-      : field_trial_test_(new network_time::FieldTrialTest()) {}
+      : field_trial_test_(network_time::FieldTrialTest::CreateForUnitTest()) {}
   network_time::FieldTrialTest* field_trial_test() {
     return field_trial_test_.get();
   }
@@ -213,7 +213,8 @@ TEST(ErrorClassification, LevenshteinDistance) {
   EXPECT_EQ(7u, ssl_errors::GetLevenshteinDistance("xxxxxxx", "yyy"));
 }
 
-TEST_F(SSLErrorClassificationTest, GetClockState) {
+// Flaky, see https://bugs.chromium.org/p/chromium/issues/detail?id=668539.
+TEST_F(SSLErrorClassificationTest, DISABLED_GetClockState) {
   // This test aims to obtain all possible return values of
   // |GetClockState|.
   const char kBuildTimeHistogram[] = "interstitial.ssl.clockstate.build_time";
@@ -338,7 +339,7 @@ TEST_F(SSLErrorClassificationTest, NetworkClockStateHistogram) {
   EXPECT_TRUE(io_thread.StartWithOptions(thread_options));
 
   net::EmbeddedTestServer test_server;
-  ASSERT_TRUE(test_server.Start());
+  ASSERT_TRUE(test_server.InitializeAndListen());
 
   base::HistogramTester histograms;
   histograms.ExpectTotalCount(kNetworkTimeHistogram, 0);
@@ -357,7 +358,8 @@ TEST_F(SSLErrorClassificationTest, NetworkClockStateHistogram) {
       new net::TestURLRequestContextGetter(io_thread.task_runner()));
   network_time_tracker.SetTimeServerURLForTesting(test_server.GetURL("/"));
   field_trial_test()->SetNetworkQueriesWithVariationsService(
-      true, 0.0, network_time::FieldTrialTest::ENABLE_FETCHES_ON_DEMAND);
+      true, 0.0,
+      network_time::NetworkTimeTracker::FETCHES_IN_BACKGROUND_AND_ON_DEMAND);
 
   // No sync attempt.
   EXPECT_EQ(
@@ -370,6 +372,7 @@ TEST_F(SSLErrorClassificationTest, NetworkClockStateHistogram) {
 
   // First sync attempt is pending.
   test_server.RegisterRequestHandler(base::Bind(&NetworkErrorResponseHandler));
+  test_server.StartAcceptingConnections();
   EXPECT_TRUE(network_time_tracker.QueryTimeServiceForTesting());
   EXPECT_EQ(
       ssl_errors::ClockState::CLOCK_STATE_UNKNOWN,

@@ -123,7 +123,7 @@ void RenderWidgetHostViewGuest::Show() {
     // Since we were last shown, our renderer may have had a different surface
     // set (e.g. showing an interstitial), so we resend our current surface to
     // the renderer.
-    if (!local_frame_id_.is_null()) {
+    if (local_frame_id_.is_valid()) {
       cc::SurfaceSequence sequence =
           cc::SurfaceSequence(frame_sink_id_, next_surface_sequence_++);
       cc::SurfaceId surface_id(frame_sink_id_, local_frame_id_);
@@ -253,6 +253,12 @@ void RenderWidgetHostViewGuest::Destroy() {
 }
 
 gfx::Size RenderWidgetHostViewGuest::GetPhysicalBackingSize() const {
+  // We obtain the reference to native view from the owner RenderWidgetHostView.
+  // If the guest is embedded inside a cross-process frame, it is possible to
+  // reach here after the frame is detached in which case there will be no owner
+  // view.
+  if (!GetOwnerRenderWidgetHostView())
+    return gfx::Size();
   return RenderWidgetHostViewBase::GetPhysicalBackingSize();
 }
 
@@ -286,28 +292,21 @@ void RenderWidgetHostViewGuest::OnSwapCompositorFrame(
 
   // Check whether we need to recreate the cc::Surface, which means the child
   // frame renderer has changed its output surface, or size, or scale factor.
-  if (compositor_frame_sink_id != last_compositor_frame_sink_id_ &&
-      surface_factory_) {
-    surface_factory_->Destroy(local_frame_id_);
-    surface_factory_.reset();
-  }
   if (compositor_frame_sink_id != last_compositor_frame_sink_id_ ||
       frame_size != current_surface_size_ ||
       scale_factor != current_surface_scale_factor_ ||
       (guest_ && guest_->has_attached_since_surface_set())) {
     ClearCompositorSurfaceIfNecessary();
+    // If the renderer changed its frame sink, reset the surface factory to
+    // avoid returning stale resources.
+    if (compositor_frame_sink_id != last_compositor_frame_sink_id_)
+      surface_factory_->Reset();
     last_compositor_frame_sink_id_ = compositor_frame_sink_id;
     current_surface_size_ = frame_size;
     current_surface_scale_factor_ = scale_factor;
   }
 
-  if (!surface_factory_) {
-    cc::SurfaceManager* manager = GetSurfaceManager();
-    surface_factory_ =
-        base::MakeUnique<cc::SurfaceFactory>(frame_sink_id_, manager, this);
-  }
-
-  if (local_frame_id_.is_null()) {
+  if (!local_frame_id_.is_valid()) {
     local_frame_id_ = id_allocator_->GenerateId();
     surface_factory_->Create(local_frame_id_);
 

@@ -2,12 +2,11 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# Several dependencies of Chrome require a different min sdk and/or deployment
-# target when built as stand-alone projects. If this is ever not the case, these
-# variables can be removed.
+# Several dependencies of Chrome require a different min sdk when built
+# as stand-alone projects. If this is ever not the case, these variables
+# can be removed.
 # See https://bugs.chromium.org/p/webrtc/issues/detail?id=5453.
 mac_sdk_min_build_override = "10.10"
-mac_deployment_target_build_override = "10.9"
 
 # Variable that can be used to support multiple build scenarios, like having
 # Chromium specific targets in a client project's GN file etc.
@@ -37,4 +36,22 @@ declare_args() {
   # due to 4GiB file size limit, see https://crbug.com/648948.
   # Set this flag to true to skip the assertion.
   ignore_elf32_limitations = false
+
+  # Use the system install of Xcode for tools like ibtool, libtool, etc.
+  # This does not affect the compiler. When this variable is false, targets will
+  # instead use a hermetic install of Xcode. [The hermetic install can be
+  # obtained with gclient sync after setting the environment variable
+  # FORCE_MAC_TOOLCHAIN].
+  use_system_xcode = ""
+}
+
+if (use_system_xcode == "") {
+  if (target_os == "mac") {
+    _result =
+        exec_script("//build/mac/should_use_hermetic_xcode.py", [], "value")
+    use_system_xcode = _result == 0
+  }
+  if (target_os == "ios") {
+    use_system_xcode = true
+  }
 }

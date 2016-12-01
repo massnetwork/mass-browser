@@ -1,6 +1,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//extensions/features/features.gni")
 import("//testing/test.gni")
 import("//tools/grit/grit_rule.gni")
 import("//tools/grit/repack.gni")
@@ -132,9 +133,9 @@ static_library("test_support") {
     "//content/public/common",
     "//content/test:test_support",
     "//extensions/browser",
+    "//extensions/browser/api:api_registration",
     "//extensions/common",
     "//extensions/common/api",
-    "//extensions/common/api:api_registration",
     "//extensions/test:extensions_features",
     "//net:test_support",
     "//testing/gmock",

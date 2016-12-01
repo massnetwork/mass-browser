@@ -105,7 +105,6 @@
 #include "core/dom/MessagePort.h"
 #include "core/dom/Node.h"
 #include "core/dom/NodeTraversal.h"
-#include "core/dom/SuspendableTask.h"
 #include "core/dom/shadow/ShadowRoot.h"
 #include "core/editing/EditingUtilities.h"
 #include "core/editing/Editor.h"
@@ -140,7 +139,7 @@
 #include "core/inspector/ConsoleMessage.h"
 #include "core/layout/HitTestResult.h"
 #include "core/layout/LayoutObject.h"
-#include "core/layout/LayoutPart.h"
+#include "core/layout/api/LayoutPartItem.h"
 #include "core/layout/api/LayoutViewItem.h"
 #include "core/loader/DocumentLoader.h"
 #include "core/loader/FrameLoadRequest.h"
@@ -188,7 +187,6 @@
 #include "public/platform/WebRect.h"
 #include "public/platform/WebSecurityOrigin.h"
 #include "public/platform/WebSize.h"
-#include "public/platform/WebSuspendableTask.h"
 #include "public/platform/WebURLError.h"
 #include "public/platform/WebVector.h"
 #include "public/web/WebAssociatedURLLoaderOptions.h"
@@ -203,6 +201,7 @@
 #include "public/web/WebHistoryItem.h"
 #include "public/web/WebIconURL.h"
 #include "public/web/WebInputElement.h"
+#include "public/web/WebInputMethodController.h"
 #include "public/web/WebKit.h"
 #include "public/web/WebNode.h"
 #include "public/web/WebPerformance.h"
@@ -490,26 +489,6 @@ static WebDataSource* DataSourceForDocLoader(DocumentLoader* loader) {
   return loader ? WebDataSourceImpl::fromDocumentLoader(loader) : 0;
 }
 
-// WebSuspendableTaskWrapper --------------------------------------------------
-
-class WebSuspendableTaskWrapper : public SuspendableTask {
- public:
-  static std::unique_ptr<WebSuspendableTaskWrapper> create(
-      std::unique_ptr<WebSuspendableTask> task) {
-    return wrapUnique(new WebSuspendableTaskWrapper(std::move(task)));
-  }
-
-  void run() override { m_task->run(); }
-
-  void contextDestroyed() override { m_task->contextDestroyed(); }
-
- private:
-  explicit WebSuspendableTaskWrapper(std::unique_ptr<WebSuspendableTask> task)
-      : m_task(std::move(task)) {}
-
-  std::unique_ptr<WebSuspendableTask> m_task;
-};
-
 // WebFrame -------------------------------------------------------------------
 
 int WebFrame::instanceCount() {
@@ -579,10 +558,6 @@ WebVector<WebIconURL> WebLocalFrameImpl::iconURLs(int iconTypesMask) const {
   return WebVector<WebIconURL>();
 }
 
-void WebLocalFrameImpl::setRemoteWebLayer(WebLayer* webLayer) {
-  NOTREACHED();
-}
-
 void WebLocalFrameImpl::setContentSettingsClient(
     WebContentSettingsClient* contentSettingsClient) {
   m_contentSettingsClient = contentSettingsClient;
@@ -628,9 +603,10 @@ WebSize WebLocalFrameImpl::contentsSize() const {
 }
 
 bool WebLocalFrameImpl::hasVisibleContent() const {
-  if (LayoutPart* layoutObject = frame()->ownerLayoutObject()) {
-    if (layoutObject->style()->visibility() != EVisibility::Visible)
-      return false;
+  LayoutPartItem layoutItem = frame()->ownerLayoutItem();
+  if (!layoutItem.isNull() &&
+      layoutItem.style()->visibility() != EVisibility::Visible) {
+    return false;
   }
 
   if (FrameView* view = frameView())
@@ -976,8 +952,9 @@ void WebLocalFrameImpl::replaceSelection(const WebString& text) {
   bool selectReplacement =
       frame()->editor().behavior().shouldSelectReplacement();
   bool smartReplace = true;
-  frame()->editor().replaceSelectionWithText(text, selectReplacement,
-                                             smartReplace);
+  frame()->editor().replaceSelectionWithText(
+      text, selectReplacement, smartReplace,
+      InputEvent::InputType::InsertReplacementText);
 }
 
 void WebLocalFrameImpl::setMarkedText(const WebString& text,
@@ -1095,21 +1072,6 @@ void WebLocalFrameImpl::enableSpellChecking(bool enable) {
 
 bool WebLocalFrameImpl::isSpellCheckingEnabled() const {
   return frame()->spellChecker().isSpellCheckingEnabled();
-}
-
-void WebLocalFrameImpl::requestTextChecking(const WebElement& webElement) {
-  if (webElement.isNull())
-    return;
-
-  // TODO(xiaochengh): The use of updateStyleAndLayoutIgnorePendingStylesheets
-  // needs to be audited.  see http://crbug.com/590369 for more details.
-  frame()->document()->updateStyleAndLayoutIgnorePendingStylesheets();
-
-  DocumentLifecycle::DisallowTransitionScope disallowTransition(
-      frame()->document()->lifecycle());
-
-  frame()->spellChecker().requestTextChecking(
-      *webElement.constUnwrap<Element>());
 }
 
 void WebLocalFrameImpl::replaceMisspelledRange(const WebString& text) {
@@ -1393,16 +1355,12 @@ float WebLocalFrameImpl::getPrintPageShrink(int page) {
 }
 
 float WebLocalFrameImpl::printPage(int page, WebCanvas* canvas) {
-#if ENABLE(PRINTING)
   DCHECK(m_printContext);
   DCHECK_GE(page, 0);
   DCHECK(frame());
   DCHECK(frame()->document());
 
   return m_printContext->spoolSinglePage(canvas, page);
-#else
-  return 0;
-#endif
 }
 
 void WebLocalFrameImpl::printEnd() {
@@ -1475,19 +1433,6 @@ void WebLocalFrameImpl::printPagesWithBoundaries(
 WebRect WebLocalFrameImpl::selectionBoundsRect() const {
   return hasSelection() ? WebRect(IntRect(frame()->selection().bounds()))
                         : WebRect();
-}
-
-bool WebLocalFrameImpl::selectionStartHasSpellingMarkerFor(int from,
-                                                           int length) const {
-  if (!frame())
-    return false;
-
-  // TODO(xiaochengh): The use of updateStyleAndLayoutIgnorePendingStylesheets
-  // needs to be audited.  See http://crbug.com/590369 for more details.
-  frame()->document()->updateStyleAndLayoutIgnorePendingStylesheets();
-
-  return frame()->spellChecker().selectionStartHasSpellingMarkerFor(from,
-                                                                    length);
 }
 
 WebString WebLocalFrameImpl::layerTreeAsText(bool showDebugInfo) const {
@@ -1569,6 +1514,7 @@ WebLocalFrameImpl::WebLocalFrameImpl(WebTreeScopeType scope,
       m_contentSettingsClient(0),
       m_inputEventsScaleFactorForEmulation(1),
       m_webDevToolsFrontend(0),
+      m_inputMethodController(new WebInputMethodControllerImpl(this)),
       m_selfKeepAlive(this) {
   DCHECK(m_client);
   frameCount++;
@@ -2069,17 +2015,24 @@ void WebLocalFrameImpl::loadData(const WebData& data,
       static_cast<HistoryLoadType>(webHistoryLoadType));
 }
 
+bool WebLocalFrameImpl::maybeRenderFallbackContent(
+    const WebURLError& error) const {
+  DCHECK(frame());
+
+  if (!frame()->owner() || !frame()->owner()->canRenderFallbackContent())
+    return false;
+
+  FrameLoader& frameloader = frame()->loader();
+  frameloader.loadFailed(frameloader.documentLoader(), error);
+  return true;
+}
+
 bool WebLocalFrameImpl::isLoading() const {
   if (!frame() || !frame()->document())
     return false;
   return frame()->loader().stateMachine()->isDisplayingInitialEmptyDocument() ||
          frame()->loader().provisionalDocumentLoader() ||
          !frame()->document()->loadEventFinished();
-}
-
-bool WebLocalFrameImpl::
-    isFrameDetachedForSpecialOneOffStopTheCrashingHackBug561873() const {
-  return !frame() || frame()->isDetaching();
 }
 
 bool WebLocalFrameImpl::isNavigationScheduledWithin(
@@ -2110,13 +2063,6 @@ void WebLocalFrameImpl::sendOrientationChangeEvent() {
   // Legacy window.orientation API
   if (RuntimeEnabledFeatures::orientationEventEnabled() && frame()->domWindow())
     frame()->localDOMWindow()->sendOrientationChangeEvent();
-}
-
-void WebLocalFrameImpl::requestRunTask(WebSuspendableTask* task) const {
-  DCHECK(frame());
-  DCHECK(frame()->document());
-  frame()->document()->postSuspendableTask(
-      WebSuspendableTaskWrapper::create(wrapUnique(task)));
 }
 
 void WebLocalFrameImpl::didCallAddSearchProvider() {
@@ -2395,6 +2341,10 @@ void WebLocalFrameImpl::usageCountChromeLoadTimes(const WebString& metric) {
     feature = UseCounter::ChromeLoadTimesConnectionInfo;
   }
   UseCounter::count(frame(), feature);
+}
+
+WebInputMethodControllerImpl* WebLocalFrameImpl::inputMethodController() const {
+  return m_inputMethodController.get();
 }
 
 }  // namespace blink

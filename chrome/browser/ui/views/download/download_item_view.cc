@@ -43,7 +43,7 @@
 #include "components/safe_browsing_db/safe_browsing_prefs.h"
 #include "content/public/browser/download_danger_type.h"
 #include "third_party/icu/source/common/unicode/uchar.h"
-#include "ui/accessibility/ax_view_state.h"
+#include "ui/accessibility/ax_node_data.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/theme_provider.h"
@@ -59,6 +59,7 @@
 #include "ui/gfx/vector_icons_public.h"
 #include "ui/views/animation/flood_fill_ink_drop_ripple.h"
 #include "ui/views/animation/ink_drop_highlight.h"
+#include "ui/views/animation/ink_drop_impl.h"
 #include "ui/views/border.h"
 #include "ui/views/controls/button/md_text_button.h"
 #include "ui/views/controls/button/vector_icon_button.h"
@@ -194,8 +195,7 @@ DownloadItemView::DownloadItemView(DownloadItem* download_item,
   set_context_menu_controller(this);
 
   dropdown_button_->SetBorder(
-      views::Border::CreateEmptyBorder(gfx::Insets(kDropdownBorderWidth)));
-  dropdown_button_->set_ink_drop_size(gfx::Size(32, 32));
+      views::CreateEmptyBorder(gfx::Insets(kDropdownBorderWidth)));
   AddChildView(dropdown_button_);
 
   LoadIcon();
@@ -255,6 +255,28 @@ SkColor DownloadItemView::GetTextColorForThemeProvider(
 void DownloadItemView::OnExtractIconComplete(gfx::Image* icon_bitmap) {
   if (icon_bitmap)
     shelf_->SchedulePaint();
+}
+
+void DownloadItemView::MaybeSubmitDownloadToFeedbackService(
+    DownloadCommands::Command download_command) {
+  PrefService* prefs = shelf_->browser()->profile()->GetPrefs();
+  if (model_.MightBeMalicious() && model_.ShouldAllowDownloadFeedback() &&
+      !shelf_->browser()->profile()->IsOffTheRecord()) {
+    if (safe_browsing::ExtendedReportingPrefExists(*prefs)) {
+      SubmitDownloadWhenFeedbackServiceEnabled(
+          download_command, safe_browsing::IsExtendedReportingEnabled(*prefs));
+    } else {
+      // Show dialog, because the dialog hasn't been shown before.
+      DownloadFeedbackDialogView::Show(
+          shelf_->get_parent()->GetNativeWindow(), shelf_->browser()->profile(),
+          shelf_->GetNavigator(),
+          base::Bind(
+              &DownloadItemView::SubmitDownloadWhenFeedbackServiceEnabled,
+              weak_ptr_factory_.GetWeakPtr(), download_command));
+    }
+  } else {
+    DownloadCommands(download()).ExecuteCommand(download_command);
+  }
 }
 
 // DownloadObserver interface.
@@ -470,13 +492,13 @@ bool DownloadItemView::GetTooltipText(const gfx::Point& p,
   return true;
 }
 
-void DownloadItemView::GetAccessibleState(ui::AXViewState* state) {
-  state->name = accessible_name_;
-  state->role = ui::AX_ROLE_BUTTON;
+void DownloadItemView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
+  node_data->SetName(accessible_name_);
+  node_data->role = ui::AX_ROLE_BUTTON;
   if (model_.IsDangerous())
-    state->AddStateFlag(ui::AX_STATE_DISABLED);
+    node_data->AddStateFlag(ui::AX_STATE_DISABLED);
   else
-    state->AddStateFlag(ui::AX_STATE_HASPOPUP);
+    node_data->AddStateFlag(ui::AX_STATE_HASPOPUP);
 }
 
 void DownloadItemView::OnThemeChanged() {
@@ -489,6 +511,10 @@ void DownloadItemView::AddInkDropLayer(ui::Layer* ink_drop_layer) {
   // The layer that's added to host the ink drop layer must mask to bounds
   // so the hover effect is clipped while animating open.
   layer()->SetMasksToBounds(true);
+}
+
+std::unique_ptr<views::InkDrop> DownloadItemView::CreateInkDrop() {
+  return CreateDefaultFloodFillInkDropImpl();
 }
 
 std::unique_ptr<views::InkDropRipple> DownloadItemView::CreateInkDropRipple()
@@ -569,26 +595,10 @@ void DownloadItemView::ButtonPressed(views::Button* sender,
     return;
   }
 
-  // WARNING: all end states after this point delete |this|.
   DCHECK_EQ(discard_button_, sender);
   UMA_HISTOGRAM_LONG_TIMES("clickjacking.discard_download", warning_duration);
-  Profile* profile = shelf_->browser()->profile();
-  if (!model_.IsMalicious() && model_.ShouldAllowDownloadFeedback() &&
-      !profile->IsOffTheRecord()) {
-    if (!safe_browsing::ExtendedReportingPrefExists(*profile->GetPrefs())) {
-      // Show dialog, because the dialog hasn't been shown before.
-      DownloadFeedbackDialogView::Show(
-          shelf_->get_parent()->GetNativeWindow(), profile,
-          shelf_->GetNavigator(),
-          base::Bind(&DownloadItemView::PossiblySubmitDownloadToFeedbackService,
-                     weak_ptr_factory_.GetWeakPtr()));
-    } else {
-      PossiblySubmitDownloadToFeedbackService(
-          safe_browsing::IsExtendedReportingEnabled(*profile->GetPrefs()));
-    }
-    return;
-  }
-  download()->Remove();
+  MaybeSubmitDownloadToFeedbackService(DownloadCommands::DISCARD);
+  // WARNING: 'this' maybe deleted at this point. Don't access 'this'.
 }
 
 SkColor DownloadItemView::GetVectorIconBaseColor() const {
@@ -753,7 +763,8 @@ void DownloadItemView::OpenDownload() {
   download()->OpenDownload();
 }
 
-bool DownloadItemView::SubmitDownloadToFeedbackService() {
+bool DownloadItemView::SubmitDownloadToFeedbackService(
+    DownloadCommands::Command download_command) {
 #if defined(FULL_SAFE_BROWSING)
   safe_browsing::SafeBrowsingService* sb_service =
       g_browser_process->safe_browsing_service();
@@ -764,7 +775,7 @@ bool DownloadItemView::SubmitDownloadToFeedbackService() {
   if (!download_protection_service)
     return false;
   download_protection_service->feedback_service()->BeginFeedbackForDownload(
-      download());
+      download(), download_command);
   // WARNING: we are deleted at this point.  Don't access 'this'.
   return true;
 #else
@@ -773,9 +784,13 @@ bool DownloadItemView::SubmitDownloadToFeedbackService() {
 #endif
 }
 
-void DownloadItemView::PossiblySubmitDownloadToFeedbackService(bool enabled) {
-  if (!enabled || !SubmitDownloadToFeedbackService())
-    download()->Remove();
+void DownloadItemView::SubmitDownloadWhenFeedbackServiceEnabled(
+    DownloadCommands::Command download_command,
+    bool feedback_enabled) {
+  if (feedback_enabled && SubmitDownloadToFeedbackService(download_command))
+    return;
+
+  DownloadCommands(download()).ExecuteCommand(download_command);
   // WARNING: 'this' is deleted at this point. Don't access 'this'.
 }
 
@@ -825,7 +840,7 @@ void DownloadItemView::ShowContextMenuImpl(const gfx::Rect& rect,
       ->SetMouseHandler(nullptr);
 
   if (!context_menu_.get())
-    context_menu_.reset(new DownloadShelfContextMenuView(download()));
+    context_menu_.reset(new DownloadShelfContextMenuView(this));
   context_menu_->Run(GetWidget()->GetTopLevelWidget(), rect, source_type,
                      base::Bind(&DownloadItemView::ReleaseDropdown,
                                 weak_ptr_factory_.GetWeakPtr()));

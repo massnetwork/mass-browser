@@ -16,12 +16,14 @@
 #include "base/json/json_writer.h"
 #include "base/lazy_instance.h"
 #include "base/macros.h"
-#include "base/metrics/histogram.h"
+#include "base/memory/ptr_util.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/values.h"
+#include "chromeos/login/login_state.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/resource_request_info.h"
 #include "content/public/browser/user_metrics.h"
@@ -336,6 +338,16 @@ bool ShouldHideEvent(void* browser_context,
   return (!browser_context ||
           WebRequestPermissions::HideRequest(extension_info_map, request,
                                              navigation_ui_data));
+}
+
+// Returns true if we're in a Public Session.
+bool IsPublicSession() {
+#if defined(OS_CHROMEOS)
+  if (chromeos::LoginState::IsInitialized()) {
+    return chromeos::LoginState::Get()->IsPublicSessionUser();
+  }
+#endif
+  return false;
 }
 
 }  // namespace
@@ -966,8 +978,13 @@ void ExtensionWebRequestEventRouter::OnErrorOccurred(
     net::URLRequest* request,
     bool started,
     int net_error) {
+  ExtensionsBrowserClient* client = ExtensionsBrowserClient::Get();
+  if (!client) {
+    // |client| could be NULL during shutdown.
+    return;
+  }
   ExtensionNavigationUIData* navigation_ui_data =
-      ExtensionsBrowserClient::Get()->GetExtensionNavigationUIData(request);
+      client->GetExtensionNavigationUIData(request);
   // We hide events from the system context as well as sensitive requests.
   // However, if the request first became sensitive after redirecting we have
   // already signaled it and thus we have to signal the end of it. This is
@@ -1116,6 +1133,13 @@ void ExtensionWebRequestEventRouter::DispatchEventToListeners(
   Listeners* cross_event_listeners =
       cross_browser_context ? &listeners_[cross_browser_context][event_name]
                             : nullptr;
+
+  // In Public Sessions we want to restrict access to security or privacy
+  // sensitive data. Data is filtered for *all* listeners, not only extensions
+  // which are force-installed by policy.
+  if (IsPublicSession()) {
+    event_details->FilterForPublicSession();
+  }
 
   for (const EventListener::ID& id : *listener_ids) {
     // It's possible that the listener is no longer present. Check to make sure
@@ -2127,7 +2151,10 @@ WebRequestInternalAddEventListenerFunction::Run() {
     // http://www.example.com/bar/*.
     // For this reason we do only a coarse check here to warn the extension
     // developer if they do something obviously wrong.
-    if (extension->permissions_data()
+    // When we are in a Public Session, allow all URLs for webRequests initiated
+    // by a regular extension.
+    if (!(IsPublicSession() && extension->is_extension()) &&
+        extension->permissions_data()
             ->GetEffectiveHostPermissions()
             .is_empty() &&
         extension->permissions_data()
@@ -2147,12 +2174,6 @@ WebRequestInternalAddEventListenerFunction::Run() {
   EXTENSION_FUNCTION_VALIDATE(success);
 
   helpers::ClearCacheOnNavigation();
-
-  if (!extension_id_safe().empty()) {
-    BrowserThread::PostTask(BrowserThread::UI, FROM_HERE,
-                            base::Bind(&helpers::NotifyWebRequestAPIUsed,
-                                       profile_id(), extension_id_safe()));
-  }
 
   return RespondNow(NoArguments());
 }
@@ -2195,6 +2216,16 @@ WebRequestInternalEventHandledFunction::Run() {
           extension_info_map()->GetInstallTime(extension_id_safe());
       response.reset(new ExtensionWebRequestEventRouter::EventResponse(
           extension_id_safe(), install_time));
+    }
+
+    // In Public Session we only want to allow "cancel".
+    if (IsPublicSession() &&
+        (value->HasKey("redirectUrl") ||
+         value->HasKey(keys::kAuthCredentialsKey) ||
+         value->HasKey("requestHeaders") ||
+         value->HasKey("responseHeaders"))) {
+      OnError(event_name, sub_event_name, request_id, std::move(response));
+      return RespondNow(Error(keys::kInvalidPublicSessionBlockingResponse));
     }
 
     if (value->HasKey("cancel")) {
@@ -2304,9 +2335,8 @@ void WebRequestHandlerBehaviorChangedFunction::GetQuotaLimitHeuristics(
       base::TimeDelta::FromMinutes(10)};
   QuotaLimitHeuristic::BucketMapper* bucket_mapper =
       new QuotaLimitHeuristic::SingletonBucketMapper();
-  ClearCacheQuotaHeuristic* heuristic =
-      new ClearCacheQuotaHeuristic(config, bucket_mapper);
-  heuristics->push_back(heuristic);
+  heuristics->push_back(
+      base::MakeUnique<ClearCacheQuotaHeuristic>(config, bucket_mapper));
 }
 
 void WebRequestHandlerBehaviorChangedFunction::OnQuotaExceeded(

@@ -53,7 +53,7 @@ class DISPLAY_EXPORT Screen {
   virtual int GetNumDisplays() const = 0;
 
   // Returns the list of displays that are currently available.
-  virtual std::vector<display::Display> GetAllDisplays() const = 0;
+  virtual const std::vector<display::Display>& GetAllDisplays() const = 0;
 
   // Returns the display nearest the specified window.
   // If the window is NULL or the window is not rooted to a display this will
@@ -87,6 +87,12 @@ class DISPLAY_EXPORT Screen {
   // If |view| is null, the primary display is used as the context.
   virtual gfx::Rect DIPToScreenRectInWindow(gfx::NativeView view,
                                             const gfx::Rect& dip_rect) const;
+
+  // Returns true if the display with |display_id| is found and returns that
+  // display in |display|. Otherwise returns false and |display| remains
+  // untouched.
+  bool GetDisplayWithDisplayId(int64_t display_id,
+                               display::Display* display) const;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Screen);

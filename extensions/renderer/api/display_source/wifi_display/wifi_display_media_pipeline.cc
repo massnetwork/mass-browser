@@ -235,7 +235,10 @@ void WiFiDisplayMediaPipeline::OnEncodedVideoFrame(
 bool WiFiDisplayMediaPipeline::OnPacketizedMediaDatagramPacket(
     WiFiDisplayMediaDatagramPacket media_datagram_packet) {
   DCHECK(media_service_);
-  media_service_->SendMediaPacket(std::move(media_datagram_packet));
+  mojom::WiFiDisplayMediaPacketPtr packet =
+      mojom::WiFiDisplayMediaPacket::New();
+  packet->data = std::move(media_datagram_packet);
+  media_service_->SendMediaPacket(std::move(packet));
   return true;
 }
 

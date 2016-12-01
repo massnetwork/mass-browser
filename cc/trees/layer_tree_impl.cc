@@ -17,7 +17,6 @@
 #include "base/timer/elapsed_timer.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/trace_event_argument.h"
-#include "cc/animation/animation_host.h"
 #include "cc/base/histograms.h"
 #include "cc/base/math_util.h"
 #include "cc/base/synced_property.h"
@@ -40,6 +39,7 @@
 #include "cc/trees/effect_node.h"
 #include "cc/trees/layer_tree_host_common.h"
 #include "cc/trees/layer_tree_host_impl.h"
+#include "cc/trees/mutator_host.h"
 #include "cc/trees/occlusion_tracker.h"
 #include "cc/trees/property_tree.h"
 #include "cc/trees/property_tree_builder.h"
@@ -548,7 +548,7 @@ void LayerTreeImpl::AddToElementMap(LayerImpl* layer) {
 
   element_layers_map_[layer->element_id()] = layer->id();
 
-  layer_tree_host_impl_->animation_host()->RegisterElement(
+  layer_tree_host_impl_->mutator_host()->RegisterElement(
       layer->element_id(),
       IsActiveTree() ? ElementListType::ACTIVE : ElementListType::PENDING);
 }
@@ -562,7 +562,7 @@ void LayerTreeImpl::RemoveFromElementMap(LayerImpl* layer) {
                layer->element_id().AsValue().release(), "layer_id",
                layer->id());
 
-  layer_tree_host_impl_->animation_host()->UnregisterElement(
+  layer_tree_host_impl_->mutator_host()->UnregisterElement(
       layer->element_id(),
       IsActiveTree() ? ElementListType::ACTIVE : ElementListType::PENDING);
 
@@ -1887,16 +1887,15 @@ static void FindClosestMatchingLayer(const gfx::PointF& screen_space_point,
   }
 }
 
-static bool ScrollsOrScrollbarAnyDrawnRenderSurfaceLayerListMember(
-    LayerImpl* layer) {
-  return layer->scrolls_drawn_descendant() ||
+static bool IsScrollableOrDrawnScrollbarLayer(LayerImpl* layer) {
+  return layer->scrollable() ||
          (layer->ToScrollbarLayer() &&
           layer->is_drawn_render_surface_layer_list_member());
 }
 
 struct FindScrollingLayerOrScrollbarLayerFunctor {
   bool operator()(LayerImpl* layer) const {
-    return ScrollsOrScrollbarAnyDrawnRenderSurfaceLayerListMember(layer);
+    return IsScrollableOrDrawnScrollbarLayer(layer);
   }
 };
 
@@ -1913,7 +1912,7 @@ LayerTreeImpl::FindFirstScrollingLayerOrScrollbarLayerThatIsHitByPoint(
 struct HitTestVisibleScrollableOrTouchableFunctor {
   bool operator()(LayerImpl* layer) const {
     return layer->is_drawn_render_surface_layer_list_member() ||
-           ScrollsOrScrollbarAnyDrawnRenderSurfaceLayerListMember(layer) ||
+           IsScrollableOrDrawnScrollbarLayer(layer) ||
            !layer->touch_event_handler_region().IsEmpty();
   }
 };
@@ -2068,8 +2067,7 @@ LayerTreeImpl::TakePendingPageScaleAnimation() {
 }
 
 void LayerTreeImpl::ScrollAnimationAbort(bool needs_completion) {
-  layer_tree_host_impl_->animation_host()->ScrollAnimationAbort(
-      needs_completion);
+  layer_tree_host_impl_->mutator_host()->ScrollAnimationAbort(needs_completion);
 }
 
 void LayerTreeImpl::ResetAllChangeTracking() {

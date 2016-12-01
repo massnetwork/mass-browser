@@ -24,9 +24,8 @@ namespace proto {
 class LayerTreeHost;
 }  // namespace proto
 
-class AnimationHost;
+class MutatorHost;
 class EnginePictureCache;
-class ImageSerializationProcessor;
 class RemoteCompositorBridge;
 class LayerTreeHostClient;
 
@@ -36,7 +35,7 @@ class CC_EXPORT LayerTreeHostRemote : public LayerTreeHost,
   struct CC_EXPORT InitParams {
     LayerTreeHostClient* client = nullptr;
     scoped_refptr<base::SingleThreadTaskRunner> main_task_runner;
-    std::unique_ptr<AnimationHost> animation_host;
+    MutatorHost* mutator_host;
     std::unique_ptr<RemoteCompositorBridge> remote_compositor_bridge;
     std::unique_ptr<EnginePictureCache> engine_picture_cache;
     LayerTreeSettings const* settings = nullptr;
@@ -95,6 +94,11 @@ class CC_EXPORT LayerTreeHostRemote : public LayerTreeHost,
   void SetNextCommitWaitsForActivation() override;
   void ResetGpuRasterizationTracking() override;
 
+  // RemoteCompositorBridgeClient implementation.
+  void BeginMainFrame() override;
+  void ApplyStateUpdateFromClient(
+      const proto::ClientStateUpdate& client_state_update) override;
+
  protected:
   // Protected for testing. Allows tests to inject the LayerTree.
   LayerTreeHostRemote(InitParams* params,
@@ -108,12 +112,6 @@ class CC_EXPORT LayerTreeHostRemote : public LayerTreeHost,
   virtual void DispatchDrawAndSubmitCallbacks();
   void SetTaskRunnerProviderForTesting(
       std::unique_ptr<TaskRunnerProvider> task_runner_provider);
-
-  // RemoteCompositorBridgeClient implementation.
-  void BeginMainFrame() override;
-  bool ApplyScrollAndScaleUpdateFromClient(
-      const ScrollOffsetMap& client_scroll_map,
-      float client_page_scale) override;
 
  private:
   enum class FramePipelineStage { NONE, ANIMATE, UPDATE_LAYERS, COMMIT };

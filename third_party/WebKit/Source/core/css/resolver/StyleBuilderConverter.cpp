@@ -138,17 +138,11 @@ PassRefPtr<ClipPathOperation> StyleBuilderConverter::convertClipPath(
   if (value.isBasicShapeValue())
     return ShapeClipPathOperation::create(basicShapeForValue(state, value));
   if (value.isURIValue()) {
-    SVGURLReferenceResolver resolver(toCSSURIValue(value).value(),
-                                     state.document());
-    // If the reference is non-local, then the fragment will remain as a
-    // null string, which makes the element lookup fail.
-    AtomicString fragmentIdentifier;
-    if (resolver.isLocal())
-      fragmentIdentifier = resolver.fragmentIdentifier();
-    // TODO(fs): Doesn't work with forward or external SVG references
-    // (crbug.com/391604, crbug.com/109212, ...)
-    return ReferenceClipPathOperation::create(toCSSURIValue(value).value(),
-                                              fragmentIdentifier);
+    const CSSURIValue& urlValue = toCSSURIValue(value);
+    SVGElementProxy& elementProxy =
+        state.elementStyleResources().cachedOrPendingFromValue(urlValue);
+    // TODO(fs): Doesn't work with external SVG references (crbug.com/109212.)
+    return ReferenceClipPathOperation::create(urlValue.value(), elementProxy);
   }
   DCHECK(value.isIdentifierValue() &&
          toCSSIdentifierValue(value).getValueID() == CSSValueNone);
@@ -1222,15 +1216,16 @@ PassRefPtr<TranslateTransformOperation> StyleBuilderConverter::convertTranslate(
 Rotation StyleBuilderConverter::convertRotation(const CSSValue& value) {
   const CSSValueList& list = toCSSValueList(value);
   ASSERT(list.length() == 1 || list.length() == 4);
-  double angle = toCSSPrimitiveValue(list.item(0)).computeDegrees();
   double x = 0;
   double y = 0;
   double z = 1;
   if (list.length() == 4) {
-    x = toCSSPrimitiveValue(list.item(1)).getDoubleValue();
-    y = toCSSPrimitiveValue(list.item(2)).getDoubleValue();
-    z = toCSSPrimitiveValue(list.item(3)).getDoubleValue();
+    x = toCSSPrimitiveValue(list.item(0)).getDoubleValue();
+    y = toCSSPrimitiveValue(list.item(1)).getDoubleValue();
+    z = toCSSPrimitiveValue(list.item(2)).getDoubleValue();
   }
+  double angle =
+      toCSSPrimitiveValue(list.item(list.length() - 1)).computeDegrees();
   return Rotation(FloatPoint3D(x, y, z), angle);
 }
 

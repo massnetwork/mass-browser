@@ -51,6 +51,7 @@
 #include "ui/views/drag_controller.h"
 #include "ui/views/focus/view_storage.h"
 #include "ui/views/layout/layout_manager.h"
+#include "ui/views/view_observer.h"
 #include "ui/views/views_delegate.h"
 #include "ui/views/widget/native_widget_private.h"
 #include "ui/views/widget/root_view.h"
@@ -220,6 +221,9 @@ void View::AddChildViewAt(View* view, int index) {
 
   if (layout_manager_.get())
     layout_manager_->ViewAdded(this, view);
+
+  for (ViewObserver& observer : observers_)
+    observer.OnChildViewAdded(view);
 }
 
 void View::ReorderChildView(View* view, int index) {
@@ -246,6 +250,9 @@ void View::ReorderChildView(View* view, int index) {
   // Add it in the specified index now.
   InitFocusSiblings(view, index);
   children_.insert(children_.begin() + index, view);
+
+  for (ViewObserver& observer : observers_)
+    observer.OnChildViewReordered(view);
 
   ReorderLayers();
 }
@@ -298,6 +305,9 @@ void View::SetBoundsRect(const gfx::Rect& bounds) {
   gfx::Rect prev = bounds_;
   bounds_ = bounds;
   BoundsChanged(prev);
+
+  for (ViewObserver& observer : observers_)
+    observer.OnViewBoundsChanged(this);
 }
 
 void View::SetSize(const gfx::Size& size) {
@@ -418,6 +428,9 @@ void View::SetVisible(bool visible) {
       parent_->NotifyAccessibilityEvent(ui::AX_EVENT_CHILDREN_CHANGED, false);
     }
 
+    for (ViewObserver& observer : observers_)
+      observer.OnViewVisibilityChanged(this);
+
     // This notifies all sub-views recursively.
     PropagateVisibilityNotifications(this, visible_);
     UpdateLayerVisibility();
@@ -436,7 +449,11 @@ void View::SetEnabled(bool enabled) {
   if (enabled != enabled_) {
     enabled_ = enabled;
     AdvanceFocusIfNecessary();
+
     OnEnabledChanged();
+
+    for (ViewObserver& observer : observers_)
+      observer.OnViewEnabledChanged(this);
   }
 }
 
@@ -870,14 +887,7 @@ const ui::NativeTheme* View::GetNativeTheme() const {
   if (widget)
     return widget->GetNativeTheme();
 
-#if defined(OS_WIN)
-  // On Windows, ui::NativeTheme::GetInstanceForWeb() returns NativeThemeWinAura
-  // because that's what the renderer wants, but Views should default to
-  // NativeThemeWin. TODO(estade): clean this up, see http://crbug.com/558029
-  return ui::NativeThemeWin::instance();
-#else
-  return ui::NativeTheme::GetInstanceForWeb();
-#endif
+  return ui::NativeTheme::GetInstanceForNativeUi();
 }
 
 // RTL painting ----------------------------------------------------------------
@@ -1323,6 +1333,10 @@ bool View::ExceededDragThreshold(const gfx::Vector2d& delta) {
 
 // Accessibility----------------------------------------------------------------
 
+bool View::HandleAccessibleAction(const ui::AXActionData& action_data) {
+  return false;
+}
+
 gfx::NativeViewAccessible View::GetNativeViewAccessible() {
   if (!native_view_accessibility_)
     native_view_accessibility_ = NativeViewAccessibility::Create(this);
@@ -1365,6 +1379,19 @@ int View::GetPageScrollIncrement(ScrollView* scroll_view,
 int View::GetLineScrollIncrement(ScrollView* scroll_view,
                                  bool is_horizontal, bool is_positive) {
   return 0;
+}
+
+void View::AddObserver(ViewObserver* observer) {
+  CHECK(observer);
+  observers_.AddObserver(observer);
+}
+
+void View::RemoveObserver(ViewObserver* observer) {
+  observers_.RemoveObserver(observer);
+}
+
+bool View::HasObserver(const ViewObserver* observer) const {
+  return observers_.HasObserver(observer);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1842,6 +1869,9 @@ void View::DoRemoveChildView(View* view,
 
   if (layout_manager_)
     layout_manager_->ViewRemoved(this, view);
+
+  for (ViewObserver& observer : observers_)
+    observer.OnChildViewRemoved(view, this);
 }
 
 void View::PropagateRemoveNotifications(View* old_parent, View* new_parent) {

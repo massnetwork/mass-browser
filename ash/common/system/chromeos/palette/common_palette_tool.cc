@@ -59,7 +59,7 @@ void CommonPaletteTool::OnEnable() {
   start_time_ = base::TimeTicks::Now();
 
   if (highlight_view_) {
-    highlight_view_->SetRightIconVisible(true);
+    highlight_view_->SetRightViewVisible(true);
     highlight_view_->SetAccessiblityState(
         HoverHighlightView::AccessibilityState::CHECKED_CHECKBOX);
   }
@@ -70,7 +70,7 @@ void CommonPaletteTool::OnDisable() {
   AddHistogramTimes(GetToolId(), base::TimeTicks::Now() - start_time_);
 
   if (highlight_view_) {
-    highlight_view_->SetRightIconVisible(false);
+    highlight_view_->SetRightViewVisible(false);
     highlight_view_->SetAccessiblityState(
         HoverHighlightView::AccessibilityState::UNCHECKED_CHECKBOX);
   }
@@ -97,7 +97,7 @@ views::View* CommonPaletteTool::CreateDefaultView(const base::string16& name) {
 
   highlight_view_ = new HoverHighlightView(this);
   highlight_view_->SetBorder(
-      views::Border::CreateEmptyBorder(0, kMenuExtraMarginFromLeftEdge, 0, 0));
+      views::CreateEmptyBorder(0, kMenuExtraMarginFromLeftEdge, 0, 0));
   const int interior_button_padding = (kMenuButtonSize - kMenuIconSize) / 2;
   highlight_view_->AddIconAndLabelCustomSize(icon, name, false, kMenuIconSize,
                                              interior_button_padding,
@@ -110,7 +110,7 @@ views::View* CommonPaletteTool::CreateDefaultView(const base::string16& name) {
     highlight_view_->SetAccessiblityState(
         HoverHighlightView::AccessibilityState::CHECKED_CHECKBOX);
   } else {
-    highlight_view_->SetRightIconVisible(false);
+    highlight_view_->SetRightViewVisible(false);
     highlight_view_->SetAccessiblityState(
         HoverHighlightView::AccessibilityState::UNCHECKED_CHECKBOX);
   }

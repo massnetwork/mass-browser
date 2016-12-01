@@ -18,6 +18,7 @@ source_set("lib") {
     "//base",
     "//mojo/common",
     "//mojo/public/cpp/bindings",
+    "//services/catalog/public/interfaces",
     "//services/service_manager/public/cpp",
     "//services/tracing/public/cpp",
     "//services/ui/public/interfaces",
@@ -54,7 +55,6 @@ test("mus_ime_unittests") {
 }
 
 service_manifest("test_manifest") {
-  type = "exe"
   name = "mus_ime_unittests"
   source = "test_manifest.json"
 }

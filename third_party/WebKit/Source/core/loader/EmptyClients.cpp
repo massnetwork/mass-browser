@@ -123,7 +123,7 @@ String EmptyChromeClient::acceptLanguages() {
 
 std::unique_ptr<WebFrameScheduler> EmptyChromeClient::createFrameScheduler(
     BlameContext*) {
-  return wrapUnique(new EmptyFrameScheduler());
+  return makeUnique<EmptyFrameScheduler>();
 }
 
 NavigationPolicy EmptyFrameLoaderClient::decidePolicyForNavigation(
@@ -132,7 +132,8 @@ NavigationPolicy EmptyFrameLoaderClient::decidePolicyForNavigation(
     NavigationType,
     NavigationPolicy,
     bool,
-    bool) {
+    bool,
+    HTMLFormElement*) {
   return NavigationPolicyIgnore;
 }
 
@@ -169,6 +170,11 @@ std::unique_ptr<WebMediaPlayer> EmptyFrameLoaderClient::createWebMediaPlayer(
     HTMLMediaElement&,
     const WebMediaPlayerSource&,
     WebMediaPlayerClient*) {
+  return nullptr;
+}
+
+WebRemotePlaybackClient* EmptyFrameLoaderClient::createWebRemotePlaybackClient(
+    HTMLMediaElement&) {
   return nullptr;
 }
 

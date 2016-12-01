@@ -13,12 +13,15 @@
 #include "ui/views/context_menu_controller.h"
 #include "ui/views/widget/widget.h"
 
-class AvatarMenuButton;
 class BrowserRootView;
 class BrowserView;
 class NativeBrowserFrame;
 class NonClientFrameView;
 class SystemMenuModelBuilder;
+
+namespace content {
+struct NativeWebKeyboardEvent;
+}
 
 namespace gfx {
 class FontList;
@@ -91,6 +94,15 @@ class BrowserFrame
   // Retrieves the window placement (show state and bounds) for restoring.
   void GetWindowPlacement(gfx::Rect* bounds,
                           ui::WindowShowState* show_state) const;
+
+  // Returns true if the |event| was handled by the platform implementation
+  // before sending it to the renderer. E.g., it may be swallowed by a native
+  // menu bar.
+  bool PreHandleKeyboardEvent(const content::NativeWebKeyboardEvent& event);
+
+  // Returns true if the |event| was handled by the platform implementation,
+  // if the renderer did not process it.
+  bool HandleKeyboardEvent(const content::NativeWebKeyboardEvent& event);
 
   // Called when BrowserView creates all it's child views.
   void OnBrowserViewInitViewsComplete();

@@ -26,7 +26,7 @@ struct WebAssociatedURLLoaderOptions;
 
 class WEB_EXPORT WebRemoteFrameImpl final
     : public WebFrameImplBase,
-      WTF_NON_EXPORTED_BASE(public WebRemoteFrame) {
+      NON_EXPORTED_BASE(public WebRemoteFrame) {
  public:
   static WebRemoteFrameImpl* create(WebTreeScopeType,
                                     WebRemoteFrameClient*,
@@ -39,7 +39,6 @@ class WEB_EXPORT WebRemoteFrameImpl final
   WebString assignedName() const override;
   void setName(const WebString&) override;
   WebVector<WebIconURL> iconURLs(int iconTypesMask) const override;
-  void setRemoteWebLayer(WebLayer*) override;
   void setSharedWorkerRepositoryClient(
       WebSharedWorkerRepositoryClient*) override;
   void setCanHaveScrollbars(bool) override;
@@ -111,7 +110,6 @@ class WEB_EXPORT WebRemoteFrameImpl final
 
   WebRect selectionBoundsRect() const override;
 
-  bool selectionStartHasSpellingMarkerFor(int from, int length) const override;
   WebString layerTreeAsText(bool showDebugInfo = false) const override;
 
   WebFrameImplBase* toImplBase() { return this; }
@@ -144,11 +142,12 @@ class WEB_EXPORT WebRemoteFrameImpl final
                                     WebSandboxFlags,
                                     WebRemoteFrameClient*,
                                     WebFrame* opener) override;
-
+  void setWebLayer(WebLayer*) override;
   void setReplicatedOrigin(const WebSecurityOrigin&) const override;
   void setReplicatedSandboxFlags(WebSandboxFlags) const override;
   void setReplicatedName(const WebString& name,
                          const WebString& uniqueName) const override;
+  void setReplicatedFeaturePolicyHeader(const WebString&) const override;
   void addReplicatedContentSecurityPolicyHeader(
       const WebString& headerValue,
       WebContentSecurityPolicyType,
@@ -157,7 +156,7 @@ class WEB_EXPORT WebRemoteFrameImpl final
   void setReplicatedInsecureRequestPolicy(
       WebInsecureRequestPolicy) const override;
   void setReplicatedPotentiallyTrustworthyUniqueOrigin(bool) const override;
-  void DispatchLoadEventForFrameOwner() const override;
+  void dispatchLoadEventOnFrameOwner() const override;
 
   void didStartLoading() override;
   void didStopLoading() override;

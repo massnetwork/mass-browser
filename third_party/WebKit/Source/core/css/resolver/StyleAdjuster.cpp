@@ -59,15 +59,15 @@ static EDisplay equivalentBlockDisplay(EDisplay display) {
   switch (display) {
     case EDisplay::Block:
     case EDisplay::Table:
-    case EDisplay::Box:
+    case EDisplay::WebkitBox:
     case EDisplay::Flex:
     case EDisplay::Grid:
     case EDisplay::ListItem:
       return display;
     case EDisplay::InlineTable:
       return EDisplay::Table;
-    case EDisplay::InlineBox:
-      return EDisplay::Box;
+    case EDisplay::WebkitInlineBox:
+      return EDisplay::WebkitBox;
     case EDisplay::InlineFlex:
       return EDisplay::Flex;
     case EDisplay::InlineGrid:
@@ -106,9 +106,20 @@ static bool doesNotInheritTextDecoration(const ComputedStyle& style,
                                          const Element* element) {
   return style.display() == EDisplay::InlineTable ||
          style.display() == EDisplay::InlineBlock ||
-         style.display() == EDisplay::InlineBox ||
+         style.display() == EDisplay::WebkitInlineBox ||
          isAtShadowBoundary(element) || style.isFloating() ||
-         style.hasOutOfFlowPosition() || isOutermostSVGElement(element);
+         style.hasOutOfFlowPosition() || isOutermostSVGElement(element) ||
+         isHTMLRTElement(element);
+}
+
+// Certain elements (<a>, <font>) override text decoration colors.  "The font
+// element is expected to override the color of any text decoration that spans
+// the text of the element to the used value of the element's 'color' property."
+// (https://html.spec.whatwg.org/multipage/rendering.html#phrasing-content-3)
+// The <a> behavior is non-standard.
+static bool overridesTextDecorationColors(const Element* element) {
+  return element &&
+         (isHTMLFontElement(element) || isHTMLAnchorElement(element));
 }
 
 // FIXME: This helper is only needed because pseudoStyleForElement passes a null
@@ -127,12 +138,12 @@ void StyleAdjuster::adjustStyleForEditing(ComputedStyle& style) {
   if (style.userModify() != READ_WRITE_PLAINTEXT_ONLY)
     return;
   // Collapsing whitespace is harmful in plain-text editing.
-  if (style.whiteSpace() == NORMAL)
-    style.setWhiteSpace(PRE_WRAP);
-  else if (style.whiteSpace() == NOWRAP)
-    style.setWhiteSpace(PRE);
-  else if (style.whiteSpace() == PRE_LINE)
-    style.setWhiteSpace(PRE_WRAP);
+  if (style.whiteSpace() == EWhiteSpace::Normal)
+    style.setWhiteSpace(EWhiteSpace::PreWrap);
+  else if (style.whiteSpace() == EWhiteSpace::Nowrap)
+    style.setWhiteSpace(EWhiteSpace::Pre);
+  else if (style.whiteSpace() == EWhiteSpace::PreLine)
+    style.setWhiteSpace(EWhiteSpace::PreWrap);
 }
 
 static void adjustStyleForFirstLetter(ComputedStyle& style) {
@@ -185,14 +196,14 @@ static void adjustStyleForHTMLElement(ComputedStyle& style,
     return;
 
   if (isHTMLTableCellElement(element)) {
-    if (style.whiteSpace() == KHTML_NOWRAP) {
+    if (style.whiteSpace() == EWhiteSpace::KhtmlNowrap) {
       // Figure out if we are really nowrapping or if we should just
       // use normal instead. If the width of the cell is fixed, then
       // we don't actually use NOWRAP.
       if (style.width().isFixed())
-        style.setWhiteSpace(NORMAL);
+        style.setWhiteSpace(EWhiteSpace::Normal);
       else
-        style.setWhiteSpace(NOWRAP);
+        style.setWhiteSpace(EWhiteSpace::Nowrap);
     }
     return;
   }
@@ -200,9 +211,10 @@ static void adjustStyleForHTMLElement(ComputedStyle& style,
   if (isHTMLTableElement(element)) {
     // Tables never support the -webkit-* values for text-align and will reset
     // back to the default.
-    if (style.textAlign() == WEBKIT_LEFT ||
-        style.textAlign() == WEBKIT_CENTER || style.textAlign() == WEBKIT_RIGHT)
-      style.setTextAlign(TASTART);
+    if (style.textAlign() == ETextAlign::WebkitLeft ||
+        style.textAlign() == ETextAlign::WebkitCenter ||
+        style.textAlign() == ETextAlign::WebkitRight)
+      style.setTextAlign(ETextAlign::Start);
     return;
   }
 
@@ -352,8 +364,8 @@ static void adjustStyleForDisplay(ComputedStyle& style,
   // setting of block-flow to anything other than TopToBottomWritingMode.
   // https://bugs.webkit.org/show_bug.cgi?id=46418 - Flexible box support.
   if (style.getWritingMode() != TopToBottomWritingMode &&
-      (style.display() == EDisplay::Box ||
-       style.display() == EDisplay::InlineBox))
+      (style.display() == EDisplay::WebkitBox ||
+       style.display() == EDisplay::WebkitInlineBox))
     style.setWritingMode(TopToBottomWritingMode);
 
   if (parentStyle.isDisplayFlexibleOrGridBox()) {
@@ -429,7 +441,9 @@ void StyleAdjuster::adjustComputedStyle(ComputedStyle& style,
     style.clearAppliedTextDecorations();
   else
     style.restoreParentTextDecorations(parentStyle);
-  style.applyTextDecorations();
+  style.applyTextDecorations(
+      parentStyle.visitedDependentColor(CSSPropertyTextDecorationColor),
+      overridesTextDecorationColors(element));
 
   // Cull out any useless layers and also repeat patterns into additional
   // layers.

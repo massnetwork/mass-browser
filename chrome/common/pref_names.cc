@@ -8,6 +8,9 @@
 #include "build/build_config.h"
 #include "chrome/common/features.h"
 #include "chrome/common/pref_font_webkit_names.h"
+#include "extensions/features/features.h"
+#include "media/media_features.h"
+#include "ppapi/features/features.h"
 
 namespace prefs {
 
@@ -21,6 +24,11 @@ const char kArcApps[] = "arc.apps";
 const char kArcBackupRestoreEnabled[] = "arc.backup_restore.enabled";
 // A preference to keep Android apps enabled state.
 const char kArcEnabled[] = "arc.enabled";
+// A preference that indicated whether Android reported that it's compliant
+// with provided policies. When it's compliant, Android kiosk app will start.
+const char kArcPolicyCompliant[] = "arc.policy_compliant";
+// A preference that indicates that user accepted PlayStore terms.
+const char kArcTermsAccepted[] = "arc.terms.accepted";
 // A preference to keep user's consent to use location service.
 const char kArcLocationServiceEnabled[] = "arc.location_service.enabled";
 // A preference to keep list of Android packages and their infomation.
@@ -903,6 +911,19 @@ const char kEolStatus[] = "eol_status";
 // Boolean pref indicating the End Of Life notification was dismissed by the
 // user.
 const char kEolNotificationDismissed[] = "eol_notification_dismissed";
+
+// A list of allowed quick unlock modes. A quick unlock mode can only be used if
+// its type is on this list, or if type all (all quick unlock modes enabled) is
+// on this list.
+const char kQuickUnlockModeWhitelist[] = "quick_unlock_mode_whitelist";
+// Enum that specifies how often a user has to enter their password to continue
+// using quick unlock. These values are the same as the ones in
+// chromeos::QuickUnlockPasswordConfirmationFrequency.
+// 0 - six hours. Users will have to enter their password every six hours.
+// 1 - twelve hours. Users will have to enter their password every twelve hours.
+// 2 - day. Users will have to enter their password every day.
+// 3 - week. Users will have to enter their password every week.
+const char kQuickUnlockTimeout[] = "quick_unlock_timeout";
 #endif  // defined(OS_CHROMEOS)
 
 // A boolean pref set to true if a Home button to open the Home pages should be
@@ -988,7 +1009,7 @@ const char kPluginsEnabledPlugins[] = "plugins.plugins_enabled";
 const char kPluginsAlwaysOpenPdfExternally[] =
     "plugins.always_open_pdf_externally";
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // Whether about:plugins is shown in the details mode or not.
 const char kPluginsShowDetails[] = "plugins.show_details";
 #endif
@@ -1039,7 +1060,7 @@ const char kUseCustomChromeFrame[] = "browser.custom_chrome_frame";
 const char kBackShortcutBubbleShownCount[] =
     "browser.back_shortcut_bubble_shown_count";
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // Which plugins have been whitelisted manually by the user.
 const char kContentSettingsPluginWhitelist[] =
     "profile.content_settings.plugin_whitelist";
@@ -1254,7 +1275,7 @@ const char kEasyUnlockPairing[] = "easy_unlock.pairing";
 // in order to use Easy Unlock.
 const char kEasyUnlockProximityRequired[] = "easy_unlock.proximity_required";
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 // Used to indicate whether or not the toolbar redesign bubble has been shown
 // and acknowledged, and the last time the bubble was shown.
 const char kToolbarIconSurfacingBubbleAcknowledged[] =
@@ -1268,7 +1289,7 @@ const char kToolbarMigratedComponentActionStatus[] =
     "toolbar_migrated_component_action_status";
 #endif
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 // Whether WebRTC should bind to individual NICs to explore all possible routing
 // options. Default is true. This has become obsoleted and replaced by
 // kWebRTCIPHandlingPolicy. TODO(guoweis): Remove this at M50.
@@ -1285,6 +1306,11 @@ const char kWebRTCNonProxiedUdpEnabled[] =
 const char kWebRTCIPHandlingPolicy[] = "webrtc.ip_handling_policy";
 // Define range of UDP ports allowed to be used by WebRTC PeerConnections.
 const char kWebRTCUDPPortRange[] = "webrtc.udp_port_range";
+#endif
+
+#if !defined(OS_ANDROID)
+// Whether or not this profile has been shown the Welcome page.
+const char kHasSeenWelcomePage[] = "browser.has_seen_welcome_page";
 #endif
 
 // *************** LOCAL STATE ***************
@@ -1388,6 +1414,13 @@ const char kTaskManagerColumnVisibility[] = "task_manager.column_visibility";
 
 // A boolean indicating if ending processes are enabled or disabled by policy.
 const char kTaskManagerEndProcessEnabled[] = "task_manager.end_process_enabled";
+
+#if defined(OS_CHROMEOS)
+// Dictionary indicating current network bandwidth throttling settings.
+// Contains a boolean (is throttling enabled) and two integers (upload rate
+// and download rate in kbits/s to throttle to)
+const char kNetworkThrottlingEnabled[] = "net.throttling_enabled";
+#endif
 
 // A collection of position, size, and other data relating to app windows to
 // restore on startup.
@@ -2098,6 +2131,9 @@ const char kAppListEnableMethod[] = "app_list.how_enabled";
 // The time that the app launcher was enabled. Cleared when UMA is recorded.
 const char kAppListEnableTime[] = "app_list.when_enabled";
 
+// Keeps local state of app list while sync service is not available.
+const char kAppListLocalState[] = "app_list.local_state";
+
 #if defined(OS_MACOSX)
 // Integer representing the version of the app launcher shortcut installed on
 // the system. Incremented, e.g., when embedded icons change.
@@ -2227,7 +2263,7 @@ const char kRecoveryComponentNeedsElevation[] =
 const char kRegisteredSupervisedUserWhitelists[] =
     "supervised_users.whitelists";
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 // Policy that indicates how to handle animated images.
 const char kAnimationPolicy[] = "settings.a11y.animation_policy";
 #endif
@@ -2271,5 +2307,19 @@ const char kOriginTrialDisabledFeatures[] = "origin_trials.disabled_features";
 // Policy that indicates the state of updates for the binary components.
 const char kComponentUpdatesEnabled[] =
     "component_updates.component_updates_enabled";
+
+#if defined(OS_ANDROID)
+// Whether the search geolocation disclosure has been dismissed by the user.
+const char kSearchGeolocationDisclosureDismissed[] =
+    "search_geolocation_disclosure.dismissed";
+
+// How many times the search geolocation disclosure has been shown.
+const char kSearchGeolocationDisclosureShownCount[] =
+    "search_geolocation_disclosure.shown_count";
+
+// When the disclosure was shown last.
+const char kSearchGeolocationDisclosureLastShowDate[] =
+    "search_geolocation_disclosure.last_show_date";
+#endif
 
 }  // namespace prefs

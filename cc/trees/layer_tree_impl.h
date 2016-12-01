@@ -38,12 +38,10 @@ class DebugRectHistory;
 class FrameRateCounter;
 class HeadsUpDisplayLayerImpl;
 class ImageDecodeController;
-class LayerExternalScrollOffsetListener;
 class LayerTreeDebugState;
 class LayerTreeImpl;
 class LayerTreeSettings;
 class MemoryHistory;
-class PageScaleAnimation;
 class PictureLayerImpl;
 class TaskRunnerProvider;
 class ResourceProvider;
@@ -105,8 +103,8 @@ class CC_EXPORT LayerTreeImpl {
   bool RequiresHighResToDraw() const;
   bool SmoothnessTakesPriority() const;
   VideoFrameControllerClient* GetVideoFrameControllerClient() const;
-  AnimationHost* animation_host() const {
-    return layer_tree_host_impl_->animation_host();
+  MutatorHost* mutator_host() const {
+    return layer_tree_host_impl_->mutator_host();
   }
 
   // Tree specific methods exposed to layer-impl tree.

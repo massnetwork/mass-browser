@@ -18,11 +18,6 @@ class TracedValue;
 
 namespace cc {
 
-namespace proto {
-class TransformCachedNodeData;
-class TreeNode;
-}  // namespace proto
-
 struct CC_EXPORT TransformNode {
   TransformNode();
   TransformNode(const TransformNode&);
@@ -139,9 +134,6 @@ struct CC_EXPORT TransformNode {
   void update_post_local_transform(const gfx::PointF& position,
                                    const gfx::Point3F& transform_origin);
 
-  void ToProtobuf(proto::TreeNode* proto) const;
-  void FromProtobuf(const proto::TreeNode& proto);
-
   void AsValueInto(base::trace_event::TracedValue* value) const;
 };
 
@@ -158,10 +150,9 @@ struct CC_EXPORT TransformCachedNodeData {
   // with this transform node.
   int content_target_id;
 
-  bool operator==(const TransformCachedNodeData& other) const;
+  bool is_showing_backface : 1;
 
-  void ToProtobuf(proto::TransformCachedNodeData* proto) const;
-  void FromProtobuf(const proto::TransformCachedNodeData& proto);
+  bool operator==(const TransformCachedNodeData& other) const;
 };
 
 }  // namespace cc

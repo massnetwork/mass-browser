@@ -14,6 +14,7 @@
 
 #include "base/macros.h"
 #include "base/memory/weak_ptr.h"
+#include "base/time/clock.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
@@ -28,13 +29,14 @@
 #include "content/public/browser/render_process_host_observer.h"
 #include "url/gurl.h"
 
-class InstantSearchPrerendererTest;
 class Profile;
-struct ChromeCookieDetails;
 
 namespace base {
 class DictionaryValue;
 class ListValue;
+class SimpleTestClock;
+class SimpleTestTickClock;
+class TickClock;
 }
 
 namespace chrome {
@@ -54,10 +56,6 @@ class Rect;
 class Size;
 }
 
-namespace offline_pages {
-class PrerenderAdapterTest;
-}
-
 namespace prerender {
 
 namespace test_utils {
@@ -66,7 +64,6 @@ class PrerenderInProcessBrowserTest;
 
 class PrerenderHandle;
 class PrerenderHistory;
-class PrerenderLocalPredictor;
 
 // PrerenderManager is responsible for initiating and keeping prerendered
 // views of web pages. All methods must be called on the UI thread unless
@@ -76,19 +73,13 @@ class PrerenderManager : public content::NotificationObserver,
                          public KeyedService,
                          public MediaCaptureDevicesDispatcher::Observer {
  public:
-  // NOTE: New values need to be appended, since they are used in histograms.
   enum PrerenderManagerMode {
-    PRERENDER_MODE_DISABLED = 0,
-    PRERENDER_MODE_ENABLED = 1,
-    PRERENDER_MODE_EXPERIMENT_CONTROL_GROUP = 2,
-    PRERENDER_MODE_EXPERIMENT_PRERENDER_GROUP = 3,
-    // Obsolete: PRERENDER_MODE_EXPERIMENT_5MIN_TTL_GROUP = 4,
-    PRERENDER_MODE_EXPERIMENT_NO_USE_GROUP = 5,
-    PRERENDER_MODE_EXPERIMENT_MULTI_PRERENDER_GROUP = 6,
-    PRERENDER_MODE_EXPERIMENT_15MIN_TTL_GROUP = 7,
-    // Obsolete: PRERENDER_MODE_EXPERIMENT_MATCH_COMPLETE_GROUP = 8,
-    PRERENDER_MODE_NOSTATE_PREFETCH = 9,
-    PRERENDER_MODE_MAX = 10
+    PRERENDER_MODE_DISABLED,
+    PRERENDER_MODE_ENABLED,
+    PRERENDER_MODE_NOSTATE_PREFETCH,
+    // Like PRERENDER_MODE_DISABLED, but keeps track of pages that would have
+    // been prerendered and records metrics for comparison with other modes.
+    PRERENDER_MODE_SIMPLE_LOAD_EXPERIMENT
   };
 
   // One or more of these flags must be passed to ClearData() to specify just
@@ -97,13 +88,6 @@ class PrerenderManager : public content::NotificationObserver,
     CLEAR_PRERENDER_CONTENTS = 0x1 << 0,
     CLEAR_PRERENDER_HISTORY = 0x1 << 1,
     CLEAR_MAX = 0x1 << 2
-  };
-
-  // Used to manipulate time for testing.
-  class TimeOverride {
-   public:
-    virtual base::Time GetCurrentTime() const = 0;
-    virtual base::TimeTicks GetCurrentTimeTicks() const = 0;
   };
 
   // Owned by a Profile object for the lifetime of the profile.
@@ -233,10 +217,8 @@ class PrerenderManager : public content::NotificationObserver,
   static PrerenderManagerMode GetMode();
   static void SetMode(PrerenderManagerMode mode);
   static bool IsPrerenderingPossible();
-  static bool ActuallyPrerendering();
-  static bool IsControlGroup();
-  static bool IsNoUseGroup();
   static bool IsNoStatePrefetch();
+  static bool IsSimpleLoadExperiment();
 
   // Query the list of current prerender pages to see if the given web contents
   // is prerendering a page. The optional parameter |origin| is an output
@@ -324,13 +306,13 @@ class PrerenderManager : public content::NotificationObserver,
 
   Profile* profile() const { return profile_; }
 
+  // Return current time and ticks with ability to mock the clock out for
+  // testing.
   base::Time GetCurrentTime() const;
   base::TimeTicks GetCurrentTimeTicks() const;
-
-  // For testing.
-  // TODO(mattcary): unify time testing by using base::SimpleTestClock and
-  // SimpleTestTickClock.
-  void SetTimeOverride(std::unique_ptr<TimeOverride> override);
+  void SetClockForTesting(std::unique_ptr<base::SimpleTestClock> clock);
+  void SetTickClockForTesting(
+      std::unique_ptr<base::SimpleTestTickClock> tick_clock);
 
   // Notification that a prerender has completed and its bytes should be
   // recorded.
@@ -358,6 +340,8 @@ class PrerenderManager : public content::NotificationObserver,
   bool IsPrerenderSilenceExperimentForTesting(Origin origin) const {
     return IsPrerenderSilenceExperiment(origin);
   }
+
+  base::WeakPtr<PrerenderManager> AsWeakPtr();
 
  protected:
   class PrerenderData : public base::SupportsWeakPtr<PrerenderData> {
@@ -610,7 +594,8 @@ class PrerenderManager : public content::NotificationObserver,
   using PrerenderProcessSet = std::set<content::RenderProcessHost*>;
   PrerenderProcessSet prerender_process_hosts_;
 
-  std::unique_ptr<TimeOverride> time_override_;
+  std::unique_ptr<base::Clock> clock_;
+  std::unique_ptr<base::TickClock> tick_clock_;
 
   base::WeakPtrFactory<PrerenderManager> weak_factory_;
 

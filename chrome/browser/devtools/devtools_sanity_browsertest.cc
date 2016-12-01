@@ -19,7 +19,6 @@
 #include "base/single_thread_task_runner.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/test_timeouts.h"
 #include "base/threading/thread_task_runner_handle.h"
@@ -74,7 +73,7 @@
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_filter.h"
 #include "net/url_request/url_request_http_job.h"
-#include "third_party/WebKit/public/web/WebInputEvent.h"
+#include "third_party/WebKit/public/platform/WebInputEvent.h"
 #include "ui/compositor/compositor_switches.h"
 #include "ui/gl/gl_switches.h"
 #include "url/gurl.h"
@@ -1317,8 +1316,16 @@ IN_PROC_BROWSER_TEST_F(WorkerDevToolsSanityTest, InspectSharedWorker) {
   RunTest("testSharedWorker", kSharedWorkerTestPage, kSharedWorkerTestWorker);
 }
 
+// Flakey on Win.  http://crbug.com/663351
+#if defined(OS_WIN)
+#define MAYBE_PauseInSharedWorkerInitialization \
+  DISABLED_PauseInSharedWorkerInitialization
+#else
+#define MAYBE_PauseInSharedWorkerInitialization \
+  PauseInSharedWorkerInitialization
+#endif
 IN_PROC_BROWSER_TEST_F(WorkerDevToolsSanityTest,
-                       PauseInSharedWorkerInitialization) {
+                       MAYBE_PauseInSharedWorkerInitialization) {
   ASSERT_TRUE(spawned_test_server()->Start());
   GURL url = spawned_test_server()->GetURL(kReloadSharedWorkerTestPage);
   ui_test_utils::NavigateToURL(browser(), url);

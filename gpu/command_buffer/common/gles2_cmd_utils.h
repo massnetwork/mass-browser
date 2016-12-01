@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "base/logging.h"
 #include "base/macros.h"
 #include "base/numerics/safe_math.h"
 #include "gpu/command_buffer/common/gles2_utils_export.h"
@@ -302,6 +303,7 @@ enum ContextType {
   CONTEXT_TYPE_OPENGLES3,
   CONTEXT_TYPE_LAST = CONTEXT_TYPE_OPENGLES3
 };
+GLES2_UTILS_EXPORT bool IsWebGLContextType(ContextType context_type);
 
 struct GLES2_UTILS_EXPORT ContextCreationAttribHelper {
   ContextCreationAttribHelper();

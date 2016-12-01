@@ -14,6 +14,9 @@ import javax.annotation.Nullable;
  */
 public class PaymentOption implements Completable {
     protected boolean mIsComplete;
+    protected boolean mIsEditable;
+    protected String mEditMessage;
+    protected String mEditTitle;
     private String mId;
     private Drawable mIcon;
     private String[] mLabels = {null, null, null};
@@ -50,6 +53,24 @@ public class PaymentOption implements Completable {
      */
     public String getIdentifier() {
         return mId;
+    }
+
+    /**
+     * The message of required edit of this option. For example, "Billing address required" or
+     * "Phone number required".
+     */
+    @Nullable
+    public String getEditMessage() {
+        return mEditMessage;
+    }
+
+    /**
+     * The title of required edit of this option. For example, "Add billing address" or "Add phone
+     * number".
+     */
+    @Nullable
+    public String getEditTitle() {
+        return mEditTitle;
     }
 
     /**
@@ -104,6 +125,15 @@ public class PaymentOption implements Completable {
         mIcon = icon;
     }
 
+    /**
+     * Updates the sublabel of this option.
+     *
+     * @param sublabel The new sublabel to use.
+     */
+    protected void updateSublabel(String sublabel) {
+        mLabels[1] = sublabel;
+    }
+
     /** @return The drawable icon for this payment option. */
     public Drawable getDrawableIcon() {
         return mIcon;
@@ -120,5 +150,10 @@ public class PaymentOption implements Completable {
     /** @return True if this option is valid. */
     public boolean isValid() {
         return mIsValid;
+    }
+
+    /** @return True if this option is editable by users. */
+    public boolean isEditable() {
+        return mIsEditable;
     }
 }

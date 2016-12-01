@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <X11/cursorfont.h>
 #include <X11/extensions/shape.h>
 #include <X11/extensions/XInput2.h>
 #include <X11/Xcursor/Xcursor.h>
@@ -174,44 +175,6 @@ void ReleaseXImage(void* address, void* context) {
     XDestroyImage(static_cast<XImage*>(context));
 }
 
-// A process wide singleton that manages the usage of X cursors.
-class XCursorCache {
- public:
-  XCursorCache() {}
-  ~XCursorCache() {
-    Clear();
-  }
-
-  ::Cursor GetCursor(int cursor_shape) {
-    // Lookup cursor by attempting to insert a null value, which avoids
-    // a second pass through the map after a cache miss.
-    std::pair<std::map<int, ::Cursor>::iterator, bool> it = cache_.insert(
-        std::make_pair(cursor_shape, 0));
-    if (it.second) {
-      XDisplay* display = gfx::GetXDisplay();
-      it.first->second = XCreateFontCursor(display, cursor_shape);
-    }
-    return it.first->second;
-  }
-
-  void Clear() {
-    XDisplay* display = gfx::GetXDisplay();
-    for (std::map<int, ::Cursor>::iterator it =
-        cache_.begin(); it != cache_.end(); ++it) {
-      XFreeCursor(display, it->second);
-    }
-    cache_.clear();
-  }
-
- private:
-  // Maps X11 font cursor shapes to Cursor IDs.
-  std::map<int, ::Cursor> cache_;
-
-  DISALLOW_COPY_AND_ASSIGN(XCursorCache);
-};
-
-XCursorCache* cursor_cache = NULL;
-
 // A process wide singleton cache for custom X cursors.
 class XCustomCursorCache {
  public:
@@ -309,12 +272,6 @@ bool QueryRenderSupport(Display* dpy) {
   static bool render_supported = XRenderQueryExtension(dpy, &dummy, &dummy);
 
   return render_supported;
-}
-
-::Cursor GetXCursor(int cursor_shape) {
-  if (!cursor_cache)
-    cursor_cache = new XCursorCache;
-  return cursor_cache->GetCursor(cursor_shape);
 }
 
 ::Cursor CreateReffedCustomXCursor(XcursorImage* image) {
@@ -1169,52 +1126,54 @@ bool CopyAreaToCanvas(XID drawable,
 
 WindowManagerName GuessWindowManager() {
   std::string name;
-  if (GetWindowManagerName(&name)) {
-    // These names are taken from the WMs' source code.
-    if (name == "awesome")
-      return WM_AWESOME;
-    if (name == "Blackbox")
-      return WM_BLACKBOX;
-    if (name == "Compiz" || name == "compiz")
-      return WM_COMPIZ;
-    if (name == "e16" || name == "Enlightenment")
-      return WM_ENLIGHTENMENT;
-    if (name == "Fluxbox")
-      return WM_FLUXBOX;
-    if (name == "i3")
-      return WM_I3;
-    if (base::StartsWith(name, "IceWM", base::CompareCase::SENSITIVE))
-      return WM_ICE_WM;
-    if (name == "ion3")
-      return WM_ION3;
-    if (name == "KWin")
-      return WM_KWIN;
-    if (name == "matchbox")
-      return WM_MATCHBOX;
-    if (name == "Metacity")
-      return WM_METACITY;
-    if (name == "Mutter (Muffin)")
-      return WM_MUFFIN;
-    if (name == "GNOME Shell")
-      return WM_MUTTER;  // GNOME Shell uses Mutter
-    if (name == "Mutter")
-      return WM_MUTTER;
-    if (name == "notion")
-      return WM_NOTION;
-    if (name == "Openbox")
-      return WM_OPENBOX;
-    if (name == "qtile")
-      return WM_QTILE;
-    if (name == "ratpoison")
-      return WM_RATPOISON;
-    if (name == "stumpwm")
-      return WM_STUMPWM;
-    if (name == "wmii")
-      return WM_WMII;
-    if (name == "Xfwm4")
-      return WM_XFWM4;
-  }
-  return WM_UNKNOWN;
+  if (!GetWindowManagerName(&name))
+    return WM_UNNAMED;
+  // These names are taken from the WMs' source code.
+  if (name == "awesome")
+    return WM_AWESOME;
+  if (name == "Blackbox")
+    return WM_BLACKBOX;
+  if (name == "Compiz" || name == "compiz")
+    return WM_COMPIZ;
+  if (name == "e16" || name == "Enlightenment")
+    return WM_ENLIGHTENMENT;
+  if (name == "Fluxbox")
+    return WM_FLUXBOX;
+  if (name == "i3")
+    return WM_I3;
+  if (base::StartsWith(name, "IceWM", base::CompareCase::SENSITIVE))
+    return WM_ICE_WM;
+  if (name == "ion3")
+    return WM_ION3;
+  if (name == "KWin")
+    return WM_KWIN;
+  if (name == "matchbox")
+    return WM_MATCHBOX;
+  if (name == "Metacity")
+    return WM_METACITY;
+  if (name == "Mutter (Muffin)")
+    return WM_MUFFIN;
+  if (name == "GNOME Shell")
+    return WM_MUTTER;  // GNOME Shell uses Mutter
+  if (name == "Mutter")
+    return WM_MUTTER;
+  if (name == "notion")
+    return WM_NOTION;
+  if (name == "Openbox")
+    return WM_OPENBOX;
+  if (name == "qtile")
+    return WM_QTILE;
+  if (name == "ratpoison")
+    return WM_RATPOISON;
+  if (name == "stumpwm")
+    return WM_STUMPWM;
+  if (name == "wmii")
+    return WM_WMII;
+  if (name == "Xfwm4")
+    return WM_XFWM4;
+  if (name == "xmonad")
+    return WM_XMONAD;
+  return WM_OTHER;
 }
 
 std::string GuessWindowManagerName() {
@@ -1311,11 +1270,6 @@ void XScopedCursor::reset(::Cursor cursor) {
 }
 
 namespace test {
-
-void ResetXCursorCache() {
-  delete cursor_cache;
-  cursor_cache = NULL;
-}
 
 const XcursorImage* GetCachedXcursorImage(::Cursor cursor) {
   return XCustomCursorCache::GetInstance()->GetXcursorImage(cursor);
@@ -1478,9 +1432,9 @@ void XVisualManager::ChooseVisualForWindow(bool want_argb_visual,
   bool is_default_visual = visual_id == default_visual_id_;
 
   if (visual)
-    *visual = is_default_visual ? CopyFromParent : visual_info.visual;
+    *visual = visual_info.visual;
   if (depth)
-    *depth = is_default_visual ? CopyFromParent : visual_info.depth;
+    *depth = visual_info.depth;
   if (colormap)
     *colormap = is_default_visual ? CopyFromParent : visual_data.GetColormap();
   if (using_argb_visual)

@@ -30,6 +30,7 @@ public class SectionInformation {
     @PaymentRequestUI.DataType private final int mDataType;
     private ArrayList<PaymentOption> mItems;
     private int mSelectedItem;
+    public String mErrorMessage;
 
     /**
      * Builds an empty section without selection.
@@ -67,6 +68,15 @@ public class SectionInformation {
             mItems = new ArrayList<PaymentOption>(itemCollection.size());
             mItems.addAll(itemCollection);
         }
+    }
+
+    /**
+     * Returns the data type contained in this section.
+     *
+     * @return The data type contained in this section.
+     */
+    public int getDataType() {
+        return mDataType;
     }
 
     /**
@@ -169,8 +179,18 @@ public class SectionInformation {
         } else if (mDataType == PaymentRequestUI.TYPE_CONTACT_DETAILS) {
             return R.string.payments_add_contact;
         } else if (mDataType == PaymentRequestUI.TYPE_PAYMENT_METHODS) {
-            return R.string.payments_create_card;
+            return R.string.payments_add_card;
         }
         return 0;
+    }
+
+    /** @param msg The optional error message to display when the selection is invalid. */
+    public void setErrorMessage(String msg) {
+        mErrorMessage = msg;
+    }
+
+    /** @return The optional error message to display when the selection is invalid. */
+    public String getErrorMessage() {
+        return mErrorMessage;
     }
 }

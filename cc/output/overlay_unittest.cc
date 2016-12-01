@@ -69,13 +69,10 @@ void MailboxReleased(const gpu::SyncToken& sync_token,
 class FullscreenOverlayValidator : public OverlayCandidateValidator {
  public:
   void GetStrategies(OverlayProcessor::StrategyList* strategies) override {
-    strategies->push_back(base::MakeUnique<OverlayStrategyFullscreen>());
+    strategies->push_back(base::MakeUnique<OverlayStrategyFullscreen>(this));
   }
   bool AllowCALayerOverlays() override { return false; }
-  void CheckOverlaySupport(OverlayCandidateList* surfaces) override {
-    // We're not checking for support.
-    ASSERT_TRUE(false);
-  }
+  void CheckOverlaySupport(OverlayCandidateList* surfaces) override {}
 };
 
 class SingleOverlayValidator : public OverlayCandidateValidator {
@@ -694,7 +691,7 @@ TEST_F(SingleOverlayOnTopTest, RejectBlendMode) {
   CreateFullscreenCandidateQuad(resource_provider_.get(),
                                 pass->shared_quad_state_list.back(),
                                 pass.get());
-  pass->shared_quad_state_list.back()->blend_mode = SkXfermode::kScreen_Mode;
+  pass->shared_quad_state_list.back()->blend_mode = SkBlendMode::kScreen;
 
   OverlayCandidateList candidate_list;
   overlay_processor_->ProcessForOverlays(resource_provider_.get(), pass.get(),

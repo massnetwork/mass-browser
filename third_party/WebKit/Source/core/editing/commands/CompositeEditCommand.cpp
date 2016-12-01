@@ -196,6 +196,7 @@ bool CompositeEditCommand::apply() {
       case InputEvent::InputType::InsertParagraph:
       case InputEvent::InputType::InsertFromPaste:
       case InputEvent::InputType::InsertFromDrop:
+      case InputEvent::InputType::InsertReplacementText:
       case InputEvent::InputType::DeleteComposedCharacterForward:
       case InputEvent::InputType::DeleteComposedCharacterBackward:
       case InputEvent::InputType::DeleteWordBackward:
@@ -206,7 +207,6 @@ bool CompositeEditCommand::apply() {
       case InputEvent::InputType::DeleteContentForward:
       case InputEvent::InputType::DeleteByCut:
       case InputEvent::InputType::DeleteByDrag:
-      case InputEvent::InputType::SetWritingDirection:
       case InputEvent::InputType::None:
         break;
       default:
@@ -315,8 +315,7 @@ void CompositeEditCommand::appendCommandToComposite(
 void CompositeEditCommand::applyStyle(const EditingStyle* style,
                                       EditingState* editingState) {
   applyCommandToComposite(
-      ApplyStyleCommand::create(document(), style,
-                                InputEvent::InputType::ChangeAttributes),
+      ApplyStyleCommand::create(document(), style, InputEvent::InputType::None),
       editingState);
 }
 

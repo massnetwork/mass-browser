@@ -59,8 +59,6 @@ const ContentSettingsTypeNameEntry kContentSettingsTypeGroupNames[] = {
     {CONTENT_SETTINGS_TYPE_GEOLOCATION, "location"},
     {CONTENT_SETTINGS_TYPE_NOTIFICATIONS, "notifications"},
     {CONTENT_SETTINGS_TYPE_AUTO_SELECT_CERTIFICATE, "auto-select-certificate"},
-    {CONTENT_SETTINGS_TYPE_FULLSCREEN, "fullscreen"},
-    {CONTENT_SETTINGS_TYPE_MOUSELOCK, "mouselock"},
     {CONTENT_SETTINGS_TYPE_PROTOCOL_HANDLERS, "register-protocol-handler"},
     {CONTENT_SETTINGS_TYPE_MEDIASTREAM_MIC, "media-stream-mic"},
     {CONTENT_SETTINGS_TYPE_MEDIASTREAM_CAMERA, "media-stream-camera"},
@@ -172,7 +170,7 @@ void GetExceptionsFromHostContentSettingsMap(const HostContentSettingsMap* map,
     // Off-the-record HostContentSettingsMap contains incognito content settings
     // as well as normal content settings. Here, we use the incongnito settings
     // only.
-    if (map->is_off_the_record() && !i->incognito)
+    if (map->is_incognito() && !i->incognito)
       continue;
 
     if (filter && i->primary_pattern.ToString() != *filter)

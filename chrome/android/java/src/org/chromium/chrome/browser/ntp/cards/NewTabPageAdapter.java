@@ -6,6 +6,7 @@ package org.chromium.chrome.browser.ntp.cards;
 
 import android.annotation.SuppressLint;
 import android.graphics.Canvas;
+import android.support.annotation.StringRes;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.RecyclerView.Adapter;
 import android.support.v7.widget.RecyclerView.ViewHolder;
@@ -50,7 +51,7 @@ public class NewTabPageAdapter
     private final View mAboveTheFoldView;
     private final UiConfig mUiConfig;
     private final ItemTouchCallbacks mItemTouchCallbacks = new ItemTouchCallbacks();
-    private final OfflinePageBridge mOfflineBridge;
+    private final OfflinePageBridge mOfflinePageBridge;
     private NewTabPageRecyclerView mRecyclerView;
 
     /**
@@ -59,8 +60,8 @@ public class NewTabPageAdapter
     private final List<TreeNode> mChildren = new ArrayList<>();
     private final AboveTheFoldItem mAboveTheFold = new AboveTheFoldItem();
     private final SignInPromo mSigninPromo;
-    private final AllDismissedItem mAllDismissed = new AllDismissedItem();
-    private final Footer mFooter = new Footer();
+    private final AllDismissedItem mAllDismissed;
+    private final Footer mFooter;
     private final SpacingItem mBottomSpacer = new SpacingItem();
     private final InnerNode mRoot;
 
@@ -110,6 +111,9 @@ public class NewTabPageAdapter
             assert viewHolder instanceof NewTabPageViewHolder;
 
             // The item has already been removed. We have nothing more to do.
+            // In some cases a removed children may call this method when unrelated items are
+            // interacted with, but this check also covers the case.
+            // See https://crbug.com/664466, b/32900699
             if (viewHolder.getAdapterPosition() == RecyclerView.NO_POSITION) return;
 
             // We use our own implementation of the dismissal animation, so we don't call the
@@ -131,16 +135,16 @@ public class NewTabPageAdapter
      * @param aboveTheFoldView the layout encapsulating all the above-the-fold elements
      *                         (logo, search box, most visited tiles)
      * @param uiConfig the NTP UI configuration, to be passed to created views.
-     * @param offlineBridge the OfflinePageBridge used to determine if articles are available
-     *                      offline.
+     * @param offlinePageBridge the OfflinePageBridge used to determine if articles are available
+     *                              offline.
      *
      */
     public NewTabPageAdapter(NewTabPageManager manager, View aboveTheFoldView, UiConfig uiConfig,
-            OfflinePageBridge offlineBridge) {
+            OfflinePageBridge offlinePageBridge) {
         mNewTabPageManager = manager;
         mAboveTheFoldView = aboveTheFoldView;
         mUiConfig = uiConfig;
-        mOfflineBridge = offlineBridge;
+        mOfflinePageBridge = offlinePageBridge;
         mRoot = new InnerNode(this) {
             @Override
             protected List<TreeNode> getChildren() {
@@ -166,7 +170,9 @@ public class NewTabPageAdapter
             }
         };
 
-        mSigninPromo = new SignInPromo(mRoot, this);
+        mSigninPromo = new SignInPromo(mRoot);
+        mAllDismissed = new AllDismissedItem(mRoot);
+        mFooter = new Footer(mRoot);
         DestructionObserver signInObserver = mSigninPromo.getObserver();
         if (signInObserver != null) mNewTabPageManager.addDestructionObserver(signInObserver);
 
@@ -228,7 +234,7 @@ public class NewTabPageAdapter
         // Create the section if needed.
         SuggestionsSection section = mSections.get(category);
         if (section == null) {
-            section = new SuggestionsSection(mRoot, info, mNewTabPageManager, mOfflineBridge);
+            section = new SuggestionsSection(mRoot, info, mNewTabPageManager, mOfflinePageBridge);
             mSections.put(category, section);
         }
 
@@ -245,21 +251,13 @@ public class NewTabPageAdapter
 
     @Override
     public void onNewSuggestions(@CategoryInt int category) {
-        // We never want to add suggestions from unknown categories.
-        if (!mSections.containsKey(category)) return;
+        @CategoryStatusEnum
+        int status = mNewTabPageManager.getSuggestionsSource().getCategoryStatus(category);
+
+        if (!canLoadSuggestions(category, status)) return;
 
         // We never want to refresh the suggestions if we already have some content.
         if (mSections.get(category).hasSuggestions()) return;
-
-        // The status may have changed while the suggestions were loading, perhaps they should not
-        // be displayed any more.
-        @CategoryStatusEnum
-        int status = mNewTabPageManager.getSuggestionsSource().getCategoryStatus(category);
-        if (!SnippetsBridge.isCategoryEnabled(status)) {
-            Log.w(TAG, "Received suggestions for a disabled category (id=%d, status=%d)", category,
-                    status);
-            return;
-        }
 
         List<SnippetArticle> suggestions =
                 mNewTabPageManager.getSuggestionsSource().getSuggestionsForCategory(category);
@@ -268,6 +266,15 @@ public class NewTabPageAdapter
 
         // At first, there might be no suggestions available, we wait until they have been fetched.
         if (suggestions.isEmpty()) return;
+
+        setSuggestions(category, suggestions, status);
+    }
+
+    @Override
+    public void onMoreSuggestions(@CategoryInt int category, List<SnippetArticle> suggestions) {
+        @CategoryStatusEnum
+        int status = mNewTabPageManager.getSuggestionsSource().getCategoryStatus(category);
+        if (!canLoadSuggestions(category, status)) return;
 
         setSuggestions(category, suggestions, status);
     }
@@ -292,9 +299,7 @@ public class NewTabPageAdapter
                 return;
 
             case CategoryStatus.SIGNED_OUT:
-                resetSection(category, status, /*alwaysAllowEmptySections=*/false);
-                return;
-
+                // TODO(dgn): We currently can only reach this through an old variation parameter.
             default:
                 mSections.get(category).setStatus(status);
                 return;
@@ -305,6 +310,11 @@ public class NewTabPageAdapter
     public void onSuggestionInvalidated(@CategoryInt int category, String idWithinCategory) {
         if (!mSections.containsKey(category)) return;
         mSections.get(category).removeSuggestionById(idWithinCategory);
+    }
+
+    @Override
+    public void onFullRefreshRequired() {
+        resetSections(/*alwaysAllowEmptySections=*/false);
     }
 
     @Override
@@ -331,7 +341,7 @@ public class NewTabPageAdapter
                 return new NewTabPageViewHolder(SpacingItem.createView(parent));
 
             case ItemViewType.STATUS:
-                return new StatusCardViewHolder(mRecyclerView, mUiConfig);
+                return new StatusCardViewHolder(mRecyclerView, mNewTabPageManager, mUiConfig);
 
             case ItemViewType.PROGRESS:
                 return new ProgressViewHolder(mRecyclerView);
@@ -340,7 +350,7 @@ public class NewTabPageAdapter
                 return new ActionItem.ViewHolder(mRecyclerView, mNewTabPageManager, mUiConfig);
 
             case ItemViewType.PROMO:
-                return new SignInPromo.ViewHolder(mRecyclerView, mUiConfig);
+                return new SignInPromo.ViewHolder(mRecyclerView, mNewTabPageManager, mUiConfig);
 
             case ItemViewType.FOOTER:
                 return new Footer.ViewHolder(mRecyclerView, mNewTabPageManager);
@@ -378,6 +388,10 @@ public class NewTabPageAdapter
         return RecyclerView.NO_POSITION;
     }
 
+    public int getSignInPromoPosition() {
+        return getChildPositionOffset(mSigninPromo);
+    }
+
     public int getBottomSpacerPosition() {
         return getChildPositionOffset(mBottomSpacer);
     }
@@ -394,11 +408,6 @@ public class NewTabPageAdapter
         return RecyclerView.NO_POSITION;
     }
 
-    /** Start a request for new snippets. */
-    public void reloadSnippets() {
-        SnippetsBridge.fetchSnippets(/*forceRequest=*/true);
-    }
-
     private void setSuggestions(@CategoryInt int category, List<SnippetArticle> suggestions,
             @CategoryStatusEnum int status) {
         // Count the number of suggestions before this category.
@@ -412,7 +421,7 @@ public class NewTabPageAdapter
             suggestion.mGlobalPosition = globalPositionOffset + suggestion.mPosition;
         }
 
-        mSections.get(category).setSuggestions(suggestions, status);
+        mSections.get(category).addSuggestions(suggestions, status);
     }
 
     private void updateChildren() {
@@ -420,8 +429,11 @@ public class NewTabPageAdapter
         mChildren.add(mAboveTheFold);
         mChildren.addAll(mSections.values());
         mChildren.add(mSigninPromo);
-        mChildren.add(hasAllBeenDismissed() ? mAllDismissed : mFooter);
+        mChildren.add(mAllDismissed);
+        mChildren.add(mFooter);
         mChildren.add(mBottomSpacer);
+
+        updateAllDismissedVisibility();
 
         // TODO(mvanouwerkerk): Notify about the subset of changed items. At least |mAboveTheFold|
         // has not changed when refreshing from the all dismissed state.
@@ -430,16 +442,8 @@ public class NewTabPageAdapter
 
     private void updateAllDismissedVisibility() {
         boolean showAllDismissed = hasAllBeenDismissed();
-        if (showAllDismissed == mChildren.contains(mAllDismissed)) return;
-
-        if (showAllDismissed) {
-            assert mChildren.contains(mFooter);
-            mChildren.set(mChildren.indexOf(mFooter), mAllDismissed);
-        } else {
-            assert mChildren.contains(mAllDismissed);
-            mChildren.set(mChildren.indexOf(mAllDismissed), mFooter);
-        }
-        notifyItemChanged(getLastContentItemPosition());
+        mAllDismissed.setVisible(showAllDismissed);
+        mFooter.setVisible(!showAllDismissed);
     }
 
     private void removeSection(SuggestionsSection section) {
@@ -523,6 +527,9 @@ public class NewTabPageAdapter
 
     private void dismissSection(SuggestionsSection section) {
         assert SnippetsConfig.isSectionDismissalEnabled();
+
+        announceItemRemoved(section.getHeaderText());
+
         mNewTabPageManager.getSuggestionsSource().dismissCategory(section.getCategory());
         removeSection(section);
     }
@@ -546,7 +553,7 @@ public class NewTabPageAdapter
     }
 
     private void dismissPromo() {
-        // TODO(dgn): accessibility announcement.
+        announceItemRemoved(mSigninPromo.getHeader());
         mSigninPromo.dismiss();
     }
 
@@ -561,8 +568,32 @@ public class NewTabPageAdapter
         return mRecyclerView.findViewHolderForAdapterPosition(siblingPosDelta + swipePos);
     }
 
-    private boolean hasAllBeenDismissed() {
-        return mSections.isEmpty() && !mSigninPromo.isShown();
+    /**
+     * @return The info associated to the provided category.
+     * @throws NullPointerException if {@code category} isn't currently registered with the adapter.
+     * */
+    public SuggestionsCategoryInfo getCategoryInfo(@CategoryInt int category) {
+        return mSections.get(category).getCategoryInfo();
+    }
+
+    @VisibleForTesting
+    public boolean hasAllBeenDismissed() {
+        return mSections.isEmpty() && !mSigninPromo.isVisible();
+    }
+
+    private boolean canLoadSuggestions(@CategoryInt int category, @CategoryStatusEnum int status) {
+        // We never want to add suggestions from unknown categories.
+        if (!mSections.containsKey(category)) return false;
+
+        // The status may have changed while the suggestions were loading, perhaps they should not
+        // be displayed any more.
+        if (!SnippetsBridge.isCategoryEnabled(status)) {
+            Log.w(TAG, "Received suggestions for a disabled category (id=%d, status=%d)", category,
+                    status);
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -607,5 +638,12 @@ public class NewTabPageAdapter
 
         mRecyclerView.announceForAccessibility(mRecyclerView.getResources().getString(
                 R.string.ntp_accessibility_item_removed, suggestionTitle));
+    }
+
+    private void announceItemRemoved(@StringRes int stringToAnnounce) {
+        // In tests the RecyclerView can be null.
+        if (mRecyclerView == null) return;
+
+        announceItemRemoved(mRecyclerView.getResources().getString(stringToAnnounce));
     }
 }

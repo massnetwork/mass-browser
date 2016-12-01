@@ -31,7 +31,6 @@ namespace extensions {
 class ExtensionActionManager;
 class ExtensionMessageBubbleController;
 class ExtensionRegistry;
-class ExtensionSet;
 }
 
 // Model for the browser actions toolbar. This is a per-profile instance, and
@@ -272,6 +271,9 @@ class ToolbarActionsModel
   // Looks up and returns the extension with the given |id| in the set of
   // enabled extensions.
   const extensions::Extension* GetExtensionById(const std::string& id) const;
+
+  // Returns true if the action is visible on the toolbar.
+  bool IsActionVisible(const std::string& action_id) const;
 
   // Our observers.
   base::ObserverList<Observer> observers_;

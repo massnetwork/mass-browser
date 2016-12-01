@@ -31,12 +31,25 @@ bool IsUsingTestContext() {
 ////////////////////////////////////////////////////////////////////////////////
 // WindowTreeHostMus, public:
 
-WindowTreeHostMus::WindowTreeHostMus(std::unique_ptr<WindowPortMus> window_port,
-                                     WindowTreeHostMusDelegate* delegate,
-                                     int64_t display_id)
+WindowTreeHostMus::WindowTreeHostMus(
+    std::unique_ptr<WindowPortMus> window_port,
+    WindowTreeHostMusDelegate* delegate,
+    int64_t display_id,
+    const std::map<std::string, std::vector<uint8_t>>* properties)
     : WindowTreeHostPlatform(std::move(window_port)),
       display_id_(display_id),
       delegate_(delegate) {
+  // TODO(sky): find a cleaner way to set this! Better solution is to likely
+  // have constructor take aura::Window.
+  WindowPortMus::Get(window())->window_ = window();
+  if (properties) {
+    // Apply the properties before initializing the window, that way the
+    // server seems them at the time the window is created.
+    WindowMus* window_mus = WindowMus::Get(window());
+    for (auto& pair : *properties)
+      window_mus->SetPropertyFromServer(pair.first, &pair.second);
+  }
+  CreateCompositor();
   gfx::AcceleratedWidget accelerated_widget;
   if (IsUsingTestContext()) {
     accelerated_widget = gfx::kNullAcceleratedWidget;
@@ -63,21 +76,21 @@ WindowTreeHostMus::WindowTreeHostMus(std::unique_ptr<WindowPortMus> window_port,
 
   input_method_ = base::MakeUnique<InputMethodMus>(this, window());
 
-  // TODO: hook up to compositor correctly.
-  // compositor()->SetWindow(window);
-
   compositor()->SetHostHasTransparentBackground(true);
 
   // Mus windows are assumed hidden.
   compositor()->SetVisible(false);
 }
 
-WindowTreeHostMus::WindowTreeHostMus(WindowTreeClient* window_tree_client)
+WindowTreeHostMus::WindowTreeHostMus(
+    WindowTreeClient* window_tree_client,
+    const std::map<std::string, std::vector<uint8_t>>* properties)
     : WindowTreeHostMus(
           static_cast<WindowTreeHostMusDelegate*>(window_tree_client)
               ->CreateWindowPortForTopLevel(),
           window_tree_client,
-          display::Screen::GetScreen()->GetPrimaryDisplay().id()) {}
+          display::Screen::GetScreen()->GetPrimaryDisplay().id(),
+          properties) {}
 
 WindowTreeHostMus::~WindowTreeHostMus() {
   DestroyCompositor();
@@ -87,6 +100,15 @@ WindowTreeHostMus::~WindowTreeHostMus() {
 void WindowTreeHostMus::SetBoundsFromServer(const gfx::Rect& bounds) {
   base::AutoReset<bool> resetter(&in_set_bounds_from_server_, true);
   SetBounds(bounds);
+}
+
+void WindowTreeHostMus::SetClientArea(const gfx::Insets& insets) {
+  delegate_->OnWindowTreeHostClientAreaWillChange(this, insets,
+                                                  std::vector<gfx::Rect>());
+}
+
+void WindowTreeHostMus::SetHitTestMask(const base::Optional<gfx::Rect>& rect) {
+  delegate_->OnWindowTreeHostHitTestMaskWillChange(this, rect);
 }
 
 display::Display WindowTreeHostMus::GetDisplay() const {

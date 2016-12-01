@@ -13,7 +13,13 @@
 #include "extensions/common/one_shot_event.h"
 
 class Profile;
-class ValueStore;
+
+#if defined(OS_CHROMEOS)
+namespace chromeos {
+class DeviceLocalAccountManagementPolicyProvider;
+class SigninScreenPolicyProvider;
+}
+#endif  // defined(OS_CHROMEOS)
 
 namespace extensions {
 
@@ -134,6 +140,8 @@ class ExtensionSystemImpl : public ExtensionSystem {
 #if defined(OS_CHROMEOS)
     std::unique_ptr<chromeos::DeviceLocalAccountManagementPolicyProvider>
         device_local_account_management_policy_provider_;
+    std::unique_ptr<chromeos::SigninScreenPolicyProvider>
+        signin_screen_policy_provider_;
     std::unique_ptr<InstallGate> kiosk_app_update_install_gate_;
 #endif
 

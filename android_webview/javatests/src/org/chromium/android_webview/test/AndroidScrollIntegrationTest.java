@@ -322,7 +322,7 @@ public class AndroidScrollIntegrationTest extends AwTestBase {
         enableJavaScriptOnUiThread(testContainerView.getAwContents());
 
         final double deviceDIPScale =
-                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDIPScale();
+                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDipScale();
         final int targetScrollXCss = 233;
         final int targetScrollYCss = 322;
         final int targetScrollXPix = (int) Math.ceil(targetScrollXCss * deviceDIPScale);
@@ -356,7 +356,7 @@ public class AndroidScrollIntegrationTest extends AwTestBase {
         enableJavaScriptOnUiThread(testContainerView.getAwContents());
 
         final double deviceDIPScale =
-                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDIPScale();
+                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDipScale();
         final int targetScrollXCss = 132;
         final int targetScrollYCss = 243;
         final int targetScrollXPix = (int) Math.floor(targetScrollXCss * deviceDIPScale);
@@ -384,7 +384,7 @@ public class AndroidScrollIntegrationTest extends AwTestBase {
         enableJavaScriptOnUiThread(testContainerView.getAwContents());
 
         final double deviceDIPScale =
-                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDIPScale();
+                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDipScale();
         final int targetScrollXCss = 132;
         final int targetScrollYCss = 243;
         final int targetScrollXPix = (int) Math.floor(targetScrollXCss * deviceDIPScale);
@@ -414,7 +414,7 @@ public class AndroidScrollIntegrationTest extends AwTestBase {
         enableJavaScriptOnUiThread(testContainerView.getAwContents());
 
         final double deviceDIPScale =
-                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDIPScale();
+                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDipScale();
         final int targetScrollXCss = 132;
         final int targetScrollYCss = 243;
         final int targetScrollXPix = (int) Math.floor(targetScrollXCss * deviceDIPScale);
@@ -458,14 +458,14 @@ public class AndroidScrollIntegrationTest extends AwTestBase {
         final int targetScrollYPix = dragStepSize * dragSteps;
 
         final double deviceDIPScale =
-                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDIPScale();
+                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDipScale();
         final int maxScrollXPix = 101;
         final int maxScrollYPix = 211;
         // Make sure we can't hit these values simply as a result of scrolling.
         assert (maxScrollXPix % dragStepSize) != 0;
         assert (maxScrollYPix % dragStepSize) != 0;
-        final int maxScrollXCss = (int) Math.floor(maxScrollXPix / deviceDIPScale);
-        final int maxScrollYCss = (int) Math.floor(maxScrollYPix / deviceDIPScale);
+        final int maxScrollXCss = (int) Math.round(maxScrollXPix / deviceDIPScale);
+        final int maxScrollYCss = (int) Math.round(maxScrollYPix / deviceDIPScale);
 
         setMaxScrollOnMainSync(testContainerView, maxScrollXPix, maxScrollYPix);
 
@@ -683,7 +683,7 @@ public class AndroidScrollIntegrationTest extends AwTestBase {
         enableJavaScriptOnUiThread(testContainerView.getAwContents());
 
         final double deviceDIPScale =
-                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDIPScale();
+                DisplayAndroid.getNonMultiDisplay(testContainerView.getContext()).getDipScale();
         final int targetScrollYCss = 243;
         final int targetScrollYPix = (int) Math.ceil(targetScrollYCss * deviceDIPScale);
 

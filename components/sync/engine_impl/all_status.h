@@ -20,7 +20,6 @@
 namespace syncer {
 
 class ScopedStatusLock;
-struct ServerConnectionEvent;
 struct SyncCycleEvent;
 
 // This class watches various sync engine components, updating its internal
@@ -43,6 +42,7 @@ class AllStatus : public SyncEngineEventListener {
   void OnActionableError(const SyncProtocolError& error) override;
   void OnRetryTimeChanged(base::Time retry_time) override;
   void OnThrottledTypesChanged(ModelTypeSet throttled_types) override;
+  void OnBackedOffTypesChanged(ModelTypeSet backed_off_types) override;
   void OnMigrationRequested(ModelTypeSet types) override;
   void OnProtocolEvent(const ProtocolEvent& event) override;
 

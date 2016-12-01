@@ -14,10 +14,6 @@
 #include "ui/views/controls/button/button.h"  // views::ButtonListener
 #include "ui/views/window/dialog_delegate.h"
 
-namespace gfx {
-class ImageSkia;
-}
-
 namespace views {
 class ImageView;
 }
@@ -72,7 +68,7 @@ class NetworkConfigView : public views::DialogDelegateView,
   ui::ModalType GetModalType() const override;
 
   // views::View overrides.
-  void GetAccessibleState(ui::AXViewState* state) override;
+  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
 
   // views::ButtonListener overrides.
   void ButtonPressed(views::Button* sender, const ui::Event& event) override;

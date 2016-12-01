@@ -13,11 +13,11 @@ namespace extensions {
 APIBindingsSystem::Request::Request() {}
 APIBindingsSystem::Request::~Request() {}
 
-APIBindingsSystem::APIBindingsSystem(
-    const APIRequestHandler::CallJSFunction& call_js,
-    const GetAPISchemaMethod& get_api_schema,
-    const SendRequestMethod& send_request)
+APIBindingsSystem::APIBindingsSystem(const binding::RunJSFunction& call_js,
+                                     const GetAPISchemaMethod& get_api_schema,
+                                     const SendRequestMethod& send_request)
     : request_handler_(call_js),
+      event_handler_(call_js),
       get_api_schema_(get_api_schema),
       send_request_(send_request) {}
 
@@ -31,7 +31,8 @@ v8::Local<v8::Object> APIBindingsSystem::CreateAPIInstance(
   std::unique_ptr<APIBinding>& binding = api_bindings_[api_name];
   if (!binding)
     binding = CreateNewAPIBinding(api_name);
-  return binding->CreateInstance(context, isolate, is_available);
+  return binding->CreateInstance(
+      context, isolate, &event_handler_, is_available);
 }
 
 std::unique_ptr<APIBinding> APIBindingsSystem::CreateNewAPIBinding(
@@ -43,16 +44,24 @@ std::unique_ptr<APIBinding> APIBindingsSystem::CreateNewAPIBinding(
   const base::ListValue* type_definitions = nullptr;
   // Type definitions might not exist for the given API.
   api_schema.GetList("types", &type_definitions);
+  const base::ListValue* event_definitions = nullptr;
+  api_schema.GetList("events", &event_definitions);
 
   return base::MakeUnique<APIBinding>(
-      api_name, *function_definitions, type_definitions,
+      api_name, *function_definitions, type_definitions, event_definitions,
       base::Bind(&APIBindingsSystem::OnAPICall, base::Unretained(this)),
       &type_reference_map_);
 }
 
-void APIBindingsSystem::CompleteRequest(const std::string& request_id,
+void APIBindingsSystem::CompleteRequest(int request_id,
                                         const base::ListValue& response) {
   request_handler_.CompleteRequest(request_id, response);
+}
+
+void APIBindingsSystem::FireEventInContext(const std::string& event_name,
+                                           v8::Local<v8::Context> context,
+                                           const base::ListValue& response) {
+  event_handler_.FireEventInContext(event_name, context, response);
 }
 
 void APIBindingsSystem::OnAPICall(const std::string& name,
@@ -64,11 +73,14 @@ void APIBindingsSystem::OnAPICall(const std::string& name,
   if (!callback.IsEmpty()) {
     request->request_id =
         request_handler_.AddPendingRequest(isolate, callback, context);
+    request->has_callback = true;
   }
+  // TODO(devlin): Query and curry user gestures around.
+  request->has_user_gesture = false;
   request->arguments = std::move(arguments);
   request->method_name = name;
 
-  send_request_.Run(std::move(request));
+  send_request_.Run(std::move(request), context);
 }
 
 }  // namespace extensions

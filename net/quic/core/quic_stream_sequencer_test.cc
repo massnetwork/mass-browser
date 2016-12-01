@@ -14,8 +14,8 @@
 #include "base/rand_util.h"
 #include "net/base/ip_endpoint.h"
 #include "net/quic/core/quic_flags.h"
+#include "net/quic/core/quic_stream.h"
 #include "net/quic/core/quic_utils.h"
-#include "net/quic/core/reliable_quic_stream.h"
 #include "net/quic/test_tools/mock_clock.h"
 #include "net/quic/test_tools/quic_stream_sequencer_peer.h"
 #include "net/quic/test_tools/quic_test_utils.h"
@@ -37,10 +37,9 @@ using testing::StrEq;
 namespace net {
 namespace test {
 
-class MockStream : public ReliableQuicStream {
+class MockStream : public QuicStream {
  public:
-  MockStream(QuicSession* session, QuicStreamId id)
-      : ReliableQuicStream(id, session) {}
+  MockStream(QuicSession* session, QuicStreamId id) : QuicStream(id, session) {}
 
   MOCK_METHOD0(OnFinRead, void());
   MOCK_METHOD0(OnDataAvailable, void());
@@ -50,12 +49,13 @@ class MockStream : public ReliableQuicStream {
   MOCK_METHOD0(OnCanWrite, void());
   virtual bool IsFlowControlEnabled() const { return true; }
 
-  const IPEndPoint& PeerAddressOfLatestPacket() const override {
+  const QuicSocketAddress& PeerAddressOfLatestPacket() const override {
     return peer_address_;
   }
 
  protected:
-  IPEndPoint peer_address_ = IPEndPoint(net::test::Any4(), 65535);
+  QuicSocketAddress peer_address_ =
+      QuicSocketAddress(QuicIpAddress::Any4(), 65535);
 };
 
 namespace {
@@ -659,30 +659,15 @@ TEST_F(QuicStreamSequencerTest, OutOfOrderTimestamps) {
   EXPECT_EQ(0u, sequencer_->NumBytesBuffered());
 }
 
-// TODO(danzh): Figure out the way to implement this test case without the use
-// of unsupported StringPiece constructor.
-#if 0
 TEST_F(QuicStreamSequencerTest, OnStreamFrameWithNullSource) {
   // Pass in a frame with data pointing to null address, expect to close
   // connection with error.
-  StringPiece source(nullptr, 5u);
+  StringPiece source;
+  source.set(nullptr, 5u);
   QuicStreamFrame frame(kClientDataStreamId1, false, 1, source);
   EXPECT_CALL(stream_, CloseConnectionWithDetails(
                            QUIC_STREAM_SEQUENCER_INVALID_STATE, _));
   sequencer_->OnStreamFrame(frame);
-}
-#endif
-
-TEST_F(QuicStreamSequencerTest, ReadvError) {
-  EXPECT_CALL(stream_, OnDataAvailable());
-  string source(100, 'a');
-  OnFrame(0u, source.data());
-  EXPECT_EQ(source.length(), sequencer_->NumBytesBuffered());
-  // Pass in a null iovec, expect to tear down connection.
-  EXPECT_CALL(stream_, CloseConnectionWithDetails(
-                           QUIC_STREAM_SEQUENCER_INVALID_STATE, _));
-  iovec iov{nullptr, 512};
-  sequencer_->Readv(&iov, 1u);
 }
 
 }  // namespace

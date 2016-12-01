@@ -162,17 +162,12 @@ cr.define('settings_search_engines_page', function() {
       // Test that the <search-engine-entry> is populated according to its
       // underlying SearchEngine model.
       test('Initialization', function() {
-        var nameElement = entry.$$('.name');
-        assertTrue(!!nameElement);
-        assertEquals(searchEngine.displayName, nameElement.textContent);
+        var columns = entry.root.querySelectorAll('.column, #url-column');
+        assertEquals(3, columns.length);
 
-        var keywordElement = entry.$$('.keyword-column');
-        assertTrue(!!keywordElement);
-        assertEquals(searchEngine.keyword, keywordElement.textContent);
-
-        var urlElement = entry.$$('.url-column');
-        assertTrue(!!urlElement);
-        assertEquals(searchEngine.url, urlElement.textContent);
+        assertEquals(searchEngine.displayName, columns[0].textContent);
+        assertEquals(searchEngine.keyword, columns[1].textContent);
+        assertEquals(searchEngine.url, columns[2].textContent);
       });
 
       test('Remove_Enabled', function() {
@@ -341,8 +336,8 @@ cr.define('settings_search_engines_page', function() {
       var browserProxy = null;
 
       setup(function() {
-        browserProxy = new settings_search.TestSearchEnginesBrowserProxy();
-        settings.SearchEnginesBrowserProxyImpl.instance_ = browserProxy;
+        browserProxy = new TestExtensionControlBrowserProxy();
+        settings.ExtensionControlBrowserProxyImpl.instance_ = browserProxy;
         PolymerTest.clearBody();
         entry = document.createElement('settings-omnibox-extension-entry');
         entry.set('engine', createSampleOmniboxExtension());

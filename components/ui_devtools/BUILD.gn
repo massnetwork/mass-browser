@@ -6,6 +6,8 @@ _inspector_protocol = "//third_party/inspector_protocol"
 import("$_inspector_protocol/inspector_protocol.gni")
 
 _protocol_generated = [
+  "CSS.cpp",
+  "CSS.h",
   "DOM.cpp",
   "DOM.h",
   "Forward.h",
@@ -56,14 +58,16 @@ source_set("ui_devtools") {
     "devtools_base_agent.h",
     "devtools_client.cc",
     "devtools_client.h",
+    "devtools_export.h",
     "devtools_server.cc",
     "devtools_server.h",
-    "protocol_platform.h",
     "string_util.cc",
     "string_util.h",
     "switches.cc",
     "switches.h",
   ]
+
+  defines = [ "UI_DEVTOOLS_IMPLEMENTATION" ]
 
   cflags = []
   if (is_win) {

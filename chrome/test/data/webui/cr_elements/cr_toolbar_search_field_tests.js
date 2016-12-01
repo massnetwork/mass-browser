@@ -14,7 +14,8 @@ cr.define('cr_toolbar_search_field', function() {
 
       /** @param {string} term */
       function simulateSearch(term) {
-        field.$.searchInput.bindValue = term;
+        field.$.searchInput.value = term;
+        field.onSearchInput_();
         field.onSearchTermSearch();
       }
 
@@ -108,6 +109,14 @@ cr.define('cr_toolbar_search_field', function() {
         field.setValue('bar');
         field.setValue('baz');
         assertEquals(['foo', '', 'bar', 'baz'].join(), searches.join());
+      });
+
+      test('does not notify on setValue with noEvent=true', function() {
+        MockInteractions.tap(field);
+        field.setValue('foo', true);
+        field.setValue('bar');
+        field.setValue('baz', true);
+        assertEquals(['bar'].join(), searches.join());
       });
 
       // Tests that calling setValue() from within a 'search-changed' callback

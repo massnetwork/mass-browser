@@ -35,7 +35,6 @@
 #endif
 
 namespace base {
-class DictionaryValue;
 class TimeTicks;
 }
 
@@ -60,6 +59,7 @@ class PageState;
 class RenderFrameHost;
 class RenderProcessHost;
 class RenderViewHost;
+class RenderWidgetHost;
 class RenderWidgetHostView;
 class WebContentsDelegate;
 struct CustomContextMenuContext;
@@ -399,6 +399,9 @@ class WebContents : public PageNavigator,
   // change.
   virtual void NotifyNavigationStateChanged(InvalidateTypes changed_flags) = 0;
 
+  // Notifies the WebContents that audio started or stopped being audible.
+  virtual void OnAudioStateChanged(bool is_audio_playing) = 0;
+
   // Get/Set the last time that the WebContents was made active (either when it
   // was created or shown with WasShown()).
   virtual base::TimeTicks GetLastActiveTime() const = 0;
@@ -587,7 +590,7 @@ class WebContents : public PageNavigator,
 
   // A render view-originated drag has ended. Informs the render view host and
   // WebContentsDelegate.
-  virtual void SystemDragEnded() = 0;
+  virtual void SystemDragEnded(RenderWidgetHost* source_rwh) = 0;
 
   // Notification the user has made a gesture while focus was on the
   // page. This is used to avoid uninitiated user downloads (aka carpet
@@ -714,6 +717,12 @@ class WebContents : public PageNavigator,
   // can adjust the UI if desired.
   virtual void OnPasswordInputShownOnHttp() = 0;
 
+  // Called when the WebContents has hidden all password fields on an
+  // HTTP page. This method modifies the appropriate NavigationEntry's
+  // SSLStatus to remove the presence of sensitive input fields, so that
+  // embedders can adjust the UI if desired.
+  virtual void OnAllPasswordInputsHiddenOnHttp() = 0;
+
   // Called when the WebContents has displayed a credit card field on an
   // HTTP page. This method modifies the appropriate NavigationEntry's
   // SSLStatus to record the sensitive input field, so that embedders
@@ -722,6 +731,9 @@ class WebContents : public PageNavigator,
 
   // Sets whether the WebContents is for overlaying content on a page.
   virtual void SetIsOverlayContent(bool is_overlay_content) = 0;
+
+  virtual int GetCurrentlyPlayingVideoCount() = 0;
+  virtual bool IsFullscreen() = 0;
 
 #if defined(OS_ANDROID)
   CONTENT_EXPORT static WebContents* FromJavaWebContents(

@@ -19,10 +19,13 @@
 
 class AppDistributionProvider;
 class AutocompleteProvider;
+class BrandedImageProvider;
 class GURL;
 class InfoBarViewDelegate;
+class OmahaServiceProvider;
 class PrefRegistrySimple;
 class PrefService;
+class UserFeedbackProvider;
 class VoiceSearchProvider;
 
 namespace autofill {
@@ -50,6 +53,7 @@ class PrefRegistrySyncable;
 @protocol InfoBarViewProtocol;
 @protocol LogoVendor;
 @protocol TextFieldStyling;
+@protocol NativeAppWhitelistManager;
 @class UITextField;
 @class UIView;
 @protocol UrlLoader;
@@ -64,27 +68,34 @@ class GeolocationUpdaterProvider;
 class SigninErrorProvider;
 class SigninResourcesProvider;
 class LiveTabContextProvider;
-class UpdatableResourceProvider;
 
 // Setter and getter for the provider. The provider should be set early, before
 // any browser code is called.
 void SetChromeBrowserProvider(ChromeBrowserProvider* provider);
 ChromeBrowserProvider* GetChromeBrowserProvider();
 
+// Factory function for the embedder specific provider. This function must be
+// implemented by the embedder and will be selected via linking (i.e. by the
+// build system). Should only be used in the application startup code, not by
+// the tests (as they may use a different provider).
+std::unique_ptr<ChromeBrowserProvider> CreateChromeBrowserProvider();
+
 // A class that allows embedding iOS-specific functionality in the
 // ios_chrome_browser target.
 class ChromeBrowserProvider {
  public:
+  // The constructor is called before web startup.
   ChromeBrowserProvider();
   virtual ~ChromeBrowserProvider();
+
+  // This is called after web startup.
+  virtual void Initialize() const;
 
   // Asserts all iOS-specific |BrowserContextKeyedServiceFactory| are built.
   virtual void AssertBrowserContextKeyedFactoriesBuilt();
   // Registers all prefs that will be used via a PrefService attached to a
   // Profile.
   virtual void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry);
-  // Returns an UpdatableResourceProvider instance.
-  virtual UpdatableResourceProvider* GetUpdatableResourceProvider();
   // Returns an infobar view conforming to the InfoBarViewProtocol. The returned
   // object is retained.
   virtual InfoBarViewPlaceholder CreateInfoBarView(
@@ -147,10 +158,6 @@ class ChromeBrowserProvider {
   // metrics_services_manager_client.h for details on |on_update_callback|.
   virtual bool IsSafeBrowsingEnabled(const base::Closure& on_update_callback);
 
-  // Returns the list of available voice search languages.
-  // TODO(rohitrao): Remove once callers are going through VoiceSearchProvider.
-  virtual NSArray* GetAvailableVoiceSearchLanguages() const;
-
   // Returns an instance of the voice search provider, if one exists.
   virtual VoiceSearchProvider* GetVoiceSearchProvider() const;
 
@@ -163,13 +170,28 @@ class ChromeBrowserProvider {
       ios::ChromeBrowserState* browser_state,
       id<UrlLoader> loader) const NS_RETURNS_RETAINED;
 
+  // Returns an instance of the omaha service provider.
+  virtual OmahaServiceProvider* GetOmahaServiceProvider() const;
+
+  // Returns an instance of the user feedback provider.
+  virtual UserFeedbackProvider* GetUserFeedbackProvider() const;
+
   // Returns the SyncedWindowDelegatesGetter implementation.
   virtual std::unique_ptr<sync_sessions::SyncedWindowDelegatesGetter>
   CreateSyncedWindowDelegatesGetter(ios::ChromeBrowserState* browser_state);
 
-  // TODO(rohitrao): This is a temporary method, used to prevent the tree from
-  // breaking due to duplicate prefs registration.
-  virtual bool ShouldEmbedderRegisterVoiceSearchPrefs() const;
+  // Returns an instance of the branded image provider.
+  virtual BrandedImageProvider* GetBrandedImageProvider() const;
+
+  // Returns the NativeAppWhitelistManager implementation.
+  virtual id<NativeAppWhitelistManager> GetNativeAppWhitelistManager() const;
+
+  // Hides immediately the modals related to this provider.
+  virtual void HideModalViewStack() const;
+
+  // Logs if any modals created by this provider are still presented. It does
+  // not dismiss them.
+  virtual void LogIfModalViewsArePresented() const;
 };
 
 }  // namespace ios

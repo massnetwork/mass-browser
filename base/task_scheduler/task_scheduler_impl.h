@@ -30,7 +30,6 @@ class SchedulerWorkerPoolParams;
 namespace internal {
 
 class DelayedTaskManager;
-class SchedulerServiceThread;
 class TaskTracker;
 
 // Default TaskScheduler implementation. This class is thread-safe.
@@ -63,10 +62,7 @@ class BASE_EXPORT TaskSchedulerImpl : public TaskScheduler {
   std::vector<const HistogramBase*> GetHistograms() const override;
   void Shutdown() override;
   void FlushForTesting() override;
-
-  // Joins all threads of this scheduler. Tasks that are already running are
-  // allowed to complete their execution. This can only be called once.
-  void JoinForTesting();
+  void JoinForTesting() override;
 
  private:
   explicit TaskSchedulerImpl(const WorkerPoolIndexForTraitsCallback&

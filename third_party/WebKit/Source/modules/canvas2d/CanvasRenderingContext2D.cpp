@@ -141,15 +141,6 @@ void CanvasRenderingContext2D::setCanvasGetContextResult(
   result.setCanvasRenderingContext2D(this);
 }
 
-void CanvasRenderingContext2D::unwindStateStack() {
-  if (size_t stackSize = m_stateStack.size()) {
-    if (SkCanvas* skCanvas = canvas()->existingDrawingCanvas()) {
-      while (--stackSize)
-        skCanvas->restore();
-    }
-  }
-}
-
 CanvasRenderingContext2D::~CanvasRenderingContext2D() {}
 
 void CanvasRenderingContext2D::dispose() {
@@ -221,6 +212,7 @@ void CanvasRenderingContext2D::didSetSurfaceSize() {
 
 DEFINE_TRACE(CanvasRenderingContext2D) {
   visitor->trace(m_hitRegionManager);
+  visitor->trace(m_filterOperations);
   CanvasRenderingContext::trace(visitor);
   BaseRenderingContext2D::trace(visitor);
   SVGResourceClient::trace(visitor);
@@ -279,25 +271,8 @@ void CanvasRenderingContext2D::dispatchContextRestoredEvent(TimerBase*) {
 }
 
 void CanvasRenderingContext2D::reset() {
-  validateStateStack();
-  unwindStateStack();
-  m_stateStack.resize(1);
-  m_stateStack.first() = CanvasRenderingContext2DState::create();
-  m_path.clear();
-  if (SkCanvas* c = canvas()->existingDrawingCanvas()) {
-    // The canvas should always have an initial/unbalanced save frame, which
-    // we use to reset the top level matrix and clip here.
-    DCHECK_EQ(c->getSaveCount(), 2);
-    c->restore();
-    c->save();
-    DCHECK(c->getTotalMatrix().isIdentity());
-#if DCHECK_IS_ON()
-    SkIRect clipBounds;
-    DCHECK(c->getClipDeviceBounds(&clipBounds));
-    DCHECK(clipBounds == c->imageInfo().bounds());
-#endif
-  }
-  validateStateStack();
+  // This is a multiple inherritance bootstrap
+  BaseRenderingContext2D::reset();
 }
 
 void CanvasRenderingContext2D::restoreCanvasMatrixClipStack(SkCanvas* c) const {
@@ -565,7 +540,28 @@ void CanvasRenderingContext2D::styleDidChange(const ComputedStyle* oldStyle,
   pruneLocalFontCache(0);
 }
 
-void CanvasRenderingContext2D::filterNeedsInvalidation() {
+TreeScope* CanvasRenderingContext2D::treeScope() {
+  return &canvas()->treeScope();
+}
+
+void CanvasRenderingContext2D::clearFilterReferences() {
+  m_filterOperations.removeClient(this);
+  m_filterOperations.clear();
+}
+
+void CanvasRenderingContext2D::updateFilterReferences(
+    const FilterOperations& filters) {
+  clearFilterReferences();
+  filters.addClient(this);
+  m_filterOperations = filters;
+}
+
+void CanvasRenderingContext2D::resourceContentChanged() {
+  resourceElementChanged();
+}
+
+void CanvasRenderingContext2D::resourceElementChanged() {
+  clearFilterReferences();
   state().clearResolvedFilter();
 }
 

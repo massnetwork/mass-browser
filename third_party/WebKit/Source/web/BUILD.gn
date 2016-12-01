@@ -30,6 +30,7 @@ component("web") {
     "//third_party/WebKit/Source:config",
     "//third_party/WebKit/Source:inside_blink",
     "//third_party/WebKit/Source:non_test_config",
+    "//third_party/WebKit/Source/core:blink_core_pch",
   ]
 
   defines = [ "BLINK_WEB_IMPLEMENTATION=1" ]
@@ -178,6 +179,7 @@ component("web") {
     "WebFrameSerializer.cpp",
     "WebFrameSerializerImpl.cpp",
     "WebFrameSerializerImpl.h",
+    "WebFrameWidgetBase.cpp",
     "WebFrameWidgetBase.h",
     "WebFrameWidgetImpl.cpp",
     "WebFrameWidgetImpl.h",
@@ -193,6 +195,8 @@ component("web") {
     "WebInputElement.cpp",
     "WebInputEventConversion.cpp",
     "WebInputEventConversion.h",
+    "WebInputMethodControllerImpl.cpp",
+    "WebInputMethodControllerImpl.h",
     "WebKit.cpp",
     "WebLabelElement.cpp",
     "WebLeakDetector.cpp",
@@ -292,7 +296,10 @@ static_library("test_support") {
     "WebTestingSupport.cpp",
   ]
 
-  configs += [ "//third_party/WebKit/Source:config" ]
+  configs += [
+    "//third_party/WebKit/Source:config",
+    "//third_party/WebKit/Source/core:blink_core_pch",
+  ]
 
   include_dirs = [ "$root_gen_dir/blink" ]
 }
@@ -342,6 +349,7 @@ test("webkit_unit_tests") {
     "tests/LinkSelectionTest.cpp",
     "tests/ListenerLeakTest.cpp",
     "tests/MHTMLTest.cpp",
+    "tests/NGInlineLayoutTest.cpp",
     "tests/PrerenderingTest.cpp",
     "tests/ProgrammaticScrollTest.cpp",
     "tests/ResizeObserverTest.cpp",
@@ -351,6 +359,7 @@ test("webkit_unit_tests") {
     "tests/ScrollingCoordinatorTest.cpp",
     "tests/SpinLockTest.cpp",
     "tests/TextFinderTest.cpp",
+    "tests/TextSelectionRepaintTest.cpp",
     "tests/TimerPerfTest.cpp",
     "tests/TouchActionTest.cpp",
     "tests/ViewportTest.cpp",
@@ -381,6 +390,8 @@ test("webkit_unit_tests") {
     "tests/sim/SimDisplayItemList.h",
     "tests/sim/SimNetwork.cpp",
     "tests/sim/SimNetwork.h",
+    "tests/sim/SimPage.cpp",
+    "tests/sim/SimPage.h",
     "tests/sim/SimRequest.cpp",
     "tests/sim/SimRequest.h",
     "tests/sim/SimTest.cpp",
@@ -420,6 +431,7 @@ test("webkit_unit_tests") {
   configs += [
     "//third_party/WebKit/Source:config",
     "//third_party/WebKit/Source:inside_blink",
+    "//third_party/WebKit/Source/core:blink_core_pch",
   ]
 
   if (is_android) {

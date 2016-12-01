@@ -29,7 +29,6 @@ class Profile;
 struct TemplateURLData;
 class TemplateURLService;
 struct ThemeBackgroundInfo;
-class ThemeService;
 
 namespace content {
 class RenderProcessHost;
@@ -59,18 +58,19 @@ class InstantService : public KeyedService,
   }
 #endif
 
+  // Invoked whenever an NTP is opened. Causes an async refresh of Most Visited
+  // items.
+  void OnNewTabPageOpened();
+
   // Most visited item API.
 
-  // Invoked by the InstantController when the Instant page wants to delete a
-  // Most Visited item.
+  // Invoked when the Instant page wants to delete a Most Visited item.
   void DeleteMostVisitedItem(const GURL& url);
 
-  // Invoked by the InstantController when the Instant page wants to undo the
-  // blacklist action.
+  // Invoked when the Instant page wants to undo the deletion.
   void UndoMostVisitedDeletion(const GURL& url);
 
-  // Invoked by the InstantController when the Instant page wants to undo all
-  // Most Visited deletions.
+  // Invoked when the Instant page wants to undo all Most Visited deletions.
   void UndoAllMostVisitedDeletions();
 
   // Invoked by the InstantController to update theme information for NTP.
@@ -86,9 +86,7 @@ class InstantService : public KeyedService,
   // Sends the current set of search URLs to a renderer process.
   void SendSearchURLsToRenderer(content::RenderProcessHost* rph);
 
-  InstantSearchPrerenderer* instant_search_prerenderer() {
-    return instant_prerenderer_.get();
-  }
+  InstantSearchPrerenderer* GetInstantSearchPrerenderer();
 
  private:
   friend class InstantExtendedTest;
@@ -139,7 +137,7 @@ class InstantService : public KeyedService,
   void OnThemeChanged();
 #endif
 
-  void ResetInstantSearchPrerenderer();
+  void ResetInstantSearchPrerendererIfNecessary();
 
   Profile* const profile_;
 

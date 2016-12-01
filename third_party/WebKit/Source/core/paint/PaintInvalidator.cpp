@@ -151,9 +151,14 @@ LayoutRect PaintInvalidator::computeVisualRectInBacking(
   return mapLocalRectToPaintInvalidationBacking(object, localRect, context);
 }
 
-LayoutPoint PaintInvalidator::computeLocationFromPaintInvalidationBacking(
+LayoutPoint PaintInvalidator::computeLocationInBacking(
     const LayoutObject& object,
     const PaintInvalidatorContext& context) {
+  // Use visual rect location for LayoutTexts because it suffices to check
+  // visual rect change for layout caused invalidation.
+  if (object.isText())
+    return context.newVisualRect.location();
+
   FloatPoint point;
   if (object != context.paintInvalidationContainer) {
     point.moveBy(FloatPoint(context.treeBuilderContext.current.paintOffset));
@@ -322,11 +327,13 @@ void PaintInvalidator::updateContext(const LayoutObject& object,
     context.forcedSubtreeInvalidationFlags |=
         PaintInvalidatorContext::ForcedSubtreeSlowPathRect;
 
+  ObjectPaintInvalidator objectPaintInvalidator(object);
   context.oldVisualRect = object.previousVisualRect();
-  context.oldLocation = object.previousPositionFromPaintInvalidationBacking();
+  context.oldLocation = objectPaintInvalidator.previousLocationInBacking();
   context.newVisualRect = computeVisualRectInBacking(object, context);
-  context.newLocation =
-      computeLocationFromPaintInvalidationBacking(object, context);
+  context.newLocation = computeLocationInBacking(object, context);
+  context.oldPaintOffset = object.previousPaintOffset();
+  context.newPaintOffset = context.treeBuilderContext.current.paintOffset;
 
   IntSize adjustment = object.scrollAdjustmentForPaintInvalidation(
       *context.paintInvalidationContainer);
@@ -334,8 +341,8 @@ void PaintInvalidator::updateContext(const LayoutObject& object,
   context.newVisualRect.move(adjustment);
 
   object.getMutableForPainting().setPreviousVisualRect(context.newVisualRect);
-  object.getMutableForPainting()
-      .setPreviousPositionFromPaintInvalidationBacking(context.newLocation);
+  objectPaintInvalidator.setPreviousLocationInBacking(context.newLocation);
+  object.getMutableForPainting().setPreviousPaintOffset(context.newPaintOffset);
 }
 
 void PaintInvalidator::invalidatePaintIfNeeded(
@@ -363,18 +370,6 @@ void PaintInvalidator::invalidatePaintIfNeeded(
   IntRect visibleRect =
       frameView.rootFrameToContents(frameView.computeVisibleArea());
   layoutView->sendMediaPositionChangeNotifications(visibleRect);
-}
-
-static bool hasPercentageTransform(const ComputedStyle& style) {
-  if (TransformOperation* translate = style.translate()) {
-    if (translate->dependsOnBoxSize())
-      return true;
-  }
-  return style.transform().dependsOnBoxSize() ||
-         (style.transformOriginX() != Length(50, Percent) &&
-          style.transformOriginX().isPercentOrCalc()) ||
-         (style.transformOriginY() != Length(50, Percent) &&
-          style.transformOriginY().isPercentOrCalc());
 }
 
 void PaintInvalidator::invalidatePaintIfNeeded(
@@ -420,22 +415,18 @@ void PaintInvalidator::invalidatePaintIfNeeded(
       break;
     case PaintInvalidationSVGResourceChange:
       context.forcedSubtreeInvalidationFlags |=
-          PaintInvalidatorContext::ForcedSubtreeInvalidationChecking;
+          PaintInvalidatorContext::ForcedSubtreeSVGResourceChange;
       break;
     default:
       break;
   }
 
-  if (context.oldLocation != context.newLocation)
+  if (context.oldLocation != context.newLocation ||
+      (RuntimeEnabledFeatures::slimmingPaintV2Enabled() &&
+       context.oldPaintOffset != context.newPaintOffset)) {
     context.forcedSubtreeInvalidationFlags |=
         PaintInvalidatorContext::ForcedSubtreeInvalidationChecking;
-
-  // TODO(crbug.com/533277): This is a workaround for the bug. Remove when we
-  // detect paint offset change.
-  if (reason != PaintInvalidationNone &&
-      hasPercentageTransform(object.styleRef()))
-    context.forcedSubtreeInvalidationFlags |=
-        PaintInvalidatorContext::ForcedSubtreeInvalidationChecking;
+  }
 
   // TODO(crbug.com/490725): This is a workaround for the bug, to force
   // descendant to update visual rects on clipping change.
@@ -447,8 +438,6 @@ void PaintInvalidator::invalidatePaintIfNeeded(
       !toLayoutBox(object).usesCompositedScrolling())
     context.forcedSubtreeInvalidationFlags |=
         PaintInvalidatorContext::ForcedSubtreeInvalidationRectUpdate;
-
-  object.getMutableForPainting().clearPaintInvalidationFlags();
 }
 
 void PaintInvalidator::processPendingDelayedPaintInvalidations() {

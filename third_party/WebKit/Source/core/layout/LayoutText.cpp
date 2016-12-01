@@ -200,7 +200,8 @@ void LayoutText::styleDidChange(StyleDifference diff,
   }
 
   const ComputedStyle& newStyle = styleRef();
-  ETextTransform oldTransform = oldStyle ? oldStyle->textTransform() : TTNONE;
+  ETextTransform oldTransform =
+      oldStyle ? oldStyle->textTransform() : ETextTransform::None;
   ETextSecurity oldSecurity = oldStyle ? oldStyle->textSecurity() : TSNONE;
   if (oldTransform != newStyle.textTransform() ||
       oldSecurity != newStyle.textSecurity())
@@ -763,20 +764,20 @@ LayoutRect LayoutText::localCaretRect(InlineBox* inlineBox,
 
   bool rightAligned = false;
   switch (cbStyle.textAlign()) {
-    case RIGHT:
-    case WEBKIT_RIGHT:
+    case ETextAlign::Right:
+    case ETextAlign::WebkitRight:
       rightAligned = true;
       break;
-    case LEFT:
-    case WEBKIT_LEFT:
-    case CENTER:
-    case WEBKIT_CENTER:
+    case ETextAlign::Left:
+    case ETextAlign::WebkitLeft:
+    case ETextAlign::Center:
+    case ETextAlign::WebkitCenter:
       break;
-    case JUSTIFY:
-    case TASTART:
+    case ETextAlign::Justify:
+    case ETextAlign::Start:
       rightAligned = !cbStyle.isLeftToRightDirection();
       break;
-    case TAEND:
+    case ETextAlign::End:
       rightAligned = cbStyle.isLeftToRightDirection();
       break;
   }
@@ -1340,7 +1341,7 @@ void LayoutText::computePreferredLogicalWidths(
   if (!styleToUse.autoWrap())
     m_minWidth = m_maxWidth;
 
-  if (styleToUse.whiteSpace() == PRE) {
+  if (styleToUse.whiteSpace() == EWhiteSpace::Pre) {
     if (firstLine)
       m_firstLineMinWidth = m_maxWidth;
     m_lastLineLineMinWidth = currMaxWidth;
@@ -1582,15 +1583,15 @@ void applyTextTransform(const ComputedStyle* style,
     return;
 
   switch (style->textTransform()) {
-    case TTNONE:
+    case ETextTransform::None:
       break;
-    case CAPITALIZE:
+    case ETextTransform::Capitalize:
       makeCapitalized(&text, previousCharacter);
       break;
-    case UPPERCASE:
+    case ETextTransform::Uppercase:
       text = text.upper(style->locale());
       break;
-    case LOWERCASE:
+    case ETextTransform::Lowercase:
       text = text.lower(style->locale());
       break;
   }

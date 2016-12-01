@@ -8,7 +8,6 @@
 #include "core/css/CSSCustomPropertyDeclaration.h"
 #include "core/css/CSSKeyframesRule.h"
 #include "core/css/CSSStyleSheet.h"
-#include "core/css/StylePropertySet.h"
 #include "core/css/StyleRuleImport.h"
 #include "core/css/StyleRuleKeyframe.h"
 #include "core/css/StyleRuleNamespace.h"
@@ -42,38 +41,48 @@ CSSParserImpl::CSSParserImpl(const CSSParserContext& context,
       m_styleSheet(styleSheet),
       m_observerWrapper(nullptr) {}
 
-bool CSSParserImpl::parseValue(MutableStylePropertySet* declaration,
-                               CSSPropertyID unresolvedProperty,
-                               const String& string,
-                               bool important,
-                               const CSSParserContext& context) {
+MutableStylePropertySet::SetResult CSSParserImpl::parseValue(
+    MutableStylePropertySet* declaration,
+    CSSPropertyID unresolvedProperty,
+    const String& string,
+    bool important,
+    const CSSParserContext& context) {
   CSSParserImpl parser(context);
   StyleRule::RuleType ruleType = StyleRule::Style;
   if (declaration->cssParserMode() == CSSViewportRuleMode)
     ruleType = StyleRule::Viewport;
   else if (declaration->cssParserMode() == CSSFontFaceRuleMode)
     ruleType = StyleRule::FontFace;
-  CSSTokenizer::Scope scope(string);
-  parser.consumeDeclarationValue(scope.tokenRange(), unresolvedProperty,
+  CSSTokenizer tokenizer(string);
+  parser.consumeDeclarationValue(tokenizer.tokenRange(), unresolvedProperty,
                                  important, ruleType);
-  if (parser.m_parsedProperties.isEmpty())
-    return false;
-  return declaration->addParsedProperties(parser.m_parsedProperties);
+  bool didParse = false;
+  bool didChange = false;
+  if (!parser.m_parsedProperties.isEmpty()) {
+    didParse = true;
+    didChange = declaration->addParsedProperties(parser.m_parsedProperties);
+  }
+  return MutableStylePropertySet::SetResult{didParse, didChange};
 }
 
-bool CSSParserImpl::parseVariableValue(MutableStylePropertySet* declaration,
-                                       const AtomicString& propertyName,
-                                       const String& value,
-                                       bool important,
-                                       const CSSParserContext& context,
-                                       bool isAnimationTainted) {
+MutableStylePropertySet::SetResult CSSParserImpl::parseVariableValue(
+    MutableStylePropertySet* declaration,
+    const AtomicString& propertyName,
+    const String& value,
+    bool important,
+    const CSSParserContext& context,
+    bool isAnimationTainted) {
   CSSParserImpl parser(context);
-  CSSTokenizer::Scope scope(value);
-  parser.consumeVariableValue(scope.tokenRange(), propertyName, important,
+  CSSTokenizer tokenizer(value);
+  parser.consumeVariableValue(tokenizer.tokenRange(), propertyName, important,
                               isAnimationTainted);
-  if (parser.m_parsedProperties.isEmpty())
-    return false;
-  return declaration->addParsedProperties(parser.m_parsedProperties);
+  bool didParse = false;
+  bool didChange = false;
+  if (!parser.m_parsedProperties.isEmpty()) {
+    didParse = true;
+    didChange = declaration->addParsedProperties(parser.m_parsedProperties);
+  }
+  return MutableStylePropertySet::SetResult{didParse, didChange};
 }
 
 static inline void filterProperties(
@@ -139,8 +148,8 @@ ImmutableStylePropertySet* CSSParserImpl::parseInlineStyleDeclaration(
                            : HTMLQuirksMode;
   context.setMode(mode);
   CSSParserImpl parser(context, document.elementSheet().contents());
-  CSSTokenizer::Scope scope(string);
-  parser.consumeDeclarationList(scope.tokenRange(), StyleRule::Style);
+  CSSTokenizer tokenizer(string);
+  parser.consumeDeclarationList(tokenizer.tokenRange(), StyleRule::Style);
   return createStylePropertySet(parser.m_parsedProperties, mode);
 }
 
@@ -151,8 +160,8 @@ bool CSSParserImpl::parseDeclarationList(MutableStylePropertySet* declaration,
   StyleRule::RuleType ruleType = StyleRule::Style;
   if (declaration->cssParserMode() == CSSViewportRuleMode)
     ruleType = StyleRule::Viewport;
-  CSSTokenizer::Scope scope(string);
-  parser.consumeDeclarationList(scope.tokenRange(), ruleType);
+  CSSTokenizer tokenizer(string);
+  parser.consumeDeclarationList(tokenizer.tokenRange(), ruleType);
   if (parser.m_parsedProperties.isEmpty())
     return false;
 
@@ -174,8 +183,8 @@ StyleRuleBase* CSSParserImpl::parseRule(const String& string,
                                         StyleSheetContents* styleSheet,
                                         AllowedRulesType allowedRules) {
   CSSParserImpl parser(context, styleSheet);
-  CSSTokenizer::Scope scope(string);
-  CSSParserTokenRange range = scope.tokenRange();
+  CSSTokenizer tokenizer(string);
+  CSSParserTokenRange range = tokenizer.tokenRange();
   range.consumeWhitespace();
   if (range.atEnd())
     return nullptr;  // Parse error, empty rule
@@ -202,7 +211,7 @@ void CSSParserImpl::parseStyleSheet(const String& string,
 
   TRACE_EVENT_BEGIN0("blink,blink_style",
                      "CSSParserImpl::parseStyleSheet.tokenize");
-  CSSTokenizer::Scope scope(string);
+  CSSTokenizer tokenizer(string);
   TRACE_EVENT_END0("blink,blink_style",
                    "CSSParserImpl::parseStyleSheet.tokenize");
 
@@ -211,19 +220,21 @@ void CSSParserImpl::parseStyleSheet(const String& string,
   CSSParserImpl parser(context, styleSheet);
   if (deferPropertyParsing) {
     parser.m_lazyState = new CSSLazyParsingState(
-        context, scope.takeEscapedStrings(), string, parser.m_styleSheet);
+        context, tokenizer.takeEscapedStrings(), string, parser.m_styleSheet);
   }
-  bool firstRuleValid = parser.consumeRuleList(
-      scope.tokenRange(), TopLevelRuleList, [&styleSheet](StyleRuleBase* rule) {
-        if (rule->isCharsetRule())
-          return;
-        styleSheet->parserAppendRule(rule);
-      });
+  bool firstRuleValid =
+      parser.consumeRuleList(tokenizer.tokenRange(), TopLevelRuleList,
+                             [&styleSheet](StyleRuleBase* rule) {
+                               if (rule->isCharsetRule())
+                                 return;
+                               styleSheet->parserAppendRule(rule);
+                             });
   styleSheet->setHasSyntacticallyValidCSSHeader(firstRuleValid);
   TRACE_EVENT_END0("blink,blink_style", "CSSParserImpl::parseStyleSheet.parse");
 
   TRACE_EVENT_END2("blink,blink_style", "CSSParserImpl::parseStyleSheet",
-                   "tokenCount", scope.tokenCount(), "length", string.length());
+                   "tokenCount", tokenizer.tokenCount(), "length",
+                   string.length());
 }
 
 CSSSelectorList CSSParserImpl::parsePageSelector(
@@ -297,7 +308,7 @@ ImmutableStylePropertySet* CSSParserImpl::parseCustomPropertySet(
 
 std::unique_ptr<Vector<double>> CSSParserImpl::parseKeyframeKeyList(
     const String& keyList) {
-  return consumeKeyframeKeyList(CSSTokenizer::Scope(keyList).tokenRange());
+  return consumeKeyframeKeyList(CSSTokenizer(keyList).tokenRange());
 }
 
 bool CSSParserImpl::supportsDeclaration(CSSParserTokenRange& range) {
@@ -315,10 +326,10 @@ void CSSParserImpl::parseDeclarationListForInspector(
   CSSParserImpl parser(context);
   CSSParserObserverWrapper wrapper(observer);
   parser.m_observerWrapper = &wrapper;
-  CSSTokenizer::Scope scope(declaration, wrapper);
+  CSSTokenizer tokenizer(declaration, wrapper);
   observer.startRuleHeader(StyleRule::Style, 0);
   observer.endRuleHeader(1);
-  parser.consumeDeclarationList(scope.tokenRange(), StyleRule::Style);
+  parser.consumeDeclarationList(tokenizer.tokenRange(), StyleRule::Style);
 }
 
 void CSSParserImpl::parseStyleSheetForInspector(const String& string,
@@ -328,13 +339,14 @@ void CSSParserImpl::parseStyleSheetForInspector(const String& string,
   CSSParserImpl parser(context, styleSheet);
   CSSParserObserverWrapper wrapper(observer);
   parser.m_observerWrapper = &wrapper;
-  CSSTokenizer::Scope scope(string, wrapper);
-  bool firstRuleValid = parser.consumeRuleList(
-      scope.tokenRange(), TopLevelRuleList, [&styleSheet](StyleRuleBase* rule) {
-        if (rule->isCharsetRule())
-          return;
-        styleSheet->parserAppendRule(rule);
-      });
+  CSSTokenizer tokenizer(string, wrapper);
+  bool firstRuleValid =
+      parser.consumeRuleList(tokenizer.tokenRange(), TopLevelRuleList,
+                             [&styleSheet](StyleRuleBase* rule) {
+                               if (rule->isCharsetRule())
+                                 return;
+                               styleSheet->parserAppendRule(rule);
+                             });
   styleSheet->setHasSyntacticallyValidCSSHeader(firstRuleValid);
 }
 
@@ -787,7 +799,7 @@ StyleRule* CSSParserImpl::consumeStyleRule(CSSParserTokenRange prelude,
   if (m_observerWrapper) {
     observeSelectors(*m_observerWrapper, prelude);
   } else if (m_lazyState &&
-             m_lazyState->shouldLazilyParseProperties(selectorList)) {
+             m_lazyState->shouldLazilyParseProperties(selectorList, block)) {
     DCHECK(m_styleSheet);
     return StyleRule::createLazy(
         std::move(selectorList),
@@ -885,24 +897,20 @@ void CSSParserImpl::consumeDeclaration(CSSParserTokenRange range,
     }
   }
 
-  size_t propertiesCount = m_parsedProperties.size();
-  // TODO(timloh): This should only be for StyleRule::Style/Keyframe,
-  // crbug.com/641873.
-  if (unresolvedProperty == CSSPropertyVariable) {
-    AtomicString variableName = token.value().toAtomicString();
-    bool isAnimationTainted = ruleType == StyleRule::Keyframe;
-    consumeVariableValue(range.makeSubRange(&range.peek(), declarationValueEnd),
-                         variableName, important, isAnimationTainted);
-  }
-
-  // TODO(timloh): Should this check occur before the call to
-  // consumeVariableValue()?
   if (important &&
       (ruleType == StyleRule::FontFace || ruleType == StyleRule::Keyframe))
     return;
 
-  if (unresolvedProperty != CSSPropertyInvalid &&
-      unresolvedProperty != CSSPropertyVariable) {
+  size_t propertiesCount = m_parsedProperties.size();
+
+  if (unresolvedProperty == CSSPropertyVariable) {
+    if (ruleType != StyleRule::Style && ruleType != StyleRule::Keyframe)
+      return;
+    AtomicString variableName = token.value().toAtomicString();
+    bool isAnimationTainted = ruleType == StyleRule::Keyframe;
+    consumeVariableValue(range.makeSubRange(&range.peek(), declarationValueEnd),
+                         variableName, important, isAnimationTainted);
+  } else if (unresolvedProperty != CSSPropertyInvalid) {
     if (m_styleSheet && m_styleSheet->singleOwnerDocument())
       Deprecation::warnOnDeprecatedProperties(
           m_styleSheet->singleOwnerDocument()->frame(), unresolvedProperty);

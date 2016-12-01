@@ -7,7 +7,6 @@
 
 #include "chrome/browser/ui/website_settings/permission_prompt.h"
 
-class GroupedPermissionInfoBarDelegate;
 class InfoBarService;
 
 namespace content {
@@ -34,6 +33,7 @@ class PermissionPromptAndroid : public PermissionPrompt {
   gfx::NativeWindow GetNativeWindow() override;
 
   void Closing();
+  void ToggleAccept(int index, bool value);
   void Accept();
   void Deny();
 

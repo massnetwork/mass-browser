@@ -80,6 +80,7 @@
 #include "components/spellcheck/browser/pref_names.h"
 #include "components/spellcheck/browser/spellcheck_host_metrics.h"
 #include "components/spellcheck/common/spellcheck_common.h"
+#include "components/spellcheck/spellcheck_build_features.h"
 #include "components/translate/core/browser/translate_download_manager.h"
 #include "components/translate/core/browser/translate_manager.h"
 #include "components/translate/core/browser/translate_prefs.h"
@@ -104,7 +105,10 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/menu_item.h"
 #include "content/public/common/url_utils.h"
+#include "extensions/features/features.h"
 #include "net/base/escape.h"
+#include "ppapi/features/features.h"
+#include "printing/features/features.h"
 #include "third_party/WebKit/public/public_features.h"
 #include "third_party/WebKit/public/web/WebContextMenuData.h"
 #include "third_party/WebKit/public/web/WebMediaPlayerAction.h"
@@ -119,11 +123,11 @@
 #include "ui/gfx/path.h"
 #include "ui/gfx/text_elider.h"
 
-#if !defined(USE_BROWSER_SPELLCHECKER)
+#if !BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 #include "chrome/browser/renderer_context_menu/spelling_options_submenu_observer.h"
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/devtools_util.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "extensions/browser/extension_host.h"
@@ -134,15 +138,15 @@
 #include "extensions/common/extension.h"
 #endif
 
-#if defined(ENABLE_PRINTING)
+#if BUILDFLAG(ENABLE_PRINTING)
 #include "chrome/browser/printing/print_view_manager_common.h"
 #include "components/printing/common/print_messages.h"
 
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 #include "chrome/browser/printing/print_preview_context_menu_observer.h"
 #include "chrome/browser/printing/print_preview_dialog_controller.h"
-#endif  // defined(ENABLE_PRINT_PREVIEW)
-#endif  // defined(ENABLE_PRINTING)
+#endif  // BUILDFLAG(ENABLE_PRINT_PREVIEW)
+#endif  // BUILDFLAG(ENABLE_PRINTING)
 
 #if defined(ENABLE_MEDIA_ROUTER)
 #include "chrome/browser/media/router/media_router_dialog_controller.h"
@@ -406,7 +410,7 @@ content::Referrer CreateReferrer(const GURL& url,
 }
 
 content::WebContents* GetWebContentsToUse(content::WebContents* web_contents) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   // If we're viewing in a MimeHandlerViewGuest, use its embedder WebContents.
   if (extensions::MimeHandlerViewGuest::FromWebContents(web_contents)) {
     WebContents* top_level_web_contents =
@@ -451,7 +455,7 @@ void AddAvatarToLastMenuItem(gfx::Image icon, ui::SimpleMenuModel* menu) {
   gfx::Path circular_mask;
   gfx::Canvas canvas(icon.Size(), 1.0f, true);
   canvas.FillRect(gfx::Rect(icon.Size()), SK_ColorTRANSPARENT,
-                  SkXfermode::kClear_Mode);
+                  SkBlendMode::kClear);
   circular_mask.addCircle(SkIntToScalar(width) / 2, SkIntToScalar(height) / 2,
                           SkIntToScalar(std::min(width, height)) / 2);
   canvas.ClipPath(circular_mask, true);
@@ -501,7 +505,7 @@ void OnProfileCreated(const GURL& link_url,
 gfx::Vector2d RenderViewContextMenu::GetOffset(
     RenderFrameHost* render_frame_host) {
   gfx::Vector2d offset;
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   // When --use-cross-process-frames-for-guests is enabled, the position is
   // transformed in the browser process hittesting code.
   WebContents* web_contents =
@@ -519,7 +523,7 @@ gfx::Vector2d RenderViewContextMenu::GetOffset(
       offset = bounds.origin() - top_level_bounds.origin();
     }
   }
-#endif  // defined(ENABLE_EXTENSIONS)
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
   return offset;
 }
 
@@ -532,7 +536,7 @@ bool RenderViewContextMenu::IsDevToolsURL(const GURL& url) {
 bool RenderViewContextMenu::IsInternalResourcesURL(const GURL& url) {
   if (!url.SchemeIs(content::kChromeUIScheme))
     return false;
-  return url.host() == chrome::kChromeUISyncResourcesHost;
+  return url.host_piece() == chrome::kChromeUISyncResourcesHost;
 }
 
 // static
@@ -589,7 +593,7 @@ RenderViewContextMenu::~RenderViewContextMenu() {
 
 // Menu construction functions -------------------------------------------------
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 // static
 bool RenderViewContextMenu::ExtensionContextAndPatternMatch(
     const content::ContextMenuParams& params,
@@ -737,7 +741,7 @@ void RenderViewContextMenu::AppendCurrentExtensionItems() {
   extension_items_.AppendExtensionItems(key, PrintableSelectionText(), &index,
                                         false /* is_action_menu */);
 }
-#endif  // defined(ENABLE_EXTENSIONS)
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 void RenderViewContextMenu::InitMenu() {
   RenderViewContextMenuBase::InitMenu();
@@ -907,7 +911,7 @@ bool RenderViewContextMenu::IsHTML5Fullscreen() const {
   return controller->IsTabFullscreen();
 }
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 void RenderViewContextMenu::HandleAuthorizeAllPlugins() {
   ChromePluginServiceFilter::GetInstance()->AuthorizeAllPlugins(
       source_web_contents_, false, std::string());
@@ -915,7 +919,7 @@ void RenderViewContextMenu::HandleAuthorizeAllPlugins() {
 #endif
 
 void RenderViewContextMenu::AppendPrintPreviewItems() {
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   if (!print_preview_menu_observer_.get()) {
     print_preview_menu_observer_.reset(
         new PrintPreviewContextMenuObserver(source_web_contents_));
@@ -1505,8 +1509,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
     return params_.link_url.is_valid();
   }
 
-  IncognitoModePrefs::Availability incognito_avail =
-      IncognitoModePrefs::GetAvailability(prefs);
   switch (id) {
     case IDC_BACK:
       return embedder_web_contents_->GetController().CanGoBack();
@@ -1599,7 +1601,8 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
       return IsSavePageEnabled();
 
     case IDC_CONTENT_CONTEXT_RELOADFRAME:
-      return params_.frame_url.is_valid();
+      return params_.frame_url.is_valid() &&
+             params_.frame_url.GetOrigin() != chrome::kChromeUIPrintURL;
 
     case IDC_CONTENT_CONTEXT_UNDO:
       return !!(params_.edit_flags & WebContextMenuData::CanUndo);
@@ -1626,9 +1629,7 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
       return !!(params_.edit_flags & WebContextMenuData::CanSelectAll);
 
     case IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD:
-      return !browser_context_->IsOffTheRecord() &&
-             params_.link_url.is_valid() &&
-             incognito_avail != IncognitoModePrefs::DISABLED;
+      return IsOpenLinkOTREnabled();
 
     case IDC_PRINT:
       return IsPrintPreviewEnabled();
@@ -2080,7 +2081,7 @@ bool RenderViewContextMenu::IsSaveAsEnabled() const {
   bool can_save =
       (params_.media_flags & WebContextMenuData::MediaCanSave) &&
       url.is_valid() && ProfileIOData::IsHandledProtocol(url.scheme());
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
       // Do not save the preview PDF on the print preview page.
   can_save = can_save &&
       !(printing::PrintPreviewDialogController::IsPrintPreviewURL(url));
@@ -2162,6 +2163,15 @@ bool RenderViewContextMenu::IsRouteMediaEnabled() const {
   const web_modal::WebContentsModalDialogManager* manager =
       web_modal::WebContentsModalDialogManager::FromWebContents(web_contents);
   return !manager || !manager->IsDialogActive();
+}
+
+bool RenderViewContextMenu::IsOpenLinkOTREnabled() const {
+  if (browser_context_->IsOffTheRecord() || !params_.link_url.is_valid())
+    return false;
+
+  IncognitoModePrefs::Availability incognito_avail =
+      IncognitoModePrefs::GetAvailability(GetPrefs(browser_context_));
+  return incognito_avail != IncognitoModePrefs::DISABLED;
 }
 
 void RenderViewContextMenu::ExecOpenLinkNewTab() {
@@ -2403,7 +2413,7 @@ void RenderViewContextMenu::ExecRestartPackagedApp() {
 }
 
 void RenderViewContextMenu::ExecPrint() {
-#if defined(ENABLE_PRINTING)
+#if BUILDFLAG(ENABLE_PRINTING)
   if (params_.media_type != WebContextMenuData::MediaTypeNone) {
     RenderFrameHost* render_frame_host = GetRenderFrameHost();
     if (render_frame_host) {
@@ -2417,7 +2427,7 @@ void RenderViewContextMenu::ExecPrint() {
       source_web_contents_,
       GetPrefs(browser_context_)->GetBoolean(prefs::kPrintPreviewDisabled),
       !params_.selection_text.empty());
-#endif  // defined(ENABLE_PRINTING)
+#endif  // BUILDFLAG(ENABLE_PRINTING)
 }
 
 void RenderViewContextMenu::ExecRouteMedia() {

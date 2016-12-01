@@ -23,6 +23,7 @@
 #include "services/ui/public/cpp/window_tree_client.h"
 #include "services/ui/public/interfaces/window_manager.mojom.h"
 #include "ui/display/display.h"
+#include "ui/display/types/display_constants.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -599,7 +600,7 @@ Window::Window(WindowTreeClient* client, Id id)
       surface_id_handler_(nullptr),
       visible_(false),
       opacity_(1.0f),
-      display_id_(display::Display::kInvalidDisplayID),
+      display_id_(display::kInvalidDisplayId),
       cursor_id_(mojom::Cursor::CURSOR_NULL),
       parent_drawn_(false) {}
 
@@ -609,11 +610,12 @@ void Window::SetSharedPropertyInternal(const std::string& name,
     return;
 
   if (client_) {
-    mojo::Array<uint8_t> transport_value(nullptr);
+    base::Optional<std::vector<uint8_t>> transport_value;
     if (value) {
-      transport_value.resize(value->size());
+      transport_value.emplace(value->size());
       if (value->size())
-        memcpy(&transport_value.front(), &(value->front()), value->size());
+        memcpy(&transport_value.value().front(), &(value->front()),
+               value->size());
     }
     // TODO: add test coverage of this (450303).
     client_->SetProperty(this, name, std::move(transport_value));
@@ -812,13 +814,9 @@ void Window::LocalSetSurfaceId(std::unique_ptr<SurfaceInfo> surface_info) {
     const cc::SurfaceId& existing_surface_id = surface_info_->surface_id;
     cc::SurfaceId new_surface_id =
         surface_info ? surface_info->surface_id : cc::SurfaceId();
-    if (!existing_surface_id.is_null() &&
+    if (existing_surface_id.is_valid() &&
         existing_surface_id != new_surface_id) {
-      // Return the existing surface sequence.
-      if (client_) {
-        client_->OnWindowSurfaceDetached(server_id_,
-                                         surface_info_->surface_sequence);
-      }
+      // TODO(kylechar): Start return reference here?
     }
   }
   if (parent_ && parent_->surface_id_handler_) {

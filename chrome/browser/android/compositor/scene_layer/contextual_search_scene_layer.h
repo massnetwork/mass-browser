@@ -17,7 +17,6 @@
 
 namespace cc {
 class Layer;
-class SolidColorLayer;
 }
 
 namespace android {
@@ -101,6 +100,9 @@ class ContextualSearchSceneLayer : public SceneLayer,
       jfloat divider_line_height,
       jint divider_line_color,
       jfloat divider_line_x_offset,
+      jboolean touch_highlight_visible,
+      jfloat touch_highlight_x_offset,
+      jfloat touch_highlight_width,
       jobject j_profile);
 
   // Inherited from BitmapFetcherDelegate

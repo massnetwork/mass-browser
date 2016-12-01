@@ -41,13 +41,13 @@ void WiFiDisplaySessionServiceImpl::BindToRequest(
       DisplaySourceConnectionDelegateFactory::GetForBrowserContext(
           browser_context);
   CHECK(delegate);
-  mojo::MakeStrongBinding(std::unique_ptr<WiFiDisplaySessionServiceImpl>(
-                              new WiFiDisplaySessionServiceImpl(delegate)),
-                          std::move(request));
+  auto* impl = new WiFiDisplaySessionServiceImpl(delegate);
+  impl->binding_ =
+      mojo::MakeStrongBinding(base::WrapUnique(impl), std::move(request));
 }
 
 void WiFiDisplaySessionServiceImpl::SetClient(
-    WiFiDisplaySessionServiceClientPtr client) {
+    mojom::WiFiDisplaySessionServiceClientPtr client) {
   DCHECK(client);
   DCHECK(!client_);
   client_ = std::move(client);
@@ -58,7 +58,7 @@ void WiFiDisplaySessionServiceImpl::SetClient(
 
 void WiFiDisplaySessionServiceImpl::Connect(int32_t sink_id,
                                             int32_t auth_method,
-                                            const mojo::String& auth_data) {
+                                            const std::string& auth_data) {
   DCHECK(client_);
   // We support only one Wi-Fi Display session at a time.
   if (delegate_->connection()) {
@@ -111,7 +111,7 @@ void WiFiDisplaySessionServiceImpl::Disconnect() {
   delegate_->Disconnect(on_error);
 }
 
-void WiFiDisplaySessionServiceImpl::SendMessage(const mojo::String& message) {
+void WiFiDisplaySessionServiceImpl::SendMessage(const std::string& message) {
   if (sink_id_ == DisplaySourceConnectionDelegate::kInvalidSinkId) {
     // The connection might drop before this call has arrived.
     return;
@@ -200,7 +200,7 @@ void WiFiDisplaySessionServiceImpl::OnDisconnectFailed(
 
 void WiFiDisplaySessionServiceImpl::OnClientConnectionError() {
   DLOG(ERROR) << "IPC connection error";
-  delete this;
+  binding_->Close();
 }
 
 }  // namespace extensions

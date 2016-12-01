@@ -35,9 +35,11 @@
 
 class GURL;
 
-namespace sync_pb {
-class EncryptedData;
-}  // namespace sync_pb
+namespace base {
+namespace trace_event {
+class ProcessMemoryDump;
+}  // namespace trace_event
+}  // namespace base
 
 namespace syncer {
 
@@ -52,7 +54,6 @@ class JsEventHandler;
 class ProtocolEvent;
 class SyncCycleSnapshot;
 class SyncEncryptionHandler;
-class SyncScheduler;
 class TypeDebugInfoObserver;
 class UnrecoverableErrorHandler;
 struct Experiments;
@@ -223,6 +224,11 @@ class SyncManager {
 
     // URL of the sync server.
     GURL service_url;
+
+    // Whether the local backend provided by the LoopbackServer should be used
+    // and the location of the local sync backend storage.
+    bool enable_local_sync_backend;
+    base::FilePath local_sync_backend_folder;
 
     // Used to communicate with the sync server.
     std::unique_ptr<HttpPostProviderFactory> post_factory;
@@ -395,6 +401,9 @@ class SyncManager {
   // chrome account. See ClientConfigParams proto message for more info.
   // Note: this does not trigger a sync cycle. It just updates the sync context.
   virtual void OnCookieJarChanged(bool account_mismatch, bool empty_jar) = 0;
+
+  // Adds memory usage statistics to |pmd| for chrome://tracing.
+  virtual void OnMemoryDump(base::trace_event::ProcessMemoryDump* pmd) = 0;
 };
 
 }  // namespace syncer

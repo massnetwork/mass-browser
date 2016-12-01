@@ -7,7 +7,9 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
+#include "base/callback.h"
 #include "base/gtest_prod_util.h"
 #include "base/macros.h"
 #include "base/memory/ref_counted.h"
@@ -15,6 +17,7 @@
 #include "base/supports_user_data.h"
 #include "content/browser/service_worker/service_worker_context_wrapper.h"
 #include "content/common/resource_request_body_impl.h"
+#include "content/common/url_loader.mojom.h"
 #include "content/public/browser/navigation_ui_data.h"
 #include "content/public/browser/resource_request_info.h"
 #include "content/public/common/referrer.h"
@@ -33,6 +36,10 @@ struct GlobalRoutingID;
 class ResourceRequestInfoImpl : public ResourceRequestInfo,
                                 public base::SupportsUserData::Data {
  public:
+  using TransferCallback =
+      base::Callback<void(mojom::URLLoaderAssociatedRequest,
+                          mojom::URLLoaderClientAssociatedPtr)>;
+
   // Returns the ResourceRequestInfoImpl associated with the given URLRequest.
   CONTENT_EXPORT static ResourceRequestInfoImpl* ForRequest(
       net::URLRequest* request);
@@ -78,6 +85,7 @@ class ResourceRequestInfoImpl : public ResourceRequestInfo,
   ResourceContext* GetContext() const override;
   int GetChildID() const override;
   int GetRouteID() const override;
+  GlobalRequestID GetGlobalRequestID() const override;
   int GetOriginPID() const override;
   int GetRenderFrameID() const override;
   int GetFrameTreeNodeId() const override;
@@ -101,7 +109,6 @@ class ResourceRequestInfoImpl : public ResourceRequestInfo,
   CONTENT_EXPORT void AssociateWithRequest(net::URLRequest* request);
 
   CONTENT_EXPORT int GetRequestID() const;
-  CONTENT_EXPORT GlobalRequestID GetGlobalRequestID() const;
   GlobalRoutingID GetGlobalRoutingID() const;
 
   // PlzNavigate
@@ -123,7 +130,9 @@ class ResourceRequestInfoImpl : public ResourceRequestInfo,
                          int render_frame_id,
                          int origin_pid,
                          int request_id,
-                         base::WeakPtr<ResourceMessageFilter> filter);
+                         base::WeakPtr<ResourceMessageFilter> filter,
+                         mojom::URLLoaderAssociatedRequest url_loader_request,
+                         mojom::URLLoaderClientAssociatedPtr url_loader_client);
 
   // Whether this request is part of a navigation that should replace the
   // current session history entry. This state is shuffled up and down the stack
@@ -208,6 +217,10 @@ class ResourceRequestInfoImpl : public ResourceRequestInfo,
     return service_worker_context_.get();
   }
 
+  void set_on_transfer(const TransferCallback& on_transfer) {
+    on_transfer_ = on_transfer;
+  }
+
  private:
   FRIEND_TEST_ALL_PREFIXES(ResourceDispatcherHostTest,
                            DeletedFilterDetached);
@@ -252,6 +265,11 @@ class ResourceRequestInfoImpl : public ResourceRequestInfo,
   bool initiated_in_secure_context_;
   std::unique_ptr<NavigationUIData> navigation_ui_data_;
   scoped_refptr<ServiceWorkerContextWrapper> service_worker_context_;
+
+  // This callback is set by MojoAsyncResourceHandler to update its mojo binding
+  // and remote endpoint. This callback will be removed once PlzNavigate is
+  // shipped.
+  TransferCallback on_transfer_;
 
   DISALLOW_COPY_AND_ASSIGN(ResourceRequestInfoImpl);
 };

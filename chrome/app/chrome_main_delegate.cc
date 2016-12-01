@@ -51,6 +51,8 @@
 #include "content/public/common/content_paths.h"
 #include "content/public/common/content_switches.h"
 #include "extensions/common/constants.h"
+#include "ppapi/features/features.h"
+#include "printing/features/features.h"
 #include "ui/base/material_design/material_design_controller.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_switches.h"
@@ -137,7 +139,7 @@
 #include "components/nacl/renderer/plugin/ppapi_entrypoints.h"
 #endif
 
-#if defined(ENABLE_PLUGINS) && (defined(CHROME_MULTIPLE_DLL_CHILD) || \
+#if BUILDFLAG(ENABLE_PLUGINS) && (defined(CHROME_MULTIPLE_DLL_CHILD) || \
     !defined(CHROME_MULTIPLE_DLL_BROWSER))
 #include "pdf/pdf.h"
 #endif
@@ -894,7 +896,7 @@ void ChromeMainDelegate::SandboxInitialized(const std::string& process_type) {
       nacl_plugin::PPP_InitializeModule,
       nacl_plugin::PPP_ShutdownModule);
 #endif
-#if defined(ENABLE_PLUGINS) && defined(ENABLE_PDF)
+#if BUILDFLAG(ENABLE_PLUGINS) && defined(ENABLE_PDF)
   ChromeContentClient::SetPDFEntryFunctions(
       chrome_pdf::PPP_GetInterface,
       chrome_pdf::PPP_InitializeModule,
@@ -910,7 +912,7 @@ int ChromeMainDelegate::RunProcess(
   // doesn't support empty array. So we comment out the block for Android.
 #if !defined(OS_ANDROID)
   static const MainFunction kMainFunctions[] = {
-#if defined(ENABLE_PRINT_PREVIEW) && !defined(CHROME_MULTIPLE_DLL_CHILD)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW) && !defined(CHROME_MULTIPLE_DLL_CHILD)
     { switches::kServiceProcess,     ServiceProcessMain },
 #endif
 

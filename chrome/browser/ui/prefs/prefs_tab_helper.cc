@@ -44,6 +44,8 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/renderer_preferences.h"
 #include "content/public/common/web_preferences.h"
+#include "extensions/features/features.h"
+#include "media/media_features.h"
 #include "third_party/icu/source/common/unicode/uchar.h"
 #include "third_party/icu/source/common/unicode/uscript.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -66,7 +68,7 @@ namespace {
 
 // The list of prefs we want to observe.
 const char* const kPrefsToObserve[] = {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   prefs::kAnimationPolicy,
 #endif
   prefs::kDataSaverEnabled,
@@ -346,7 +348,7 @@ class PrefWatcher : public KeyedService {
     pref_change_registrar_.Add(prefs::kEnableDoNotTrack, renderer_callback);
     pref_change_registrar_.Add(prefs::kEnableReferrers, renderer_callback);
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
     pref_change_registrar_.Add(prefs::kWebRTCMultipleRoutesEnabled,
                                renderer_callback);
     pref_change_registrar_.Add(prefs::kWebRTCNonProxiedUdpEnabled,

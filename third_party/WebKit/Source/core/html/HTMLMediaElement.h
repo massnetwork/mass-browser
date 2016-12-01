@@ -37,11 +37,12 @@
 #include "core/html/AutoplayExperimentHelper.h"
 #include "core/html/HTMLElement.h"
 #include "core/html/track/TextTrack.h"
+#include "platform/MIMETypeRegistry.h"
 #include "platform/Supplementable.h"
+#include "platform/WebTaskRunner.h"
 #include "platform/audio/AudioSourceProvider.h"
 #include "public/platform/WebAudioSourceProviderClient.h"
 #include "public/platform/WebMediaPlayerClient.h"
-#include "public/platform/WebMimeRegistry.h"
 #include <memory>
 
 namespace blink {
@@ -85,7 +86,7 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   USING_PRE_FINALIZER(HTMLMediaElement, dispose);
 
  public:
-  static WebMimeRegistry::SupportsType supportsType(const ContentType&);
+  static MIMETypeRegistry::SupportsType supportsType(const ContentType&);
 
   enum class RecordMetricsBehavior { DoNotRecord, DoRecord };
 
@@ -117,7 +118,7 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   };
   void scheduleTextTrackResourceLoad();
 
-  bool hasRemoteRoutes() const { return m_remoteRoutesAvailable; }
+  bool hasRemoteRoutes() const;
   bool isPlayingRemotely() const { return m_playingRemotely; }
 
   // error state
@@ -181,6 +182,7 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   void pause();
   void requestRemotePlayback();
   void requestRemotePlaybackControl();
+  void requestRemotePlaybackStop();
 
   // statistics
   unsigned webkitAudioDecodedByteCount() const;
@@ -194,7 +196,7 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   bool shouldShowControls(
       const RecordMetricsBehavior = RecordMetricsBehavior::DoNotRecord) const;
   double volume() const;
-  void setVolume(double, ExceptionState&);
+  void setVolume(double, ExceptionState& = ASSERT_NO_EXCEPTION);
   bool muted() const;
   void setMuted(bool);
 
@@ -307,7 +309,9 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   WebRemotePlaybackClient* remotePlaybackClient() {
     return m_remotePlaybackClient;
   }
-  void setRemotePlaybackClient(WebRemotePlaybackClient*);
+  const WebRemotePlaybackClient* remotePlaybackClient() const {
+    return m_remotePlaybackClient;
+  }
 
  protected:
   HTMLMediaElement(const QualifiedName&, Document&);
@@ -350,7 +354,6 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   void didBecomeFullscreenElement() final;
   void willStopBeingFullscreenElement() final;
   bool isInteractiveContent() const final;
-  void defaultEventHandler(Event*) final;
 
   // ActiveDOMObject functions.
   void contextDestroyed() final;
@@ -386,10 +389,14 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   void removeTextTrack(WebInbandTextTrack*) final;
   void mediaSourceOpened(WebMediaSource*) final;
   void requestSeek(double) final;
-  void remoteRouteAvailabilityChanged(bool) final;
+  void remoteRouteAvailabilityChanged(WebRemotePlaybackAvailability) final;
   void connectedToRemoteDevice() final;
   void disconnectedFromRemoteDevice() final;
   void cancelledRemotePlaybackRequest() final;
+  void remotePlaybackStarted() final;
+  bool hasSelectedVideoTrack() final;
+  WebMediaPlayer::TrackId getSelectedVideoTrackId() final;
+  bool isAutoplayingMuted() final;
   void requestReload(const WebURL&) final;
 
   void loadTimerFired(TimerBase*);
@@ -465,8 +472,12 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   bool endedPlayback(LoopCondition = LoopCondition::Included) const;
 
   void setShouldDelayLoadEvent(bool);
-  void invalidateCachedTime();
-  void refreshCachedTime() const;
+
+  double earliestPossiblePosition() const;
+  double currentPlaybackPosition() const;
+  double officialPlaybackPosition() const;
+  void setOfficialPlaybackPosition(double) const;
+  void requireOfficialPlaybackPositionUpdate() const;
 
   void ensureMediaControls();
   void configureMediaControls();
@@ -565,7 +576,7 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   double m_lastTimeUpdateEventWallTime;
 
   // The last time a timeupdate event was sent in movie time.
-  double m_lastTimeUpdateEventMovieTime;
+  double m_lastTimeUpdateEventMediaTime;
 
   // The default playback start position.
   double m_defaultPlaybackStartPosition;
@@ -604,9 +615,11 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
 
   Member<HTMLMediaSource> m_mediaSource;
 
-  // Cached time value. Only valid when ready state is kHaveMetadata or
-  // higher, otherwise the current time is assumed to be zero.
-  mutable double m_cachedTime;
+  // Stores "official playback position", updated periodically from "current
+  // playback position". Official playback position should not change while
+  // scripts are running. See setOfficialPlaybackPosition().
+  mutable double m_officialPlaybackPosition;
+  mutable bool m_officialPlaybackPositionNeedsUpdate;
 
   double m_fragmentEndTime;
 
@@ -633,7 +646,6 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
 
   bool m_tracksAreReady : 1;
   bool m_processingPreferenceChange : 1;
-  bool m_remoteRoutesAvailable : 1;
   bool m_playingRemotely : 1;
   // Whether this element is in overlay fullscreen mode.
   bool m_inOverlayFullscreenVideo : 1;
@@ -646,8 +658,8 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   Member<CueTimeline> m_cueTimeline;
 
   HeapVector<Member<ScriptPromiseResolver>> m_playPromiseResolvers;
-  std::unique_ptr<CancellableTaskFactory> m_playPromiseResolveTask;
-  std::unique_ptr<CancellableTaskFactory> m_playPromiseRejectTask;
+  TaskHandle m_playPromiseResolveTaskHandle;
+  TaskHandle m_playPromiseRejectTaskHandle;
   HeapVector<Member<ScriptPromiseResolver>> m_playPromiseResolveList;
   HeapVector<Member<ScriptPromiseResolver>> m_playPromiseRejectList;
   ExceptionCode m_playPromiseErrorCode;
@@ -708,10 +720,12 @@ class CORE_EXPORT HTMLMediaElement : public HTMLElement,
   class AutoplayHelperClientImpl;
 
   friend class AutoplayUmaHelper;  // for isAutoplayAllowedPerSettings
+  friend class AutoplayUmaHelperTest;
   friend class Internals;
   friend class TrackDisplayUpdateScope;
   friend class AutoplayExperimentHelper;
   friend class MediaControlsTest;
+  friend class HTMLVideoElementTest;
 
   Member<AutoplayExperimentHelper::Client> m_autoplayHelperClient;
   Member<AutoplayExperimentHelper> m_autoplayHelper;

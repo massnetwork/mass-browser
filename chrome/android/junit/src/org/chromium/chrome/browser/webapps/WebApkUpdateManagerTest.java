@@ -8,10 +8,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import static org.chromium.chrome.browser.webapps.ManifestUpgradeDetector.FetchedManifestData;
-
-import android.graphics.Bitmap;
-import android.os.Bundle;
+import android.provider.Settings;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -29,8 +26,9 @@ import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.content_public.common.ScreenOrientationValues;
 import org.chromium.testing.local.LocalRobolectricTestRunner;
 import org.chromium.webapk.lib.client.WebApkVersion;
-import org.chromium.webapk.lib.common.WebApkMetaDataKeys;
 import org.chromium.webapk.test.WebApkTestHelper;
+
+import java.util.HashMap;
 
 /**
  * Unit tests for WebApkUpdateManager.
@@ -40,9 +38,6 @@ import org.chromium.webapk.test.WebApkTestHelper;
 public class WebApkUpdateManagerTest {
     /** WebAPK's id in {@link WebAppDataStorage}. */
     private static final String WEBAPK_ID = "id";
-
-    /** WebAPK's start URL. */
-    private static final String WEBAPK_START_URL = "https://www.unicode.party";
 
     /** Value of the "name" <meta-data> tag in the Android Manifest. */
     private static final String ANDROID_MANIFEST_NAME = "Android Manifest name";
@@ -70,8 +65,8 @@ public class WebApkUpdateManagerTest {
         private boolean mStarted;
 
         public TestManifestUpgradeDetector(
-                Tab tab, WebApkMetaData metaData, ManifestUpgradeDetector.Callback callback) {
-            super(tab, metaData, callback);
+                Tab tab, WebApkInfo info, ManifestUpgradeDetector.Callback callback) {
+            super(tab, info, callback);
         }
 
         public boolean wasStarted() {
@@ -129,18 +124,15 @@ public class WebApkUpdateManagerTest {
         }
 
         @Override
-        protected ManifestUpgradeDetector buildManifestUpgradeDetector(
-                Tab tab, WebApkMetaData metaData) {
-            mUpgradeDetector = new TestManifestUpgradeDetector(tab, metaData, this);
+        protected ManifestUpgradeDetector buildManifestUpgradeDetector(Tab tab, WebApkInfo info) {
+            mUpgradeDetector = new TestManifestUpgradeDetector(tab, info, this);
             return mUpgradeDetector;
         }
 
         @Override
-        protected void updateAsync(String startUrl, String scopeUrl, String name, String shortName,
-                String iconUrl, String iconMurmur2Hash, Bitmap icon, int displayMode,
-                int orientation, long themeColor, long backgroundColor) {
+        protected void updateAsync(WebApkInfo info, String bestIconUrl) {
             ++mNumUpdatesRequested;
-            mUpdateName = name;
+            mUpdateName = info.name();
         }
 
         @Override
@@ -156,35 +148,39 @@ public class WebApkUpdateManagerTest {
     }
 
     private MockClock mClock;
+    private int mShellApkVersion;
 
-    /** Registers WebAPK with default package name. Overwrites previous registrations. */
-    private void registerWebApk(int shellApkVersionCode) {
-        Bundle metaData = new Bundle();
-        metaData.putString(WebApkMetaDataKeys.START_URL, WEBAPK_START_URL);
-        metaData.putString(WebApkMetaDataKeys.NAME, ANDROID_MANIFEST_NAME);
-        metaData.putInt(
-                WebApkMetaDataKeys.SHELL_APK_VERSION, shellApkVersionCode);
-        WebApkTestHelper.registerWebApkWithMetaData(metaData);
+    /** Sets the version of the code in //chrome/android/webapk/shell_apk. */
+    public void setShellApkVersion(int shellApkVersion) {
+        mShellApkVersion = shellApkVersion;
     }
 
     private WebappDataStorage getStorage() {
         return WebappRegistry.getInstance().getWebappDataStorage(WEBAPK_ID);
     }
 
-    private void updateIfNeeded(WebApkUpdateManager updateManager) {
-        WebApkInfo info = WebApkInfo.create(WEBAPK_ID, WEBAPK_START_URL, null, null, null, null,
-                WebDisplayMode.Standalone, ScreenOrientationValues.DEFAULT, ShortcutSource.UNKNOWN,
+    private WebApkInfo infoWithName(String name) {
+        return WebApkInfo.create(WEBAPK_ID, "", "", null, name, "", WebDisplayMode.Standalone,
+                ScreenOrientationValues.DEFAULT, ShortcutSource.UNKNOWN,
                 ShortcutHelper.MANIFEST_COLOR_INVALID_OR_MISSING,
-                ShortcutHelper.MANIFEST_COLOR_INVALID_OR_MISSING, false,
-                WebApkTestHelper.WEBAPK_PACKAGE_NAME);
+                ShortcutHelper.MANIFEST_COLOR_INVALID_OR_MISSING,
+                WebApkTestHelper.WEBAPK_PACKAGE_NAME, mShellApkVersion, "", "",
+                new HashMap<String, String>());
+    }
+
+    private WebApkInfo fetchedWebApkInfo() {
+        return infoWithName(WEB_MANIFEST_NAME);
+    }
+
+    private void updateIfNeeded(WebApkUpdateManager updateManager) {
+        WebApkInfo info = infoWithName(ANDROID_MANIFEST_NAME);
         updateManager.updateIfNeeded(null, info);
     }
 
     private void onGotWebApkCompatibleWebManifestForInitialUrl(
             WebApkUpdateManager updateManager, boolean needsUpdate) {
-        FetchedManifestData fetchedManifestData = new FetchedManifestData();
-        fetchedManifestData.name = WEB_MANIFEST_NAME;
-        updateManager.onFinishedFetchingWebManifestForInitialUrl(needsUpdate, fetchedManifestData);
+        updateManager.onFinishedFetchingWebManifestForInitialUrl(
+                needsUpdate, fetchedWebApkInfo(), null);
     }
 
     /**
@@ -202,10 +198,13 @@ public class WebApkUpdateManagerTest {
         ContextUtils.initApplicationContextForTests(RuntimeEnvironment.application);
         CommandLine.init(null);
 
+        Settings.Secure.putInt(RuntimeEnvironment.application.getContentResolver(),
+                Settings.Secure.INSTALL_NON_MARKET_APPS, 1);
+
         mClock = new MockClock();
         WebappDataStorage.setClockForTests(mClock);
 
-        registerWebApk(WebApkVersion.CURRENT_SHELL_APK_VERSION);
+        mShellApkVersion = WebApkVersion.CURRENT_SHELL_APK_VERSION;
 
         WebappRegistry.getInstance().register(
                 WEBAPK_ID, new WebappRegistry.FetchWebappDataStorageCallback() {
@@ -383,14 +382,14 @@ public class WebApkUpdateManagerTest {
      */
     @Test
     public void testShellApkOutOfDateNoWebManifest() {
-        registerWebApk(WebApkVersion.CURRENT_SHELL_APK_VERSION - 1);
+        setShellApkVersion(WebApkVersion.CURRENT_SHELL_APK_VERSION - 1);
         mClock.advance(WebApkUpdateManager.FULL_CHECK_UPDATE_INTERVAL);
 
         TestWebApkUpdateManager updateManager = new TestWebApkUpdateManager(mClock);
         updateIfNeeded(updateManager);
         assertTrue(updateManager.updateCheckStarted());
 
-        updateManager.onFinishedFetchingWebManifestForInitialUrl(false, null);
+        updateManager.onFinishedFetchingWebManifestForInitialUrl(false, null, null);
         assertTrue(updateManager.updateRequested());
         assertEquals(ANDROID_MANIFEST_NAME, updateManager.requestedUpdateName());
 
@@ -406,16 +405,14 @@ public class WebApkUpdateManagerTest {
      */
     @Test
     public void testShellApkOutOfDateStillHasWebManifest() {
-        registerWebApk(WebApkVersion.CURRENT_SHELL_APK_VERSION - 1);
+        setShellApkVersion(WebApkVersion.CURRENT_SHELL_APK_VERSION - 1);
         mClock.advance(WebApkUpdateManager.FULL_CHECK_UPDATE_INTERVAL);
 
         TestWebApkUpdateManager updateManager = new TestWebApkUpdateManager(mClock);
         updateIfNeeded(updateManager);
         assertTrue(updateManager.updateCheckStarted());
 
-        FetchedManifestData fetchedManifestData = new FetchedManifestData();
-        fetchedManifestData.name = WEB_MANIFEST_NAME;
-        updateManager.onFinishedFetchingWebManifestForInitialUrl(false, fetchedManifestData);
+        updateManager.onFinishedFetchingWebManifestForInitialUrl(false, fetchedWebApkInfo(), null);
         assertTrue(updateManager.updateRequested());
         assertEquals(WEB_MANIFEST_NAME, updateManager.requestedUpdateName());
 
@@ -441,7 +438,7 @@ public class WebApkUpdateManagerTest {
         assertTrue(updateManager.updateCheckStarted());
 
         // start_url does not have a Web Manifest. No update should be requested.
-        updateManager.onFinishedFetchingWebManifestForInitialUrl(false, null);
+        updateManager.onFinishedFetchingWebManifestForInitialUrl(false, null, null);
         assertFalse(updateManager.updateRequested());
         // {@link ManifestUpgradeDetector} should still be alive so that it can get
         // {@link #onGotManifestData} when page with the Web Manifest finishes loading.
@@ -449,9 +446,7 @@ public class WebApkUpdateManagerTest {
 
         // start_url redirects to page with Web Manifest.
 
-        FetchedManifestData fetchedManifestData = new FetchedManifestData();
-        fetchedManifestData.name = WEB_MANIFEST_NAME;
-        updateManager.onGotManifestData(true, fetchedManifestData);
+        updateManager.onGotManifestData(true, fetchedWebApkInfo(), null);
         assertTrue(updateManager.updateRequested());
         assertEquals(WEB_MANIFEST_NAME, updateManager.requestedUpdateName());
 
@@ -472,8 +467,8 @@ public class WebApkUpdateManagerTest {
 
         TestWebApkUpdateManager updateManager = new TestWebApkUpdateManager(mClock);
         updateIfNeeded(updateManager);
-        updateManager.onFinishedFetchingWebManifestForInitialUrl(false, null);
-        updateManager.onGotManifestData(false, new FetchedManifestData());
+        updateManager.onFinishedFetchingWebManifestForInitialUrl(false, null, null);
+        updateManager.onGotManifestData(false, fetchedWebApkInfo(), null);
         assertFalse(updateManager.updateRequested());
 
         // We got the Web Manifest. The {@link ManifestUpgradeDetector} should be destroyed to stop

@@ -692,12 +692,6 @@ ScrollAnimatorBase* ScrollAnimatorBase::create(ScrollableArea* scrollableArea) {
 
 ScrollAnimatorMac::ScrollAnimatorMac(ScrollableArea* scrollableArea)
     : ScrollAnimatorBase(scrollableArea),
-      m_initialScrollbarPaintTaskFactory(CancellableTaskFactory::create(
-          this,
-          &ScrollAnimatorMac::initialScrollbarPaintTask)),
-      m_sendContentAreaScrolledTaskFactory(CancellableTaskFactory::create(
-          this,
-          &ScrollAnimatorMac::sendContentAreaScrolledTask)),
       m_taskRunner(Platform::current()
                        ->currentThread()
                        ->scheduler()
@@ -736,8 +730,8 @@ void ScrollAnimatorMac::dispose() {
   [m_scrollAnimationHelperDelegate.get() invalidate];
   END_BLOCK_OBJC_EXCEPTIONS;
 
-  m_initialScrollbarPaintTaskFactory->cancel();
-  m_sendContentAreaScrolledTaskFactory->cancel();
+  m_initialScrollbarPaintTaskHandle.cancel();
+  m_sendContentAreaScrolledTaskHandle.cancel();
 }
 
 ScrollResult ScrollAnimatorMac::userScroll(ScrollGranularity granularity,
@@ -952,20 +946,6 @@ void ScrollAnimatorMac::willRemoveHorizontalScrollbar(Scrollbar& scrollbar) {
   [m_scrollbarPainterController.get() setHorizontalScrollerImp:nil];
 }
 
-bool ScrollAnimatorMac::shouldScrollbarParticipateInHitTesting(
-    Scrollbar& scrollbar) {
-  // Non-overlay scrollbars should always participate in hit testing.
-  if (ScrollbarThemeMac::recommendedScrollerStyle() != NSScrollerStyleOverlay)
-    return true;
-
-  // Overlay scrollbars should participate in hit testing whenever they are at
-  // all visible.
-  ScrollbarPainter painter = scrollbarPainterForScrollbar(scrollbar);
-  if (!painter)
-    return false;
-  return [painter knobAlpha] > 0;
-}
-
 void ScrollAnimatorMac::notifyContentAreaScrolled(const ScrollOffset& delta) {
   // This function is called when a page is going into the page cache, but the
   // page
@@ -983,7 +963,7 @@ bool ScrollAnimatorMac::setScrollbarsVisibleForTesting(bool show) {
     [m_scrollbarPainterController.get() hideOverlayScrollers];
 
   [m_verticalScrollbarPainterDelegate.get() updateVisibilityImmediately:show];
-  [m_verticalScrollbarPainterDelegate.get() updateVisibilityImmediately:show];
+  [m_horizontalScrollbarPainterDelegate.get() updateVisibilityImmediately:show];
   return true;
 }
 
@@ -1082,17 +1062,17 @@ void ScrollAnimatorMac::updateScrollerStyle() {
 }
 
 void ScrollAnimatorMac::startScrollbarPaintTimer() {
-  m_taskRunner->postDelayedTask(
-      BLINK_FROM_HERE, m_initialScrollbarPaintTaskFactory->cancelAndCreate(),
-      0.1);
+  m_initialScrollbarPaintTaskHandle = m_taskRunner->postCancellableTask(
+      BLINK_FROM_HERE, WTF::bind(&ScrollAnimatorMac::initialScrollbarPaintTask,
+                                 wrapWeakPersistent(this)));
 }
 
 bool ScrollAnimatorMac::scrollbarPaintTimerIsActive() const {
-  return m_initialScrollbarPaintTaskFactory->isPending();
+  return m_initialScrollbarPaintTaskHandle.isActive();
 }
 
 void ScrollAnimatorMac::stopScrollbarPaintTimer() {
-  m_initialScrollbarPaintTaskFactory->cancel();
+  m_initialScrollbarPaintTaskHandle.cancel();
 }
 
 void ScrollAnimatorMac::initialScrollbarPaintTask() {
@@ -1106,10 +1086,12 @@ void ScrollAnimatorMac::initialScrollbarPaintTask() {
 void ScrollAnimatorMac::sendContentAreaScrolledSoon(const ScrollOffset& delta) {
   m_contentAreaScrolledTimerScrollDelta = delta;
 
-  if (!m_sendContentAreaScrolledTaskFactory->isPending())
-    m_taskRunner->postTask(
-        BLINK_FROM_HERE,
-        m_sendContentAreaScrolledTaskFactory->cancelAndCreate());
+  if (m_sendContentAreaScrolledTaskHandle.isActive())
+    return;
+  m_sendContentAreaScrolledTaskHandle = m_taskRunner->postCancellableTask(
+      BLINK_FROM_HERE,
+      WTF::bind(&ScrollAnimatorMac::sendContentAreaScrolledTask,
+                wrapWeakPersistent(this)));
 }
 
 void ScrollAnimatorMac::sendContentAreaScrolledTask() {

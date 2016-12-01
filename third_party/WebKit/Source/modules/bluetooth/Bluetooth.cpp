@@ -17,6 +17,8 @@
 #include "platform/UserGestureIndicator.h"
 #include "public/platform/modules/bluetooth/WebBluetooth.h"
 #include "public/platform/modules/bluetooth/WebRequestDeviceOptions.h"
+#include <memory>
+#include <utility>
 
 namespace blink {
 
@@ -36,7 +38,7 @@ const char kDeviceNameTooLong[] =
     "A device name can't be longer than 248 bytes.";
 }  // namespace
 
-static void canonicalizeFilter(const BluetoothScanFilter& filter,
+static void canonicalizeFilter(const BluetoothScanFilterInit& filter,
                                WebBluetoothScanFilter& canonicalizedFilter,
                                ExceptionState& exceptionState) {
   if (!(filter.hasServices() || filter.hasName() || filter.hasNamePrefix())) {
@@ -106,7 +108,7 @@ static void convertRequestDeviceOptions(const RequestDeviceOptions& options,
   }
 
   Vector<WebBluetoothScanFilter> filters;
-  for (const BluetoothScanFilter& filter : options.filters()) {
+  for (const BluetoothScanFilterInit& filter : options.filters()) {
     WebBluetoothScanFilter canonicalizedFilter = WebBluetoothScanFilter();
 
     canonicalizeFilter(filter, canonicalizedFilter, exceptionState);
@@ -164,7 +166,7 @@ class RequestDeviceCallback : public WebBluetoothRequestDeviceCallbacks {
   Persistent<ScriptPromiseResolver> m_resolver;
 };
 
-// https://webbluetoothchrome.github.io/web-bluetooth/#dom-bluetooth-requestdevice
+// https://webbluetoothcg.github.io/web-bluetooth/#dom-bluetooth-requestdevice
 ScriptPromise Bluetooth::requestDevice(ScriptState* scriptState,
                                        const RequestDeviceOptions& options,
                                        ExceptionState& exceptionState) {

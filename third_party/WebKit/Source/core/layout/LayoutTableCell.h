@@ -227,7 +227,8 @@ class CORE_EXPORT LayoutTableCell final : public LayoutBlockFlow {
   void setOverrideLogicalContentHeightFromRowHeight(LayoutUnit);
 
   void scrollbarsChanged(bool horizontalScrollbarChanged,
-                         bool verticalScrollbarChanged) override;
+                         bool verticalScrollbarChanged,
+                         ScrollbarChangeContext = Layout) override;
 
   bool cellWidthChanged() const { return m_cellWidthChanged; }
   void setCellWidthChanged(bool b = true) { m_cellWidthChanged = b; }
@@ -317,9 +318,27 @@ class CORE_EXPORT LayoutTableCell final : public LayoutBlockFlow {
     CollapsedBorderValue m_afterBorder;
   };
 
-  bool usesTableAsAdditionalDisplayItemClient() const;
+  class RowBackgroundDisplayItemClient : public DisplayItemClient {
+   public:
+    RowBackgroundDisplayItemClient(const LayoutTableCell&);
+
+    // DisplayItemClient methods.
+    String debugName() const;
+    LayoutRect visualRect() const;
+
+   private:
+    const LayoutTableCell& m_layoutTableCell;
+  };
+
+  bool usesCompositedCellDisplayItemClients() const;
   const CollapsedBorderValues* collapsedBorderValues() const {
     return m_collapsedBorderValues.get();
+  }
+  const DisplayItemClient& backgroundDisplayItemClient() const {
+    return m_rowBackgroundDisplayItemClient
+               ? static_cast<const DisplayItemClient&>(
+                     *m_rowBackgroundDisplayItemClient)
+               : *this;
   }
 
   LayoutRect debugRect() const override;
@@ -328,6 +347,8 @@ class CORE_EXPORT LayoutTableCell final : public LayoutBlockFlow {
 
   // A table cell's location is relative to its containing section.
   LayoutBox* locationContainer() const override { return section(); }
+
+  void ensureIsReadyForPaintInvalidation() override;
 
  protected:
   void styleDidChange(StyleDifference, const ComputedStyle* oldStyle) override;
@@ -350,10 +371,6 @@ class CORE_EXPORT LayoutTableCell final : public LayoutBlockFlow {
   void paintBoxDecorationBackground(const PaintInfo&,
                                     const LayoutPoint&) const override;
   void paintMask(const PaintInfo&, const LayoutPoint&) const override;
-
-  bool boxShadowShouldBeAppliedToBackground(
-      BackgroundBleedAvoidance,
-      const InlineFlowBox*) const override;
 
   LayoutSize offsetFromContainer(const LayoutObject*) const override;
   LayoutRect localVisualRect() const override;
@@ -432,6 +449,8 @@ class CORE_EXPORT LayoutTableCell final : public LayoutBlockFlow {
   int m_intrinsicPaddingAfter;
 
   std::unique_ptr<CollapsedBorderValues> m_collapsedBorderValues;
+  std::unique_ptr<RowBackgroundDisplayItemClient>
+      m_rowBackgroundDisplayItemClient;
 };
 
 DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutTableCell, isTableCell());

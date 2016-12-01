@@ -10,6 +10,7 @@
 #include "WebFrameLoadType.h"
 #include "WebHistoryItem.h"
 #include "public/platform/WebCachePolicy.h"
+#include "public/platform/WebURLError.h"
 
 namespace blink {
 
@@ -22,7 +23,6 @@ class WebFrameClient;
 class WebFrameWidget;
 class WebRange;
 class WebScriptExecutionCallback;
-class WebSuspendableTask;
 enum class WebCachePolicy;
 enum class WebSandboxFlags;
 enum class WebTreeScopeType;
@@ -122,14 +122,14 @@ class WebLocalFrame : public WebFrame {
                         WebHistoryLoadType = WebHistoryDifferentDocumentLoad,
                         bool isClientRedirect = false) = 0;
 
+  // On load failure, attempts to make frame's parent rendering fallback content
+  // and stop this frame loading.
+  virtual bool maybeRenderFallbackContent(const WebURLError&) const = 0;
+
   // Navigation State -------------------------------------------------------
 
   // Returns true if the current frame's load event has not completed.
   virtual bool isLoading() const = 0;
-
-  // Returns true if the current frame is detaching/detached. crbug.com/654654
-  virtual bool isFrameDetachedForSpecialOneOffStopTheCrashingHackBug561873()
-      const = 0;
 
   // Returns true if there is a pending redirect or location change
   // within specified interval (in seconds). This could be caused by:
@@ -215,11 +215,6 @@ class WebLocalFrame : public WebFrame {
       int extensionGroup,
       bool userGesture,
       WebScriptExecutionCallback*) = 0;
-
-  // Run the task when the context of the current page is not suspended
-  // otherwise run it on context resumed.
-  // Method takes ownership of the passed task.
-  virtual void requestRunTask(WebSuspendableTask*) const = 0;
 
   // Associates an isolated world with human-readable name which is useful for
   // extension debugging.
@@ -307,7 +302,6 @@ class WebLocalFrame : public WebFrame {
   virtual void replaceMisspelledRange(const WebString&) = 0;
   virtual void enableSpellChecking(bool) = 0;
   virtual bool isSpellCheckingEnabled() const = 0;
-  virtual void requestTextChecking(const WebElement&) = 0;
   virtual void removeSpellingMarkers() = 0;
 
   // Content Settings -------------------------------------------------------

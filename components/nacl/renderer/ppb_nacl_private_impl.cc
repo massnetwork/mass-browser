@@ -337,8 +337,7 @@ blink::WebAssociatedURLLoader* CreateAssociatedURLLoader(
 
 blink::WebURLRequest CreateWebURLRequest(const blink::WebDocument& document,
                                          const GURL& gurl) {
-  blink::WebURLRequest request;
-  request.setURL(gurl);
+  blink::WebURLRequest request(gurl);
   request.setFirstPartyForCookies(document.firstPartyForCookies());
   return request;
 }
@@ -495,7 +494,9 @@ void PPBNaClPrivate::LaunchSelLdr(
     // Even on error, some FDs/handles may be passed to here.
     // We must release those resources.
     // See also nacl_process_host.cc.
-    base::SharedMemory::CloseHandle(launch_result.crash_info_shmem_handle);
+    if (base::SharedMemory::IsHandleValid(
+            launch_result.crash_info_shmem_handle))
+      base::SharedMemory::CloseHandle(launch_result.crash_info_shmem_handle);
 
     if (PP_ToBool(main_service_runtime)) {
       load_manager->ReportLoadError(PP_NACL_ERROR_SEL_LDR_LAUNCH,
@@ -1098,7 +1099,7 @@ bool CreateJsonManifest(PP_Instance instance,
       PP_ToBool(NaClDebugEnabledForURL(manifest_url.c_str()))));
   JsonManifest::ErrorInfo error_info;
   if (j->Init(manifest_data.c_str(), &error_info)) {
-    GetNaClPluginInstance(instance)->json_manifest.reset(j.release());
+    GetNaClPluginInstance(instance)->json_manifest = std::move(j);
     return true;
   }
   load_manager->ReportLoadError(error_info.error, error_info.string);

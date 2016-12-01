@@ -142,11 +142,6 @@ class WebFrame {
   // URLs
   virtual WebVector<WebIconURL> iconURLs(int iconTypesMask) const = 0;
 
-  // For a WebFrame with contents being rendered in another process, this
-  // sets a layer for use by the in-process compositor. WebLayer should be
-  // null if the content is being rendered in the current process.
-  virtual void setRemoteWebLayer(WebLayer*) = 0;
-
   // Initializes the various client interfaces.
   virtual void setSharedWorkerRepositoryClient(
       WebSharedWorkerRepositoryClient*) = 0;
@@ -437,12 +432,6 @@ class WebFrame {
   // not be transformed itself. If no selection is present, the rect will be
   // empty ((0,0), (0,0)).
   virtual WebRect selectionBoundsRect() const = 0;
-
-  // Only for testing purpose:
-  // Returns true if selection.anchorNode has a marker on range from |from| with
-  // |length|.
-  virtual bool selectionStartHasSpellingMarkerFor(int from,
-                                                  int length) const = 0;
 
   // Dumps the layer tree, used by the accelerated compositor, in
   // text form. This is used only by layout tests.

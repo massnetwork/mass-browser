@@ -140,7 +140,7 @@ class ParkThreadsScope final {
 
 ThreadState::ThreadState(BlinkGC::ThreadHeapMode threadHeapMode)
     : m_thread(currentThread()),
-      m_persistentRegion(wrapUnique(new PersistentRegion())),
+      m_persistentRegion(makeUnique<PersistentRegion>()),
 #if OS(WIN) && COMPILER(MSVC)
       m_threadStackSize(0),
 #endif
@@ -913,9 +913,9 @@ void ThreadState::schedulePreciseGC() {
 
 namespace {
 
-#define UNEXPECTED_GCSTATE(s)                                             \
-  case ThreadState::s:                                                    \
-    RELEASE_NOTREACHED() << "Unexpected transition while in GCState " #s; \
+#define UNEXPECTED_GCSTATE(s)                                   \
+  case ThreadState::s:                                          \
+    LOG(FATAL) << "Unexpected transition while in GCState " #s; \
     return
 
 void unexpectedGCState(ThreadState::GCState gcState) {
@@ -1137,6 +1137,8 @@ void ThreadState::preSweep() {
 
 #if defined(ADDRESS_SANITIZER)
 void ThreadState::poisonAllHeaps() {
+  CrossThreadPersistentRegion::LockScope persistentLock(
+      ProcessHeap::crossThreadPersistentRegion());
   // Poisoning all unmarked objects in the other arenas.
   for (int i = 1; i < BlinkGC::NumberOfArenas; i++)
     m_arenas[i]->poisonArena();
@@ -1147,6 +1149,8 @@ void ThreadState::poisonAllHeaps() {
 }
 
 void ThreadState::poisonEagerArena() {
+  CrossThreadPersistentRegion::LockScope persistentLock(
+      ProcessHeap::crossThreadPersistentRegion());
   m_arenas[BlinkGC::EagerSweepArenaIndex]->poisonArena();
   // CrossThreadPersistents in unmarked objects may be accessed from other
   // threads (e.g. in CrossThreadPersistentRegion::shouldTracePersistent) and

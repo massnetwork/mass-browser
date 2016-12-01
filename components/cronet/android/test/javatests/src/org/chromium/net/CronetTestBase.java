@@ -34,7 +34,9 @@ public class CronetTestBase extends AndroidTestCase {
     @Override
     protected void setUp() throws Exception {
         super.setUp();
+        System.loadLibrary("cronet_tests");
         ContextUtils.initApplicationContext(getContext().getApplicationContext());
+        ContextUtils.initApplicationContextForNative();
         PathUtils.setPrivateDataDirectorySuffix(PRIVATE_DATA_DIRECTORY_SUFFIX);
         CronetTestFramework.prepareTestStorage(getContext());
     }
@@ -163,6 +165,14 @@ public class CronetTestBase extends AndroidTestCase {
             assertEquals(expected.getProxyServer(), actual.getProxyServer());
             // This is a place where behavior intentionally differs between native and java
             assertEquals(expected.getNegotiatedProtocol(), actual.getNegotiatedProtocol());
+        }
+    }
+
+    static void assertContains(String expectedSubstring, String actualString) {
+        assertNotNull(actualString);
+        if (!actualString.contains(expectedSubstring)) {
+            fail("String [" + actualString + "] doesn't contain substring [" + expectedSubstring
+                    + "]");
         }
     }
 

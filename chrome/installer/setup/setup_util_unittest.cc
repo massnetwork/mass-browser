@@ -26,12 +26,12 @@
 #include "base/win/registry.h"
 #include "base/win/scoped_handle.h"
 #include "base/win/windows_version.h"
+#include "chrome/installer/setup/installer_state.h"
 #include "chrome/installer/setup/setup_constants.h"
 #include "chrome/installer/setup/setup_util.h"
 #include "chrome/installer/util/browser_distribution.h"
 #include "chrome/installer/util/google_update_constants.h"
 #include "chrome/installer/util/installation_state.h"
-#include "chrome/installer/util/installer_state.h"
 #include "chrome/installer/util/updating_app_registration_data.h"
 #include "chrome/installer/util/util_constants.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -278,19 +278,25 @@ TEST(SetupUtilTest, AdjustFromBelowNormalPriority) {
 
 TEST(SetupUtilTest, RecordUnPackMetricsTest) {
   base::HistogramTester histogram_tester;
-  std::string metrics_name =
+  std::string unpack_status_metrics_name =
       std::string(installer::kUnPackStatusMetricsName) + "_SetupExePatch";
-  histogram_tester.ExpectTotalCount(metrics_name, 0);
+  std::string ntstatus_metrics_name =
+      std::string(installer::kUnPackNTSTATUSMetricsName) + "_SetupExePatch";
+  histogram_tester.ExpectTotalCount(unpack_status_metrics_name, 0);
 
-  RecordUnPackMetrics(UnPackStatus::UNPACK_NO_ERROR,
+  RecordUnPackMetrics(UnPackStatus::UNPACK_NO_ERROR, 0,
                       installer::UnPackConsumer::SETUP_EXE_PATCH);
-  histogram_tester.ExpectTotalCount(metrics_name, 1);
-  histogram_tester.ExpectBucketCount(metrics_name, 0, 1);
+  histogram_tester.ExpectTotalCount(unpack_status_metrics_name, 1);
+  histogram_tester.ExpectBucketCount(unpack_status_metrics_name, 0, 1);
+  histogram_tester.ExpectTotalCount(ntstatus_metrics_name, 1);
+  histogram_tester.ExpectBucketCount(ntstatus_metrics_name, 0, 1);
 
-  RecordUnPackMetrics(UnPackStatus::UNPACK_CLOSE_FILE_ERROR,
+  RecordUnPackMetrics(UnPackStatus::UNPACK_CLOSE_FILE_ERROR, 1,
                       installer::UnPackConsumer::SETUP_EXE_PATCH);
-  histogram_tester.ExpectTotalCount(metrics_name, 2);
-  histogram_tester.ExpectBucketCount(metrics_name, 10, 1);
+  histogram_tester.ExpectTotalCount(unpack_status_metrics_name, 2);
+  histogram_tester.ExpectBucketCount(unpack_status_metrics_name, 10, 1);
+  histogram_tester.ExpectTotalCount(ntstatus_metrics_name, 2);
+  histogram_tester.ExpectBucketCount(ntstatus_metrics_name, 1, 1);
 }
 
 namespace {

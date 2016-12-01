@@ -20,8 +20,8 @@ class GPU_EXPORT GpuMemoryBufferManager {
  public:
   GpuMemoryBufferManager();
 
-  // Allocates a GpuMemoryBuffer that can be shared with another process.
-  virtual std::unique_ptr<gfx::GpuMemoryBuffer> AllocateGpuMemoryBuffer(
+  // Creates a GpuMemoryBuffer that can be shared with another process.
+  virtual std::unique_ptr<gfx::GpuMemoryBuffer> CreateGpuMemoryBuffer(
       const gfx::Size& size,
       gfx::BufferFormat format,
       gfx::BufferUsage usage,
@@ -32,11 +32,6 @@ class GPU_EXPORT GpuMemoryBufferManager {
       const gfx::GpuMemoryBufferHandle& handle,
       const gfx::Size& size,
       gfx::BufferFormat format) = 0;
-
-  // Returns a GpuMemoryBuffer instance given a ClientBuffer. Returns NULL on
-  // failure.
-  virtual gfx::GpuMemoryBuffer* GpuMemoryBufferFromClientBuffer(
-      ClientBuffer buffer) = 0;
 
   // Associates destruction sync point with |buffer|.
   virtual void SetDestructionSyncToken(gfx::GpuMemoryBuffer* buffer,

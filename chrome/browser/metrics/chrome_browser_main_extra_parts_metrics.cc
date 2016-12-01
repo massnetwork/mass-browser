@@ -92,6 +92,8 @@ enum UMALinuxWindowManager {
   UMA_LINUX_WINDOW_MANAGER_STUMPWM,
   UMA_LINUX_WINDOW_MANAGER_WMII,
   UMA_LINUX_WINDOW_MANAGER_FLUXBOX,
+  UMA_LINUX_WINDOW_MANAGER_XMONAD,
+  UMA_LINUX_WINDOW_MANAGER_UNNAMED,
   // NOTE: Append new window managers to the list above this line (i.e. don't
   // renumber) and update LinuxWindowManagerName in
   // tools/metrics/histograms/histograms.xml accordingly.
@@ -111,8 +113,8 @@ enum UMATouchEventsState {
 
 #if defined(OS_ANDROID) && defined(__arm__)
 enum UMAAndroidArmFpu {
-  UMA_ANDROID_ARM_FPU_VFPV3_D16, // The ARM CPU only supports vfpv3-d16.
-  UMA_ANDROID_ARM_FPU_NEON,      // The Arm CPU supports NEON.
+  UMA_ANDROID_ARM_FPU_VFPV3_D16,  // The ARM CPU only supports vfpv3-d16.
+  UMA_ANDROID_ARM_FPU_NEON,       // The Arm CPU supports NEON.
   UMA_ANDROID_ARM_FPU_COUNT
 };
 #endif  // defined(OS_ANDROID) && defined(__arm__)
@@ -200,8 +202,10 @@ void RecordLinuxGlibcVersion() {
 #if defined(USE_X11) && !defined(OS_CHROMEOS)
 UMALinuxWindowManager GetLinuxWindowManager() {
   switch (ui::GuessWindowManager()) {
-    case ui::WM_UNKNOWN:
+    case ui::WM_OTHER:
       return UMA_LINUX_WINDOW_MANAGER_OTHER;
+    case ui::WM_UNNAMED:
+      return UMA_LINUX_WINDOW_MANAGER_UNNAMED;
     case ui::WM_AWESOME:
       return UMA_LINUX_WINDOW_MANAGER_AWESOME;
     case ui::WM_BLACKBOX:
@@ -242,7 +246,10 @@ UMALinuxWindowManager GetLinuxWindowManager() {
       return UMA_LINUX_WINDOW_MANAGER_WMII;
     case ui::WM_XFWM4:
       return UMA_LINUX_WINDOW_MANAGER_XFWM4;
+    case ui::WM_XMONAD:
+      return UMA_LINUX_WINDOW_MANAGER_XMONAD;
   }
+  NOTREACHED();
   return UMA_LINUX_WINDOW_MANAGER_OTHER;
 }
 #endif
@@ -253,17 +260,13 @@ void RecordTouchEventState() {
   const std::string touch_enabled_switch =
       command_line.HasSwitch(switches::kTouchEvents) ?
       command_line.GetSwitchValueASCII(switches::kTouchEvents) :
-      switches::kTouchEventsAuto;
+      switches::kTouchEventsEnabled;
 
   UMATouchEventsState state;
   if (touch_enabled_switch.empty() ||
-      touch_enabled_switch == switches::kTouchEventsEnabled) {
+      touch_enabled_switch == switches::kTouchEventsEnabled ||
+      touch_enabled_switch == switches::kTouchEventsAuto) {
     state = UMA_TOUCH_EVENTS_ENABLED;
-  } else if (touch_enabled_switch == switches::kTouchEventsAuto) {
-    state = (ui::GetTouchScreensAvailability() ==
-             ui::TouchScreensAvailability::ENABLED)
-                ? UMA_TOUCH_EVENTS_AUTO_ENABLED
-                : UMA_TOUCH_EVENTS_AUTO_DISABLED;
   } else if (touch_enabled_switch == switches::kTouchEventsDisabled) {
     state = UMA_TOUCH_EVENTS_DISABLED;
   } else {
@@ -306,6 +309,36 @@ void AsynchronousTouchEventStateRecorder::OnDeviceListsComplete() {
 }
 
 #endif  // defined(USE_OZONE) || defined(USE_X11)
+
+#if defined(OS_WIN)
+void RecordPinnedToTaskbarProcessError(bool error) {
+  UMA_HISTOGRAM_BOOLEAN("Windows.IsPinnedToTaskbar.ProcessError", error);
+}
+
+void OnShellHandlerConnectionError() {
+  RecordPinnedToTaskbarProcessError(true);
+}
+
+// Record the UMA histogram when a response is received.
+void OnIsPinnedToTaskbarResult(bool succeeded, bool is_pinned_to_taskbar) {
+  RecordPinnedToTaskbarProcessError(false);
+
+  // Used for histograms; do not reorder.
+  enum Result { NOT_PINNED = 0, PINNED = 1, FAILURE = 2, NUM_RESULTS };
+
+  Result result = FAILURE;
+  if (succeeded)
+    result = is_pinned_to_taskbar ? PINNED : NOT_PINNED;
+  UMA_HISTOGRAM_ENUMERATION("Windows.IsPinnedToTaskbar", result, NUM_RESULTS);
+}
+
+// Records the pinned state of the current executable into a histogram.
+void RecordIsPinnedToTaskbarHistogram() {
+  shell_integration::win::GetIsPinnedToTaskbarState(
+      base::Bind(&OnShellHandlerConnectionError),
+      base::Bind(&OnIsPinnedToTaskbarResult));
+}
+#endif  // defined(OS_WIN)
 
 }  // namespace
 
@@ -362,7 +395,7 @@ void ChromeBrowserMainExtraPartsMetrics::PostBrowserStart() {
 #if defined(OS_WIN)
   content::BrowserThread::PostDelayedTask(
       content::BrowserThread::IO, FROM_HERE,
-      base::Bind(&shell_integration::win::RecordIsPinnedToTaskbarHistogram),
+      base::Bind(&RecordIsPinnedToTaskbarHistogram),
       kStartupMetricsGatheringDelay);
 #endif  // defined(OS_WIN)
 

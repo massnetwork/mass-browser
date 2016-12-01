@@ -46,7 +46,6 @@
 
 #include "core/CoreExport.h"
 #include "core/layout/ScrollAnchor.h"
-#include "core/layout/ScrollEnums.h"
 #include "core/page/scrolling/StickyPositionScrollingConstraints.h"
 #include "core/paint/PaintInvalidationCapableScrollableArea.h"
 #include "core/paint/PaintLayerFragment.h"
@@ -295,6 +294,8 @@ class CORE_EXPORT PaintLayerScrollableArea final
   ScrollBehavior scrollBehaviorStyle() const override;
   CompositorAnimationTimeline* compositorAnimationTimeline() const override;
 
+  void visibleSizeChanged();
+
   // FIXME: We shouldn't allow access to m_overflowRect outside this class.
   LayoutRect overflowRect() const { return m_overflowRect; }
 
@@ -321,7 +322,7 @@ class CORE_EXPORT PaintLayerScrollableArea final
   void updateAfterLayout();
   void clampScrollOffsetsAfterLayout();
 
-  void didChangeScrollbarsHidden() override;
+  void didChangeGlobalRootScroller() override;
 
   void updateAfterStyleChange(const ComputedStyle*);
   void updateAfterOverflowRecalc();
@@ -353,9 +354,9 @@ class CORE_EXPORT PaintLayerScrollableArea final
   int pixelSnappedScrollHeight() const;
 
   int verticalScrollbarWidth(
-      OverlayScrollbarClipBehavior = IgnoreOverlayScrollbarSize) const;
+      OverlayScrollbarClipBehavior = IgnoreOverlayScrollbarSize) const override;
   int horizontalScrollbarHeight(
-      OverlayScrollbarClipBehavior = IgnoreOverlayScrollbarSize) const;
+      OverlayScrollbarClipBehavior = IgnoreOverlayScrollbarSize) const override;
 
   DoubleSize adjustedScrollOffset() const {
     return toDoubleSize(DoublePoint(scrollOrigin()) + m_scrollOffset);
@@ -406,7 +407,7 @@ class CORE_EXPORT PaintLayerScrollableArea final
 
   // TODO(ymalik): Remove box() and update callers to use layoutBox() instead.
   LayoutBox& box() const;
-  PaintLayer* layer() const;
+  PaintLayer* layer() const override;
 
   LayoutScrollbarPart* resizer() const override { return m_resizer; }
 
@@ -426,6 +427,10 @@ class CORE_EXPORT PaintLayerScrollableArea final
   bool isPaintLayerScrollableArea() const override { return true; }
 
   LayoutBox* layoutBox() const override { return &box(); }
+
+  FloatQuad localToVisibleContentQuad(const FloatQuad&,
+                                      const LayoutObject*,
+                                      unsigned = 0) const final;
 
   bool shouldRebuildHorizontalScrollbarLayer() const {
     return m_rebuildHorizontalScrollbarLayer;
@@ -477,8 +482,6 @@ class CORE_EXPORT PaintLayerScrollableArea final
  private:
   explicit PaintLayerScrollableArea(PaintLayer&);
 
-  void updateScrollbarsEnabledState();
-
   bool hasHorizontalOverflow() const;
   bool hasVerticalOverflow() const;
   bool hasScrollableHorizontalOverflow() const;
@@ -489,6 +492,7 @@ class CORE_EXPORT PaintLayerScrollableArea final
 
   void updateScrollOrigin();
   void updateScrollDimensions();
+  void updateScrollbarEnabledState();
 
   void updateScrollOffset(const ScrollOffset&, ScrollType) override;
 
@@ -502,8 +506,9 @@ class CORE_EXPORT PaintLayerScrollableArea final
       bool& needsVerticalScrollbar,
       ComputeScrollbarExistenceOption = Default) const;
 
-  void setHasHorizontalScrollbar(bool hasScrollbar);
-  void setHasVerticalScrollbar(bool hasScrollbar);
+  // Returns true iff scrollbar existence changed.
+  bool setHasHorizontalScrollbar(bool hasScrollbar);
+  bool setHasVerticalScrollbar(bool hasScrollbar);
 
   void updateScrollCornerStyle();
 
@@ -519,7 +524,7 @@ class CORE_EXPORT PaintLayerScrollableArea final
 
   PaintLayerScrollableAreaRareData& ensureRareData() {
     if (!m_rareData)
-      m_rareData = wrapUnique(new PaintLayerScrollableAreaRareData());
+      m_rareData = makeUnique<PaintLayerScrollableAreaRareData>();
     return *m_rareData.get();
   }
 

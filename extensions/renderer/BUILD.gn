@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import("//build/config/features.gni")
+import("//extensions/features/features.gni")
 
 assert(enable_extensions)
 
@@ -18,10 +19,13 @@ source_set("renderer") {
     "api_activity_logger.h",
     "api_binding.cc",
     "api_binding.h",
+    "api_binding_types.h",
     "api_bindings_system.cc",
     "api_bindings_system.h",
     "api_definitions_natives.cc",
     "api_definitions_natives.h",
+    "api_event_handler.cc",
+    "api_event_handler.h",
     "api_request_handler.cc",
     "api_request_handler.h",
     "app_window_custom_bindings.cc",
@@ -51,6 +55,9 @@ source_set("renderer") {
     "dom_activity_logger.h",
     "event_bindings.cc",
     "event_bindings.h",
+    "event_emitter.cc",
+    "event_emitter.h",
+    "extension_bindings_system.h",
     "extension_frame_helper.cc",
     "extension_frame_helper.h",
     "extension_groups.h",
@@ -82,6 +89,8 @@ source_set("renderer") {
     "id_generator_custom_bindings.h",
     "injection_host.cc",
     "injection_host.h",
+    "js_extension_bindings_system.cc",
+    "js_extension_bindings_system.h",
     "lazy_background_page_native_handler.cc",
     "lazy_background_page_native_handler.h",
     "logging_native_handler.cc",
@@ -90,6 +99,8 @@ source_set("renderer") {
     "messaging_bindings.h",
     "module_system.cc",
     "module_system.h",
+    "native_extension_bindings_system.cc",
+    "native_extension_bindings_system.h",
     "native_handler.cc",
     "native_handler.h",
     "object_backed_native_handler.cc",
@@ -209,6 +220,7 @@ source_set("renderer") {
     "//components/guest_view/renderer",
     "//content:resources",
     "//extensions:extensions_resources",
+    "//extensions/common/api",
     "//gin",
     "//mojo/edk/js",
     "//mojo/public/js",
@@ -259,10 +271,13 @@ source_set("unit_tests") {
   sources = [
     "activity_log_converter_strategy_unittest.cc",
     "api/mojo_private/mojo_private_unittest.cc",
+    "api_binding_test.cc",
+    "api_binding_test.h",
     "api_binding_test_util.cc",
     "api_binding_test_util.h",
     "api_binding_unittest.cc",
     "api_bindings_system_unittest.cc",
+    "api_event_handler_unittest.cc",
     "api_request_handler_unittest.cc",
     "api_test_base.cc",
     "api_test_base.h",
@@ -276,6 +291,7 @@ source_set("unit_tests") {
     "module_system_test.h",
     "module_system_unittest.cc",
     "mojo/keep_alive_client_unittest.cc",
+    "native_extension_bindings_system_unittest.cc",
     "safe_builtins_unittest.cc",
     "scoped_web_frame.cc",
     "scoped_web_frame.h",
@@ -287,8 +303,10 @@ source_set("unit_tests") {
   deps = [
     ":renderer",
     "//base",
+    "//components/crx_file:crx_file",
     "//content/public/child",
     "//extensions:extensions_renderer_resources",
+    "//extensions:test_support",
     "//gin:gin_test",
 
     # TODO(brettw) these tests should not be including headers from browser.

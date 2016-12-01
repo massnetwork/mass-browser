@@ -10,6 +10,10 @@ static_library("ntp_tiles") {
   sources = [
     "constants.cc",
     "constants.h",
+    "country_code_ios.h",
+    "country_code_ios.mm",
+    "field_trial.cc",
+    "field_trial.h",
     "icon_cacher.cc",
     "icon_cacher.h",
     "metrics.cc",
@@ -52,18 +56,39 @@ static_library("ntp_tiles") {
   }
 }
 
+# If you want to use this, let us (ntp-dev@chromium.org) know. In that case, it
+# should be moved to a more common location as it has 2+ callers already.
+# Note that you probably shouldn't be using it outside of ios or tests.
+source_set("json_unsafe_parser") {
+  testonly = !is_ios
+
+  sources = [
+    "json_unsafe_parser.cc",
+    "json_unsafe_parser.h",
+  ]
+
+  public_deps = [
+    "//base",
+  ]
+}
+
 source_set("unit_tests") {
   testonly = true
   sources = [
     "icon_cacher_unittest.cc",
     "most_visited_sites_unittest.cc",
+    "popular_sites_unittest.cc",
   ]
 
   deps = [
+    ":json_unsafe_parser",
     ":ntp_tiles",
+    "//base/test:test_support",
     "//components/favicon/core",
     "//components/favicon_base",
     "//components/image_fetcher",
+    "//components/pref_registry:test_support",
+    "//net:test_support",
     "//testing/gmock",
     "//testing/gtest",
     "//ui/gfx:test_support",

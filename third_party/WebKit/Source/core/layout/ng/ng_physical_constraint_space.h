@@ -13,6 +13,7 @@
 
 namespace blink {
 
+// TODO(glebl@): unused, delete.
 enum NGExclusionType {
   NGClearNone = 0,
   NGClearFloatLeft = 1,
@@ -34,7 +35,8 @@ class CORE_EXPORT NGPhysicalConstraintSpace final
     : public GarbageCollectedFinalized<NGPhysicalConstraintSpace> {
  public:
   NGPhysicalConstraintSpace(
-      NGPhysicalSize container_size,
+      NGPhysicalSize available_size,
+      NGPhysicalSize percentage_resolution_size,
       bool fixed_width,
       bool fixed_height,
       bool width_direction_triggers_scrollbar,
@@ -43,18 +45,26 @@ class CORE_EXPORT NGPhysicalConstraintSpace final
       NGFragmentationType height_direction_fragmentation_type,
       bool is_new_fc);
 
-  NGPhysicalSize ContainerSize() const { return container_size_; }
-
-  void AddExclusion(const NGLogicalRect&, unsigned options = 0);
-  const Vector<std::unique_ptr<const NGLogicalRect>>& Exclusions(
+  void AddExclusion(const NGExclusion&);
+  const Vector<std::unique_ptr<const NGExclusion>>& Exclusions(
       unsigned options = 0) const;
+
+  // Read only getters.
+  const NGExclusion* LastLeftFloatExclusion() const {
+    return last_left_float_exclusion_;
+  }
+
+  const NGExclusion* LastRightFloatExclusion() const {
+    return last_right_float_exclusion_;
+  }
 
   DEFINE_INLINE_TRACE() {}
 
  private:
   friend class NGConstraintSpace;
 
-  NGPhysicalSize container_size_;
+  NGPhysicalSize available_size_;
+  NGPhysicalSize percentage_resolution_size_;
 
   unsigned fixed_width_ : 1;
   unsigned fixed_height_ : 1;
@@ -67,7 +77,12 @@ class CORE_EXPORT NGPhysicalConstraintSpace final
   // formatting Context
   unsigned is_new_fc_ : 1;
 
-  Vector<std::unique_ptr<const NGLogicalRect>> exclusions_;
+  // Last left/right float exclusions are used to enforce the top edge alignment
+  // rule for floats and for the support of CSS "clear" property.
+  const NGExclusion* last_left_float_exclusion_;   // Owned by exclusions_.
+  const NGExclusion* last_right_float_exclusion_;  // Owned by exclusions_.
+
+  Vector<std::unique_ptr<const NGExclusion>> exclusions_;
 };
 
 }  // namespace blink

@@ -12,40 +12,38 @@
 #include "base/callback_forward.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/weak_ptr.h"
+#include "components/ntp_snippets/callbacks.h"
 #include "components/ntp_snippets/category.h"
 #include "components/ntp_snippets/category_factory.h"
 #include "components/ntp_snippets/category_status.h"
 #include "components/ntp_snippets/content_suggestion.h"
 #include "components/ntp_snippets/content_suggestions_provider.h"
-#include "components/ntp_snippets/offline_pages/offline_page_proxy.h"
+#include "components/offline_pages/offline_page_model.h"
 #include "content/public/browser/download_manager.h"
 
 class PrefRegistrySimple;
 class PrefService;
 
-namespace gfx {
-class Image;
-}
-
 namespace offline_pages {
 struct OfflinePageItem;
 }
 
-// Provides download content suggestions from the offline pages model (obtaining
-// the data through OfflinePageProxy) and the download manager (obtaining the
-// data through DownloadManager and each DownloadItem). Offline page related
-// downloads are referred to as offline page downloads, while the remaining
-// downloads (e.g. images, music, books) are called asset downloads.
+// Provides download content suggestions from the offline pages model and the
+// download manager (obtaining the data through DownloadManager and each
+// DownloadItem). Offline page related downloads are referred to as offline page
+// downloads, while the remaining downloads (e.g. images, music, books) are
+// called asset downloads. In case either of the data sources is |nullptr|, it
+// is ignored.
 class DownloadSuggestionsProvider
     : public ntp_snippets::ContentSuggestionsProvider,
-      public ntp_snippets::OfflinePageProxy::Observer,
+      public offline_pages::OfflinePageModel::Observer,
       public content::DownloadManager::Observer,
       public content::DownloadItem::Observer {
  public:
   DownloadSuggestionsProvider(
       ContentSuggestionsProvider::Observer* observer,
       ntp_snippets::CategoryFactory* category_factory,
-      scoped_refptr<ntp_snippets::OfflinePageProxy> offline_page_proxy,
+      offline_pages::OfflinePageModel* offline_page_model,
       content::DownloadManager* download_manager,
       PrefService* pref_service,
       bool download_manager_ui_enabled);
@@ -60,7 +58,10 @@ class DownloadSuggestionsProvider
       const ntp_snippets::ContentSuggestion::ID& suggestion_id) override;
   void FetchSuggestionImage(
       const ntp_snippets::ContentSuggestion::ID& suggestion_id,
-      const ImageFetchedCallback& callback) override;
+      const ntp_snippets::ImageFetchedCallback& callback) override;
+  void Fetch(const ntp_snippets::Category& category,
+             const std::set<std::string>& known_suggestion_ids,
+             const ntp_snippets::FetchDoneCallback& callback) override;
   void ClearHistory(
       base::Time begin,
       base::Time end,
@@ -68,7 +69,7 @@ class DownloadSuggestionsProvider
   void ClearCachedSuggestions(ntp_snippets::Category category) override;
   void GetDismissedSuggestionsForDebugging(
       ntp_snippets::Category category,
-      const DismissedSuggestionsCallback& callback) override;
+      const ntp_snippets::DismissedSuggestionsCallback& callback) override;
   void ClearDismissedSuggestionsForDebugging(
       ntp_snippets::Category category) override;
 
@@ -77,14 +78,13 @@ class DownloadSuggestionsProvider
  private:
   friend class DownloadSuggestionsProviderTest;
 
-  void GetAllPagesCallbackForGetDismissedSuggestions(
-      const DismissedSuggestionsCallback& callback,
+  void GetPagesMatchingQueryCallbackForGetDismissedSuggestions(
+      const ntp_snippets::DismissedSuggestionsCallback& callback,
       const std::vector<offline_pages::OfflinePageItem>& offline_pages) const;
 
-  // OfflinePageProxy::Observer implementation.
-  void OfflinePageModelChanged(
-      const std::vector<offline_pages::OfflinePageItem>& offline_pages)
-      override;
+  // OfflinePageModel::Observer implementation.
+  void OfflinePageModelLoaded(offline_pages::OfflinePageModel* model) override;
+  void OfflinePageModelChanged(offline_pages::OfflinePageModel* model) override;
   void OfflinePageDeleted(int64_t offline_id,
                           const offline_pages::ClientId& client_id) override;
 
@@ -154,13 +154,14 @@ class DownloadSuggestionsProvider
   void RemoveSuggestionFromCacheAndRetrieveMoreIfNeeded(
       const ntp_snippets::ContentSuggestion::ID& suggestion_id);
 
-  // Processes a list of offline pages (assuming that these are all the offline
-  // pages that currently exist), prunes dismissed IDs and updates internal
-  // cache. If |notify| is true, notifies
+  // Processes a list of offline pages (assuming that these are all the download
+  // offline pages that currently exist), prunes dismissed IDs and updates
+  // internal cache. If |notify| is true, notifies
   // |ContentSuggestionsProvider::Observer|.
   void UpdateOfflinePagesCache(
       bool notify,
-      const std::vector<offline_pages::OfflinePageItem>& all_offline_pages);
+      const std::vector<offline_pages::OfflinePageItem>&
+          all_download_offline_pages);
 
   // Fires the |OnSuggestionInvalidated| event for the suggestion corresponding
   // to the given |id_within_category| and clears it from the dismissed IDs
@@ -195,7 +196,7 @@ class DownloadSuggestionsProvider
 
   ntp_snippets::CategoryStatus category_status_;
   const ntp_snippets::Category provided_category_;
-  scoped_refptr<ntp_snippets::OfflinePageProxy> offline_page_proxy_;
+  offline_pages::OfflinePageModel* offline_page_model_;
   content::DownloadManager* download_manager_;
 
   PrefService* pref_service_;

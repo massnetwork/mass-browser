@@ -25,6 +25,9 @@
 #include "chrome/browser/lifetime/keep_alive_state_observer.h"
 #include "chrome/common/features.h"
 #include "components/prefs/pref_change_registrar.h"
+#include "extensions/features/features.h"
+#include "media/media_features.h"
+#include "printing/features/features.h"
 
 class ChromeChildProcessWatcher;
 class ChromeDeviceClient;
@@ -145,7 +148,7 @@ class BrowserProcessImpl : public BrowserProcess,
   supervised_user_whitelist_installer() override;
   MediaFileSystemRegistry* media_file_system_registry() override;
   bool created_local_state() const override;
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   WebRtcLogUploader* webrtc_log_uploader() override;
 #endif
   network_time::NetworkTimeTracker* network_time_tracker() override;
@@ -153,7 +156,7 @@ class BrowserProcessImpl : public BrowserProcess,
   memory::TabManager* GetTabManager() override;
   shell_integration::DefaultWebClientState CachedDefaultWebClientState()
       override;
-  PhysicalWebDataSource* GetPhysicalWebDataSource() override;
+  physical_web::PhysicalWebDataSource* GetPhysicalWebDataSource() override;
 
   static void RegisterPrefs(PrefRegistrySimple* registry);
 
@@ -217,7 +220,7 @@ class BrowserProcessImpl : public BrowserProcess,
 
   std::unique_ptr<GpuModeManager> gpu_mode_manager_;
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   std::unique_ptr<extensions::ExtensionsBrowserClient>
       extensions_browser_client_;
 
@@ -232,7 +235,7 @@ class BrowserProcessImpl : public BrowserProcess,
   std::unique_ptr<DevToolsAutoOpener> devtools_auto_opener_;
 #endif
 
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   scoped_refptr<printing::PrintPreviewDialogController>
       print_preview_dialog_controller_;
 
@@ -325,7 +328,7 @@ class BrowserProcessImpl : public BrowserProcess,
   // the callstack which released the final module reference count.
   base::debug::StackTrace release_last_reference_callstack_;
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   // Lazily initialized.
   std::unique_ptr<WebRtcLogUploader> webrtc_log_uploader_;
 #endif
@@ -346,7 +349,8 @@ class BrowserProcessImpl : public BrowserProcess,
 
   shell_integration::DefaultWebClientState cached_default_web_client_state_;
 
-  std::unique_ptr<PhysicalWebDataSource> physical_web_data_source_;
+  std::unique_ptr<physical_web::PhysicalWebDataSource>
+      physical_web_data_source_;
 
   DISALLOW_COPY_AND_ASSIGN(BrowserProcessImpl);
 };

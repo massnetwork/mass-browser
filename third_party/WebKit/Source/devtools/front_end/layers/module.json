@@ -7,11 +7,10 @@
             "title": "Layers",
             "order": 100,
             "persistence": "closeable",
-            "className": "WebInspector.LayersPanel"
+            "className": "Layers.LayersPanel"
         }
     ],
     "dependencies": ["layer_viewer"],
-    "experiment": "layersPanel",
     "scripts": [
         "LayerPaintProfilerView.js",
         "LayerTreeModel.js",

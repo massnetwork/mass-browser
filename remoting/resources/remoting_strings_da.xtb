@@ -27,6 +27,9 @@ Du kan få flere oplysninger om privatliv i privatlivspolitikkerne for Google (h
 <translation id="1654128982815600832">Aktiverer fjernforbindelserne for denne computer…</translation>
 <translation id="170207782578677537">Denne computer kunne ikke registreres.</translation>
 <translation id="1704090719919187045">Præferencer for Chromoting-host</translation>
+<translation id="1730409684442507495">• Forbedring af billedkvaliteten på computere samt af reaktionsevnen og batteriforbruget.
+• Forbedring af reaktionsevnen ved klik og træk-handlinger.
+• Forbedring af flere animationseffekter i brugerfladen.</translation>
 <translation id="174018511426417793">Du har ingen registrerede computere. Hvis du vil aktivere fjernforbindelser til en computer, skal du installere Chrome Fjernskrivebord på den pågældende computer og klikke på "<ph name="BUTTON_NAME" />".</translation>
 <translation id="1742469581923031760">Opretter forbindelse...</translation>
 <translation id="1770394049404108959">Jeg kan ikke åbne applikationen.</translation>
@@ -73,7 +76,6 @@ Du kan få flere oplysninger om privatliv i privatlivspolitikkerne for Google (h
 <translation id="2699970397166997657">Chromoting</translation>
 <translation id="2747641796667576127">Softwareopdateringer udføres sædvanligvis automatisk, men de kan i sjældne tilfælde mislykkes. Det bør ikke tage mere end et par minutter at opdatere softwaren, og opdateringen kan udføres, mens du er forbundet til din computer via en fjernforbindelse.</translation>
 <translation id="2841013758207633010">Tid</translation>
-<translation id="2851674870054673688">Når personen indtaster koden, startes delingssessionen.</translation>
 <translation id="2851754573186462851">Chromium App Streaming</translation>
 <translation id="2855866366045322178">offline</translation>
 <translation id="2888969873284818612">Der opstod en netværksfejl. Vi genstarter appen, når din enhed er online igen.</translation>
@@ -221,6 +223,7 @@ Fjernskrivebord</translation>
 <translation id="6640610550128933069">sidst online d. <ph name="DATE" /></translation>
 <translation id="6668065415969892472">Din pinkode er blevet opdateret.</translation>
 <translation id="6681800064886881394">Copyright © 2013 Google Inc. Alle rettigheder forbeholdes.</translation>
+<translation id="6705482892455291412">Når de indtaster koden, bliver du bedt om at acceptere forbindelsen og begynde delingssessionen.</translation>
 <translation id="6746493157771801606">Ryd historik</translation>
 <translation id="6748108480210050150">Fra</translation>
 <translation id="677755392401385740">Host er startet for bruger: <ph name="HOST_USERNAME" />.</translation>
@@ -297,6 +300,7 @@ Fjernskrivebord</translation>
 <translation id="9188433529406846933">Autoriser</translation>
 <translation id="9213184081240281106">Ugyldig hostkonfiguration.</translation>
 <translation id="951991426597076286">Afvis</translation>
+<translation id="962733587145768554">Vælg "<ph name="SHARE" />" i forbindelsesdialogboksen for at gennemføre processen.</translation>
 <translation id="979100198331752041">Chrome Fjernskrivebord på <ph name="HOSTNAME" /> er forældet og skal opdateres.</translation>
 <translation id="985602178874221306">Forfatterne til Chromium</translation>
 <translation id="992215271654996353"><ph name="HOSTNAME" /> (sidst online <ph name="DATE_OR_TIME" />)</translation>

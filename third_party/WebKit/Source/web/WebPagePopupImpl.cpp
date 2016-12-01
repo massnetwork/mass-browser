@@ -289,13 +289,13 @@ bool WebPagePopupImpl::initializePage() {
   m_page->settings().setScrollAnimatorEnabled(
       mainSettings.scrollAnimatorEnabled());
 
-  provideContextFeaturesTo(*m_page, wrapUnique(new PagePopupFeaturesClient()));
+  provideContextFeaturesTo(*m_page, makeUnique<PagePopupFeaturesClient>());
   DEFINE_STATIC_LOCAL(FrameLoaderClient, emptyFrameLoaderClient,
                       (EmptyFrameLoaderClient::create()));
   LocalFrame* frame =
       LocalFrame::create(&emptyFrameLoaderClient, &m_page->frameHost(), 0);
   frame->setPagePopupOwner(m_popupClient->ownerElement());
-  frame->setView(FrameView::create(frame));
+  frame->setView(FrameView::create(*frame));
   frame->init();
   frame->view()->setParentVisible(true);
   frame->view()->setSelfVisible(true);
@@ -457,7 +457,8 @@ WebInputEventResult WebPagePopupImpl::handleGestureEvent(
   if (m_closing || !m_page || !m_page->mainFrame() ||
       !toLocalFrame(m_page->mainFrame())->view())
     return WebInputEventResult::NotHandled;
-  if (event.type == WebInputEvent::GestureTap &&
+  if ((event.type == WebInputEvent::GestureTap ||
+       event.type == WebInputEvent::GestureTapDown) &&
       !isViewportPointInWindow(event.x, event.y)) {
     cancel();
     return WebInputEventResult::NotHandled;

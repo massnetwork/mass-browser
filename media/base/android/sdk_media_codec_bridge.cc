@@ -60,6 +60,10 @@ static const std::string AudioCodecToAndroidMimeType(const AudioCodec& codec) {
       return "audio/opus";
     case kCodecAAC:
       return "audio/mp4a-latm";
+    case kCodecAC3:
+      return "audio/ac3";
+    case kCodecEAC3:
+      return "audio/eac3";
     default:
       return std::string();
   }
@@ -651,6 +655,12 @@ VideoCodecBridge::VideoCodecBridge(const std::string& mime,
                                    bool require_software_codec)
     : SdkMediaCodecBridge(mime, is_secure, direction, require_software_codec),
       adaptive_playback_supported_for_testing_(-1) {}
+
+bool VideoCodecBridge::SetSurface(jobject surface) {
+  DCHECK_GE(base::android::BuildInfo::GetInstance()->sdk_int(), 23);
+  JNIEnv* env = AttachCurrentThread();
+  return Java_MediaCodecBridge_setSurface(env, media_codec(), surface);
+}
 
 void VideoCodecBridge::SetVideoBitrate(int bps, int frame_rate) {
   JNIEnv* env = AttachCurrentThread();

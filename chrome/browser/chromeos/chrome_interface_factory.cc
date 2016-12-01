@@ -5,9 +5,11 @@
 #include "chrome/browser/chromeos/chrome_interface_factory.h"
 
 #include <memory>
+#include <utility>
 
 #include "ash/common/mojo_interface_factory.h"
 #include "ash/public/interfaces/new_window.mojom.h"
+#include "ash/public/interfaces/shutdown.mojom.h"
 #include "base/lazy_instance.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/weak_ptr.h"
@@ -175,6 +177,9 @@ bool ChromeInterfaceFactory::OnConnect(
     const service_manager::Identity& remote_identity,
     service_manager::InterfaceRegistry* registry,
     service_manager::Connector* connector) {
+  // TODO(jamescook): Only register the interfaces needed for a particular
+  // |remote_identity|. For example, a connection from service:ash needs these,
+  // but a connection from service:content_gpu does not.
   FactoryImpl::AddFactory<keyboard::mojom::Keyboard>(registry,
                                                      main_thread_task_runner_);
   FactoryImpl::AddFactory<mash::mojom::Launchable>(registry,

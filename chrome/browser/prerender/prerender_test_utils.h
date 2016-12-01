@@ -31,11 +31,6 @@ namespace base {
 class FilePath;
 }  // namespace base
 
-namespace net {
-class URLRequest;
-class NetworkDelegate;
-}  // namespace net
-
 namespace prerender {
 
 namespace test_utils {
@@ -375,8 +370,20 @@ void CreateCountingInterceptorOnIO(
     const base::FilePath& file,
     const base::WeakPtr<RequestCounter>& counter);
 
+// Checks that |url| has been requested with net::LOAD_PREFETCH. Pings |counter|
+// after the flag is checked.
+void CreatePrefetchOnlyInterceptorOnIO(
+    const GURL& url,
+    const base::WeakPtr<RequestCounter>& counter);
+
 // Makes |url| respond to requests with the contents of |file|.
 void CreateMockInterceptorOnIO(const GURL& url, const base::FilePath& file);
+
+// Makes |url| never respond on the first load, and then with the contents of
+// |file| afterwards. When the first load has been scheduled, runs |callback| on
+// the UI thread.
+void CreateHangingFirstRequestInterceptorOnIO(
+    const GURL& url, const base::FilePath& file, base::Closure callback);
 
 }  // namespace test_utils
 

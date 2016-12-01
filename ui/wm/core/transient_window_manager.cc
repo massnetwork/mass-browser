@@ -8,7 +8,6 @@
 #include <functional>
 
 #include "base/auto_reset.h"
-#include "base/stl_util.h"
 #include "ui/aura/client/transient_window_client_observer.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_property.h"
@@ -138,7 +137,15 @@ void TransientWindowManager::RestackTransientDescendants() {
       base::AutoReset<Window*> resetter(
           &descendant_manager->stacking_target_,
           window_);
+      for (aura::client::TransientWindowClientObserver& observer :
+           TransientWindowController::Get()->observers_) {
+        observer.OnWillRestackTransientChildAbove(window_, *it);
+      }
       parent->StackChildAbove((*it), window_);
+      for (aura::client::TransientWindowClientObserver& observer :
+           TransientWindowController::Get()->observers_) {
+        observer.OnDidRestackTransientChildAbove(window_, *it);
+      }
     }
   }
 }
@@ -231,7 +238,8 @@ void TransientWindowManager::OnWindowDestroying(Window* window) {
   // parent, as destroying an active transient child may otherwise attempt to
   // refocus us.
   Windows transient_children(transient_children_);
-  base::STLDeleteElements(&transient_children);
+  for (auto* child : transient_children)
+    delete child;
   DCHECK(transient_children_.empty());
 }
 

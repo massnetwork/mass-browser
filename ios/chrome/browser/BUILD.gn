@@ -77,15 +77,19 @@ source_set("browser") {
     "//components/autofill/core/browser",
     "//components/autofill/core/common",
     "//components/gcm_driver",
+    "//components/handoff",
     "//components/keyed_service/core",
     "//components/keyed_service/ios",
     "//components/metrics",
     "//components/metrics_services_manager",
     "//components/net_log",
     "//components/network_session_configurator",
+    "//components/ntp_tiles",
     "//components/pref_registry",
     "//components/prefs",
     "//components/proxy_config",
+    "//components/reading_list/core",
+    "//components/reading_list/ios",
     "//components/search_engines",
     "//components/signin/core/browser",
     "//components/ssl_config",
@@ -112,15 +116,8 @@ source_set("browser") {
   libs = [ "UIKit.framework" ]
 }
 
-# TODO(crbug.com/658242): this target is there to avoid breaking downstream
-# when this CL rolls. It should be removed in favor of browser.
-group("browser_no_public_deps") {
-  public_deps = [
-    ":browser",
-  ]
-}
-
 source_set("browser_impl") {
+  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "application_context_impl.cc",
     "application_context_impl.h",
@@ -137,6 +134,7 @@ source_set("browser_impl") {
     "//components/flags_ui",
     "//components/gcm_driver",
     "//components/history/core/browser",
+    "//components/keyed_service/core",
     "//components/language_usage_metrics",
     "//components/metrics:profiler_ios",
     "//components/metrics_services_manager",
@@ -150,6 +148,7 @@ source_set("browser_impl") {
     "//components/translate/core/browser",
     "//components/update_client",
     "//components/variations",
+    "//components/variations/field_trial_config",
     "//components/variations/service",
     "//ios/chrome/browser/browser_state",
     "//ios/chrome/browser/browser_state:browser_state_impl",
@@ -182,6 +181,7 @@ source_set("browser_impl") {
 # other files (which would increase the compilation time when changing
 # the value).
 source_set("about_flags") {
+  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "about_flags.h",
     "about_flags.mm",
@@ -195,6 +195,7 @@ source_set("about_flags") {
     "//components/flags_ui",
     "//components/flags_ui:switches",
     "//components/ntp_tiles",
+    "//components/reading_list/core",
     "//components/strings",
     "//components/sync",
     "//components/variations",

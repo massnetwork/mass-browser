@@ -61,6 +61,7 @@ class ASH_EXPORT PaletteTray : public TrayBackgroundView,
 
   // PaletteToolManager::Delegate:
   void HidePalette() override;
+  void HidePaletteImmediately() override;
   void RecordPaletteOptionsUsage(PaletteTrayOptions option) override;
   void RecordPaletteModeCancellation(PaletteModeCancelType type) override;
 
@@ -81,9 +82,6 @@ class ASH_EXPORT PaletteTray : public TrayBackgroundView,
   void OnMouseEnteredView() override;
   void OnMouseExitedView() override;
   base::string16 GetAccessibleNameForBubble() override;
-  gfx::Rect GetAnchorRect(views::Widget* anchor_widget,
-                          AnchorType anchor_type,
-                          AnchorAlignment anchor_alignment) const override;
   void OnBeforeBubbleWidgetInit(
       views::Widget* anchor_widget,
       views::Widget* bubble_widget,

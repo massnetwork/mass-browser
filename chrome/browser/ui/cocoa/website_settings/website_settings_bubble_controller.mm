@@ -13,8 +13,6 @@
 #include "base/memory/ptr_util.h"
 #include "base/strings/sys_string_conversions.h"
 #import "chrome/browser/certificate_viewer.h"
-#include "chrome/browser/devtools/devtools_toggle_action.h"
-#include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/infobars/infobar_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_dialogs.h"
@@ -25,12 +23,10 @@
 #import "chrome/browser/ui/cocoa/website_settings/permission_selector_button.h"
 #import "chrome/browser/ui/tab_dialogs.h"
 #include "chrome/browser/ui/website_settings/permission_menu_model.h"
-#include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/chromium_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
-#include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_chromium_strings.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/page_navigator.h"
@@ -84,6 +80,9 @@ const CGFloat kPermissionImageSize = 16;
 
 // Spacing between a permission image and the text.
 const CGFloat kPermissionImageSpacing = 6;
+
+// Minimum distance between the label and its corresponding menu.
+const CGFloat kMinSeparationBetweenLabelAndMenu = 16;
 
 // Square size of the permission delete button image.
 const CGFloat kPermissionDeleteImageSize = 16;
@@ -193,13 +192,11 @@ bool IsInternalURL(const GURL& url) {
 - (id)initWithParentWindow:(NSWindow*)parentWindow
     websiteSettingsUIBridge:(WebsiteSettingsUIBridge*)bridge
                 webContents:(content::WebContents*)webContents
-                        url:(const GURL&)url
-         isDevToolsDisabled:(BOOL)isDevToolsDisabled {
+                        url:(const GURL&)url {
   DCHECK(parentWindow);
 
   webContents_ = webContents;
   permissionsPresent_ = NO;
-  isDevToolsDisabled_ = isDevToolsDisabled;
   url_ = url;
 
   // Use an arbitrary height; it will be changed in performLayout.
@@ -341,14 +338,12 @@ bool IsInternalURL(const GURL& url) {
   resetDecisionsField_ = nil;
   resetDecisionsButton_ = nil;
 
-  NSString* securityDetailsButtonText =
-      l10n_util::GetNSString(IDS_WEBSITE_SETTINGS_DETAILS_LINK);
-  // Note: The security details button may be removed from the superview in
-  // -performLayout in order to hide it (depending on the connection).
-  securityDetailsButton_ = [self addLinkButtonWithText:securityDetailsButtonText
+  NSString* connectionHelpButtonText =
+      l10n_util::GetNSString(IDS_LEARN_MORE);
+  connectionHelpButton_ = [self addLinkButtonWithText:connectionHelpButtonText
                                                 toView:securitySectionView];
-  [securityDetailsButton_ setTarget:self];
-  [securityDetailsButton_ setAction:@selector(showSecurityDetails:)];
+  [connectionHelpButton_ setTarget:self];
+  [connectionHelpButton_ setAction:@selector(openConnectionHelp:)];
 
   return securitySectionView.get();
 }
@@ -406,21 +401,17 @@ bool IsInternalURL(const GURL& url) {
       false));
 }
 
-// Handler for the site settings button below the list of permissions.
 // TODO(lgarron): Move some of this to the presenter for separation of concerns
 // and platform unification. (https://crbug.com/571533)
-- (void)showSecurityDetails:(id)sender {
+- (void)openConnectionHelp:(id)sender {
   DCHECK(webContents_);
   DCHECK(presenter_);
   presenter_->RecordWebsiteSettingsAction(
-      WebsiteSettings::WEBSITE_SETTINGS_SECURITY_DETAILS_OPENED);
-
-  if (isDevToolsDisabled_) {
-    [self showCertificateInfo:sender];
-  } else {
-    DevToolsWindow::OpenDevToolsWindow(
-        webContents_, DevToolsToggleAction::ShowSecurityPanel());
-  }
+      WebsiteSettings::WEBSITE_SETTINGS_CONNECTION_HELP_OPENED);
+  webContents_->OpenURL(content::OpenURLParams(
+      GURL(chrome::kPageInfoHelpCenterURL), content::Referrer(),
+      WindowOpenDisposition::NEW_FOREGROUND_TAB, ui::PAGE_TRANSITION_LINK,
+      false));
 }
 
 // Handler for the link button to show certificate information.
@@ -508,18 +499,11 @@ bool IsInternalURL(const GURL& url) {
   yPos = [self setYPositionOfView:securityDetailsField_
                                to:yPos + kSecurityParagraphSpacing];
 
-  if (isDevToolsDisabled_ && !certificate_) {
-    // -removeFromSuperview is idempotent.
-    [securityDetailsButton_ removeFromSuperview];
-  } else {
-    // -addSubview is idempotent.
-    [securitySectionView_ addSubview:securityDetailsButton_];
-    [securityDetailsButton_
-        setFrameOrigin:NSMakePoint(
-                           kSectionHorizontalPadding - kLinkButtonXAdjustment,
-                           yPos)];
-    yPos = NSMaxY([securityDetailsButton_ frame]);
-  }
+  [connectionHelpButton_
+      setFrameOrigin:NSMakePoint(
+                         kSectionHorizontalPadding - kLinkButtonXAdjustment,
+                         yPos)];
+  yPos = NSMaxY([connectionHelpButton_ frame]);
 
   if (resetDecisionsButton_) {
     DCHECK(resetDecisionsField_);
@@ -619,16 +603,28 @@ bool IsInternalURL(const GURL& url) {
 }
 
 // Add an image as a subview of the given view, placed at a pre-determined x
-// position and the given y position. Return the new NSImageView.
+// position and the given y position. The image is not in the accessibility
+// order, since the image is always accompanied by text in this bubble. Return
+// the new NSImageView.
 - (NSImageView*)addImageWithSize:(NSSize)size
                           toView:(NSView*)view
                          atPoint:(NSPoint)point {
   NSRect frame = NSMakeRect(point.x, point.y, size.width, size.height);
   base::scoped_nsobject<NSImageView> imageView(
       [[NSImageView alloc] initWithFrame:frame]);
+  [self hideImageFromAccessibilityOrder:imageView];
   [imageView setImageFrameStyle:NSImageFrameNone];
   [view addSubview:imageView.get()];
   return imageView.get();
+}
+
+// Hide the given image view from the accessibility order for VoiceOver.
+- (void)hideImageFromAccessibilityOrder:(NSImageView*)imageView {
+  // This is the minimum change necessary to get VoiceOver to skip the image
+  // (instead of reading the word "image"). Accessibility mechanisms in OSX
+  // change once in a while, so this may be fragile.
+  [[imageView cell] accessibilitySetOverrideValue:@""
+                                     forAttribute:NSAccessibilityRoleAttribute];
 }
 
 // Add a separator as a subview of the given view. Return the new view.
@@ -864,6 +860,7 @@ bool IsInternalURL(const GURL& url) {
                                         toView:view
                                        atPoint:position];
   }
+  [label setToolTip:base::SysUTF16ToNSString(labelText)];
 
   [view setFrameSize:NSMakeSize(viewWidth, NSHeight([view frame]))];
 
@@ -880,6 +877,28 @@ bool IsInternalURL(const GURL& url) {
   }
   position.y -= titleRect.origin.y;
   [button setFrameOrigin:position];
+
+  // Truncate the label if it's too wide.
+  // This is a workaround for https://crbug.com/654268 until MacViews ships.
+  NSRect labelFrame = [label frame];
+  if (isRTL) {
+    CGFloat maxLabelWidth = NSMaxX(labelFrame) - NSMaxX([button frame]) -
+                            kMinSeparationBetweenLabelAndMenu;
+    if (NSWidth(labelFrame) > maxLabelWidth) {
+      labelFrame.origin.x = NSMaxX(labelFrame) - maxLabelWidth;
+      labelFrame.size.width = maxLabelWidth;
+      [label setFrame:labelFrame];
+      [[label cell] setLineBreakMode:NSLineBreakByTruncatingTail];
+    }
+  } else {
+    CGFloat maxLabelWidth = NSMinX([button frame]) - NSMinX(labelFrame) -
+                            kMinSeparationBetweenLabelAndMenu;
+    if (NSWidth(labelFrame) > maxLabelWidth) {
+      labelFrame.size.width = maxLabelWidth;
+      [label setFrame:labelFrame];
+      [[label cell] setLineBreakMode:NSLineBreakByTruncatingTail];
+    }
+  }
 
   // Align the icon with the text.
   [self alignPermissionIcon:imageView withTextField:label];
@@ -1136,7 +1155,7 @@ void WebsiteSettingsUIBridge::Show(
     Profile* profile,
     content::WebContents* web_contents,
     const GURL& virtual_url,
-    const security_state::SecurityStateModel::SecurityInfo& security_info) {
+    const security_state::SecurityInfo& security_info) {
   if (chrome::ToolkitViewsWebUIDialogsEnabled()) {
     chrome::ShowWebsiteSettingsBubbleViewsAtPoint(
         gfx::ScreenPointFromNSPoint(AnchorPointForWindow(parent)), profile,
@@ -1153,9 +1172,6 @@ void WebsiteSettingsUIBridge::Show(
   // Create the bridge. This will be owned by the bubble controller.
   WebsiteSettingsUIBridge* bridge = new WebsiteSettingsUIBridge(web_contents);
 
-  bool is_devtools_disabled =
-      profile->GetPrefs()->GetBoolean(prefs::kDevToolsDisabled);
-
   // Create the bubble controller. It will dealloc itself when it closes,
   // resetting |g_is_popup_showing|.
   WebsiteSettingsBubbleController* bubble_controller =
@@ -1163,8 +1179,7 @@ void WebsiteSettingsUIBridge::Show(
              initWithParentWindow:parent
           websiteSettingsUIBridge:bridge
                       webContents:web_contents
-                              url:virtual_url
-               isDevToolsDisabled:is_devtools_disabled];
+                              url:virtual_url];
 
   if (!IsInternalURL(virtual_url)) {
     // Initialize the presenter, which holds the model and controls the UI.

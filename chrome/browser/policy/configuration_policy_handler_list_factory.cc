@@ -45,10 +45,14 @@
 #include "components/prefs/pref_value_map.h"
 #include "components/search_engines/default_search_policy_handler.h"
 #include "components/signin/core/common/signin_pref_names.h"
+#include "components/spellcheck/spellcheck_build_features.h"
 #include "components/ssl_config/ssl_config_prefs.h"
 #include "components/sync/driver/sync_policy_handler.h"
 #include "components/translate/core/common/translate_pref_names.h"
 #include "components/variations/pref_names.h"
+#include "extensions/features/features.h"
+#include "media/media_features.h"
+#include "ppapi/features/features.h"
 
 #if BUILDFLAG(ANDROID_JAVA_UI)
 #include "chrome/browser/search/contextual_search_policy_handler_android.h"
@@ -70,7 +74,7 @@
 #include "chrome/browser/download/download_dir_policy_handler.h"
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/api/messaging/native_messaging_policy_handler.h"
 #include "chrome/browser/extensions/extension_management_constants.h"
 #include "chrome/browser/extensions/policy_handlers.h"
@@ -78,11 +82,11 @@
 #include "extensions/common/manifest.h"
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 #include "chrome/browser/plugins/plugin_policy_handler.h"
 #endif
 
-#if defined(ENABLE_SPELLCHECK)
+#if BUILDFLAG(ENABLE_SPELLCHECK)
 #include "components/spellcheck/browser/pref_names.h"
 #endif
 
@@ -364,11 +368,11 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     prefs::kComponentUpdatesEnabled,
     base::Value::TYPE_BOOLEAN },
 
-#if defined(ENABLE_SPELLCHECK)
+#if BUILDFLAG(ENABLE_SPELLCHECK)
   { key::kSpellCheckServiceEnabled,
     spellcheck::prefs::kSpellCheckUseSpellingService,
     base::Value::TYPE_BOOLEAN },
-#endif  // defined(ENABLE_SPELLCHECK)
+#endif  // BUILDFLAG(ENABLE_SPELLCHECK)
 
   { key::kDisableScreenshots,
     prefs::kDisableScreenshots,
@@ -408,20 +412,20 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     prefs::kEnableMediaRouter,
     base::Value::TYPE_BOOLEAN },
 #endif  // defined(ENABLE_MEDIA_ROUTER)
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   { key::kWebRtcUdpPortRange,
     prefs::kWebRTCUDPPortRange,
     base::Value::TYPE_STRING },
-#endif  // defined(ENABLE_WEBRTC)
+#endif  // BUILDFLAG(ENABLE_WEBRTC)
 #if !defined(OS_MACOSX)
   { key::kFullscreenAllowed,
     prefs::kFullscreenAllowed,
     base::Value::TYPE_BOOLEAN },
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   { key::kFullscreenAllowed,
     extensions::pref_names::kAppFullscreenAllowed,
     base::Value::TYPE_BOOLEAN },
-#endif  // defined(ENABLE_EXTENSIONS)
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 #endif  // !defined(OS_MACOSX)
 
 #if defined(OS_CHROMEOS)
@@ -605,7 +609,16 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::TYPE_BOOLEAN },
 
 #if defined(OS_CHROMEOS)
+  { key::kNetworkThrottlingEnabled,
+    prefs::kNetworkThrottlingEnabled,
+    base::Value::TYPE_DICTIONARY },
+
   { key::kAllowScreenLock, prefs::kAllowScreenLock, base::Value::TYPE_BOOLEAN },
+
+  { key::kQuickUnlockModeWhitelist, prefs::kQuickUnlockModeWhitelist,
+    base::Value::TYPE_LIST },
+  { key::kQuickUnlockTimeout, prefs::kQuickUnlockTimeout,
+    base::Value::TYPE_INTEGER },
 #endif
 };
 
@@ -680,7 +693,7 @@ class ForceYouTubeSafetyModePolicyHandler : public TypeCheckingPolicyHandler {
   DISALLOW_COPY_AND_ASSIGN(ForceYouTubeSafetyModePolicyHandler);
 };
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 void GetExtensionAllowedTypesMap(
     std::vector<std::unique_ptr<StringMappingListPolicyHandler::MappingEntry>>*
         result) {
@@ -762,7 +775,7 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       prefs::kEnableDeprecatedWebPlatformFeatures,
       base::Bind(GetDeprecatedFeaturesMap)));
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   handlers->AddHandler(base::MakeUnique<extensions::ExtensionListPolicyHandler>(
       key::kExtensionInstallWhitelist,
       extensions::pref_names::kInstallAllowList, false));
@@ -915,9 +928,9 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(base::WrapUnique(new DefaultGeolocationPolicyHandler()));
 #endif  // defined(OS_CHROMEOS)
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   handlers->AddHandler(base::MakeUnique<PluginPolicyHandler>());
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
   return handlers;
 }

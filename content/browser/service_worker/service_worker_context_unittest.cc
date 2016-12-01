@@ -179,12 +179,10 @@ class RecordableEmbeddedWorkerInstanceClient
  protected:
   void StartWorker(
       const EmbeddedWorkerStartParams& params,
-      service_manager::mojom::InterfaceProviderPtr browser_interfaces,
-      service_manager::mojom::InterfaceProviderRequest renderer_request)
-      override {
+      mojom::ServiceWorkerEventDispatcherRequest request) override {
     events_.push_back(Message::StartWorker);
     EmbeddedWorkerTestHelper::MockEmbeddedWorkerInstanceClient::StartWorker(
-        params, std::move(browser_interfaces), std::move(renderer_request));
+        params, std::move(request));
   }
 
   void StopWorker(const StopWorkerCallback& callback) override {
@@ -710,9 +708,9 @@ class ServiceWorkerContextRecoveryTest
 
  protected:
   void SetUp() override {
-    if (is_mojo_enabled()) {
+    if (!is_mojo_enabled()) {
       base::CommandLine::ForCurrentProcess()->AppendSwitch(
-          switches::kMojoServiceWorker);
+          switches::kDisableMojoServiceWorker);
     }
     ServiceWorkerContextTest::SetUp();
   }

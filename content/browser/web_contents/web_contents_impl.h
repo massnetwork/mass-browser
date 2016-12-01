@@ -44,6 +44,7 @@
 #include "content/public/common/three_d_api_types.h"
 #include "net/base/load_states.h"
 #include "net/http/http_response_headers.h"
+#include "ppapi/features/features.h"
 #include "third_party/WebKit/public/platform/WebDragOperation.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/gfx/geometry/rect_f.h"
@@ -59,7 +60,6 @@ namespace content {
 class BrowserPluginEmbedder;
 class BrowserPluginGuest;
 class DateTimeChooserAndroid;
-class DownloadItem;
 class FindRequestManager;
 class HostZoomMapObserver;
 class InterstitialPageImpl;
@@ -68,13 +68,13 @@ class LoaderIOThreadNotifier;
 class ManifestManagerHost;
 class MediaWebContentsObserver;
 class PluginContentOriginWhitelist;
-class PowerSaveBlocker;
 class RenderViewHost;
 class RenderViewHostDelegateView;
 class RenderWidgetHostImpl;
 class RenderWidgetHostInputEventRouter;
 class SavePackage;
-class ScreenOrientationDispatcherHost;
+class ScreenOrientation;
+class ScreenOrientationProvider;
 class SiteInstance;
 class TestWebContents;
 class TextInputManager;
@@ -101,7 +101,7 @@ class CreateNewWindowParams;
 class WebContentsAndroid;
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 class PepperPlaybackObserver;
 #endif
 
@@ -185,8 +185,12 @@ class CONTENT_EXPORT WebContentsImpl
 
   // Informs the render view host and the BrowserPluginEmbedder, if present, of
   // a Drag Source End.
-  void DragSourceEndedAt(int client_x, int client_y, int screen_x,
-      int screen_y, blink::WebDragOperation operation);
+  void DragSourceEndedAt(int client_x,
+                         int client_y,
+                         int screen_x,
+                         int screen_y,
+                         blink::WebDragOperation operation,
+                         RenderWidgetHost* source_rwh);
 
   // Notification that the RenderViewHost's load state changed.
   void LoadStateChanged(const GURL& url,
@@ -206,10 +210,6 @@ class CONTENT_EXPORT WebContentsImpl
   void NotifyWebContentsFocused();
 
   WebContentsView* GetView() const;
-
-  ScreenOrientationDispatcherHost* screen_orientation_dispatcher_host() {
-    return screen_orientation_dispatcher_host_.get();
-  }
 
   bool should_normally_be_visible() { return should_normally_be_visible_; }
 
@@ -324,6 +324,7 @@ class CONTENT_EXPORT WebContentsImpl
   int GetCrashedErrorCode() const override;
   bool IsBeingDestroyed() const override;
   void NotifyNavigationStateChanged(InvalidateTypes changed_flags) override;
+  void OnAudioStateChanged(bool is_audible) override;
   base::TimeTicks GetLastActiveTime() const override;
   void SetLastActiveTime(base::TimeTicks last_active_time) override;
   base::TimeTicks GetLastHiddenTime() const override;
@@ -384,7 +385,7 @@ class CONTENT_EXPORT WebContentsImpl
   bool WillNotifyDisconnection() const override;
   RendererPreferences* GetMutableRendererPrefs() override;
   void Close() override;
-  void SystemDragEnded() override;
+  void SystemDragEnded(RenderWidgetHost* source_rwh) override;
   void UserGestureDone() override;
   void SetClosedByUserGesture(bool value) override;
   bool GetClosedByUserGesture() const override;
@@ -414,6 +415,7 @@ class CONTENT_EXPORT WebContentsImpl
   void ExitFullscreen(bool will_cause_resize) override;
   void ResumeLoadingCreatedWebContents() override;
   void OnPasswordInputShownOnHttp() override;
+  void OnAllPasswordInputsHiddenOnHttp() override;
   void OnCreditCardInputShownOnHttp() override;
   void SetIsOverlayContent(bool is_overlay_content) override;
 
@@ -480,6 +482,7 @@ class CONTENT_EXPORT WebContentsImpl
       int browser_plugin_instance_id) override;
   device::GeolocationServiceContext* GetGeolocationServiceContext() override;
   device::WakeLockServiceContext* GetWakeLockServiceContext() override;
+  ScreenOrientationProvider* GetScreenOrientationProvider() override;
   void EnterFullscreenMode(const GURL& origin) override;
   void ExitFullscreenMode(bool will_cause_resize) override;
   bool ShouldRouteMessageEvent(
@@ -512,10 +515,10 @@ class CONTENT_EXPORT WebContentsImpl
   void DidCancelLoading() override;
   void DocumentAvailableInMainFrame(RenderViewHost* render_view_host) override;
   void RouteCloseEvent(RenderViewHost* rvh) override;
-  bool AddMessageToConsole(int32_t level,
-                           const base::string16& message,
-                           int32_t line_no,
-                           const base::string16& source_id) override;
+  bool DidAddMessageToConsole(int32_t level,
+                              const base::string16& message,
+                              int32_t line_no,
+                              const base::string16& source_id) override;
   RendererPreferences GetRendererPrefs(
       BrowserContext* browser_context) const override;
   void OnUserInteraction(RenderWidgetHostImpl* render_widget_host,
@@ -643,6 +646,9 @@ class CONTENT_EXPORT WebContentsImpl
   void ReplicatePageFocus(bool is_focused) override;
   RenderWidgetHostImpl* GetFocusedRenderWidgetHost(
       RenderWidgetHostImpl* receiving_widget) override;
+  RenderWidgetHostImpl* GetRenderWidgetHostWithPageFocus() override;
+  void FocusOwningWebContents(
+      RenderWidgetHostImpl* render_widget_host) override;
   void RendererUnresponsive(RenderWidgetHostImpl* render_widget_host,
                             RendererUnresponsiveType type) override;
   void RendererResponsive(RenderWidgetHostImpl* render_widget_host) override;
@@ -662,6 +668,7 @@ class CONTENT_EXPORT WebContentsImpl
   void SendScreenRects() override;
   void OnFirstPaintAfterLoad(RenderWidgetHostImpl* render_widget_host) override;
   TextInputManager* GetTextInputManager() override;
+  bool OnUpdateDragCursor() override;
 
   // RenderFrameHostManager::Delegate ------------------------------------------
 
@@ -698,6 +705,7 @@ class CONTENT_EXPORT WebContentsImpl
   void SetFocusToLocationBar(bool select_all) override;
   bool IsHidden() override;
   int GetOuterDelegateFrameTreeNodeId() override;
+  RenderWidgetHostImpl* GetFullscreenRenderWidgetHost() const override;
 
   // NotificationObserver ------------------------------------------------------
 
@@ -755,8 +763,15 @@ class CONTENT_EXPORT WebContentsImpl
 
   // Called by MediaWebContentsObserver when playback starts or stops.  See the
   // WebContentsObserver function stubs for more details.
-  void MediaStartedPlaying(const WebContentsObserver::MediaPlayerId& id);
-  void MediaStoppedPlaying(const WebContentsObserver::MediaPlayerId& id);
+  void MediaStartedPlaying(
+      const WebContentsObserver::MediaPlayerInfo& media_info,
+      const WebContentsObserver::MediaPlayerId& id);
+  void MediaStoppedPlaying(
+      const WebContentsObserver::MediaPlayerInfo& media_info,
+      const WebContentsObserver::MediaPlayerId& id);
+  int GetCurrentlyPlayingVideoCount() override;
+
+  bool IsFullscreen() override;
 
   MediaWebContentsObserver* media_web_contents_observer() {
     return media_web_contents_observer_.get();
@@ -963,7 +978,7 @@ class CONTENT_EXPORT WebContentsImpl
                    const std::string& name,
                    const base::ListValue& args);
   void OnUpdatePageImportanceSignals(const PageImportanceSignals& signals);
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   void OnPepperInstanceCreated(int32_t pp_instance);
   void OnPepperInstanceDeleted(int32_t pp_instance);
   void OnPepperPluginHung(int plugin_child_id,
@@ -983,7 +998,7 @@ class CONTENT_EXPORT WebContentsImpl
 
   void OnBrowserPluginMessage(RenderFrameHost* render_frame_host,
                               const IPC::Message& message);
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
   void OnUpdateFaviconURL(const std::vector<FaviconURL>& candidates);
   void OnFirstVisuallyNonEmptyPaint();
   void OnShowValidationMessage(const gfx::Rect& anchor_in_root_view,
@@ -997,11 +1012,34 @@ class CONTENT_EXPORT WebContentsImpl
   // up at the next animation step if the throbber is going.
   void SetNotWaitingForResponse() { waiting_for_response_ = false; }
 
+  // Inner WebContents Helpers -------------------------------------------------
+  //
+  // These functions are helpers in managing a hierarchy of WebContents
+  // involved in rendering inner WebContents.
+
+  // When multiple WebContents are present within a tab or window, a single one
+  // is focused and will route keyboard events in most cases to a RenderWidget
+  // contained within it. |GetFocusedWebContents()|'s main frame widget will
+  // receive page focus and blur events when the containing window changes focus
+  // state.
+
   // Returns the focused WebContents.
   // If there are multiple inner/outer WebContents (when embedding <webview>,
   // <guestview>, ...) returns the single one containing the currently focused
   // frame. Otherwise, returns this WebContents.
   WebContentsImpl* GetFocusedWebContents();
+
+  // Returns true if |this| is the focused WebContents or an ancestor of the
+  // focused WebContents.
+  bool ContainsOrIsFocusedWebContents();
+
+  // When inner or outer WebContents are present, become the focused
+  // WebContentsImpl. This will activate this content's main frame RenderWidget
+  // and indirectly all its subframe widgets.  GetFocusedRenderWidgetHost will
+  // search this WebContentsImpl for a focused RenderWidgetHost. The previously
+  // focused WebContentsImpl, if any, will have its RenderWidgetHosts
+  // deactivated.
+  void SetAsFocusedWebContentsIfNecessary();
 
   // Returns the root of the WebContents tree.
   WebContentsImpl* GetOutermostWebContents();
@@ -1324,7 +1362,7 @@ class CONTENT_EXPORT WebContentsImpl
   // NULL otherwise.
   std::unique_ptr<BrowserPluginGuest> browser_plugin_guest_;
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   // Manages the whitelist of plugin content origins exempt from power saving.
   std::unique_ptr<PluginContentOriginWhitelist>
       plugin_content_origin_whitelist_;
@@ -1376,8 +1414,7 @@ class CONTENT_EXPORT WebContentsImpl
 
   std::unique_ptr<device::WakeLockServiceContext> wake_lock_service_context_;
 
-  std::unique_ptr<ScreenOrientationDispatcherHost>
-      screen_orientation_dispatcher_host_;
+  std::unique_ptr<ScreenOrientation> screen_orientation_;
 
   std::unique_ptr<ManifestManagerHost> manifest_manager_host_;
 
@@ -1401,10 +1438,10 @@ class CONTENT_EXPORT WebContentsImpl
   // Manages media players, CDMs, and power save blockers for media.
   std::unique_ptr<MediaWebContentsObserver> media_web_contents_observer_;
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   // Observes pepper playback changes, and notifies MediaSession.
   std::unique_ptr<PepperPlaybackObserver> pepper_playback_observer_;
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
   std::unique_ptr<HostZoomMapObserver> host_zoom_map_observer_;
 
@@ -1432,6 +1469,8 @@ class CONTENT_EXPORT WebContentsImpl
 
   // Whether this WebContents is for content overlay.
   bool is_overlay_content_;
+
+  int currently_playing_video_count_ = 0;
 
   base::WeakPtrFactory<WebContentsImpl> loading_weak_factory_;
   base::WeakPtrFactory<WebContentsImpl> weak_factory_;

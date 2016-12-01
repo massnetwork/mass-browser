@@ -6,15 +6,11 @@
 
 #include <stddef.h>
 
-#include "base/command_line.h"
 #include "base/metrics/field_trial.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
-#include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "components/google/core/browser/google_util.h"
-#include "components/search/search_switches.h"
 #include "components/search_engines/template_url.h"
 #include "url/gurl.h"
 
@@ -78,13 +74,6 @@ bool IsInstantExtendedAPIEnabled() {
 // Determine what embedded search page version to request from the user's
 // default search provider. If 0, the embedded search UI should not be enabled.
 uint64_t EmbeddedSearchPageVersion() {
-#if defined(OS_ANDROID)
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kEnableEmbeddedSearchAPI)) {
-    return kEmbeddedSearchEnabledVersion;
-  }
-#endif
-
   FieldTrialFlags flags;
   if (GetFieldTrialInfo(&flags)) {
     return GetUInt64ValueForFlagWithDefault(kEmbeddedPageVersionFlagName,
@@ -158,10 +147,7 @@ bool GetBoolValueForFlagWithDefault(const std::string& flag,
   return !!GetUInt64ValueForFlagWithDefault(flag, default_value ? 1 : 0, flags);
 }
 
-std::string InstantExtendedEnabledParam(bool for_search) {
-  // TODO(treib): Remove |for_search| and update callers that set it to true.
-  if (for_search)
-    return std::string();
+std::string InstantExtendedEnabledParam() {
   return std::string(google_util::kInstantExtendedAPIParam) + "=" +
          base::Uint64ToString(EmbeddedSearchPageVersion()) + "&";
 }
@@ -176,11 +162,6 @@ bool ShouldPrefetchSearchResults() {
     return false;
 
 #if defined(OS_ANDROID)
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kPrefetchSearchResults)) {
-    return true;
-  }
-
   FieldTrialFlags flags;
   return GetFieldTrialInfo(&flags) &&
          GetBoolValueForFlagWithDefault(kPrefetchSearchResultsFlagName, false,

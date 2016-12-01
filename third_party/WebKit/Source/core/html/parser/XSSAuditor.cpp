@@ -390,7 +390,7 @@ void XSSAuditor::init(Document* document, XSSAuditorDelegate* auditorDelegate) {
     m_xssProtection = xssProtectionHeader;
     if (m_xssProtection == ReflectedXSSInvalid ||
         m_xssProtection == ReflectedXSSUnset) {
-      m_xssProtection = FilterReflectedXSS;
+      m_xssProtection = BlockReflectedXSS;
     }
 
     if (auditorDelegate)
@@ -869,13 +869,14 @@ String XSSAuditor::canonicalizedSnippetForJavaScript(
 bool XSSAuditor::isContainedInRequest(const String& decodedSnippet) {
   if (decodedSnippet.isEmpty())
     return false;
-  if (m_decodedURL.find(decodedSnippet, 0, TextCaseInsensitive) != kNotFound)
+  if (m_decodedURL.find(decodedSnippet, 0, TextCaseUnicodeInsensitive) !=
+      kNotFound)
     return true;
   if (m_decodedHTTPBodySuffixTree &&
       !m_decodedHTTPBodySuffixTree->mightContain(decodedSnippet))
     return false;
-  return m_decodedHTTPBody.find(decodedSnippet, 0, TextCaseInsensitive) !=
-         kNotFound;
+  return m_decodedHTTPBody.find(decodedSnippet, 0,
+                                TextCaseUnicodeInsensitive) != kNotFound;
 }
 
 bool XSSAuditor::isLikelySafeResource(const String& url) {

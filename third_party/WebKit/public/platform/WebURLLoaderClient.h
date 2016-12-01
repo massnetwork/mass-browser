@@ -33,6 +33,7 @@
 
 #include "public/platform/WebCommon.h"
 #include "public/platform/WebDataConsumerHandle.h"
+#include <memory>
 
 namespace blink {
 
@@ -66,11 +67,10 @@ class BLINK_PLATFORM_EXPORT WebURLLoaderClient {
   virtual void didReceiveResponse(WebURLLoader*, const WebURLResponse&) {}
 
   // Called when response headers are received.
-  // The ownership of |handle| is transferred to the callee.
-  virtual void didReceiveResponse(WebURLLoader* loader,
-                                  const WebURLResponse& response,
-                                  WebDataConsumerHandle* handle) {
-    delete handle;
+  virtual void didReceiveResponse(
+      WebURLLoader* loader,
+      const WebURLResponse& response,
+      std::unique_ptr<WebDataConsumerHandle> handle) {
     didReceiveResponse(loader, response);
   }
 
@@ -87,14 +87,10 @@ class BLINK_PLATFORM_EXPORT WebURLLoaderClient {
   // from cache, and -1 if this information is unavailable.
   // TODO(ricea): -1 is problematic for consumers maintaining a running
   //     total. Investigate using 0 for all unavailable cases.
-  // |encodedBodyLength| is the number of bytes used to store this chunk,
-  // possibly encrypted, excluding headers or framing. It is set even if the
-  // response was served from cache.
   virtual void didReceiveData(WebURLLoader*,
                               const char* data,
                               int dataLength,
-                              int encodedDataLength,
-                              int encodedBodyLength) {}
+                              int encodedDataLength) {}
 
   // Called when a chunk of renderer-generated metadata is received from the
   // cache.
@@ -106,10 +102,15 @@ class BLINK_PLATFORM_EXPORT WebURLLoaderClient {
   // |totalEncodedDataLength| may be equal to kUnknownEncodedDataLength.
   virtual void didFinishLoading(WebURLLoader* loader,
                                 double finishTime,
-                                int64_t totalEncodedDataLength) {}
+                                int64_t totalEncodedDataLength,
+                                int64_t totalEncodedBodyLength) {}
 
   // Called when the load completes with an error.
-  virtual void didFail(WebURLLoader*, const WebURLError&) {}
+  // |totalEncodedDataLength| may be equal to kUnknownEncodedDataLength.
+  virtual void didFail(WebURLLoader*,
+                       const WebURLError&,
+                       int64_t totalEncodedDataLength,
+                       int64_t totalEncodedBodyLength) {}
 
   // Value passed to didFinishLoading when total encoded data length isn't
   // known.

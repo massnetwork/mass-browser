@@ -234,7 +234,8 @@ class WebURLResponse {
   BLINK_PLATFORM_EXPORT bool wasAlternateProtocolAvailable() const;
   BLINK_PLATFORM_EXPORT void setWasAlternateProtocolAvailable(bool);
 
-  // Flag whether this request was loaded via a ServiceWorker.
+  // Flag whether this request was loaded via a ServiceWorker. See
+  // ServiceWorkerResponseInfo::was_fetched_via_service_worker() for details.
   BLINK_PLATFORM_EXPORT bool wasFetchedViaServiceWorker() const;
   BLINK_PLATFORM_EXPORT void setWasFetchedViaServiceWorker(bool);
 
@@ -243,7 +244,8 @@ class WebURLResponse {
   BLINK_PLATFORM_EXPORT void setWasFetchedViaForeignFetch(bool);
 
   // Flag whether the fallback request with skip service worker flag was
-  // required.
+  // required. See ServiceWorkerResponseInfo::was_fallback_required() for
+  // details.
   BLINK_PLATFORM_EXPORT bool wasFallbackRequiredByServiceWorker() const;
   BLINK_PLATFORM_EXPORT void setWasFallbackRequiredByServiceWorker(bool);
 
@@ -253,8 +255,9 @@ class WebURLResponse {
   BLINK_PLATFORM_EXPORT void setServiceWorkerResponseType(
       WebServiceWorkerResponseType);
 
-  // The original URL of the response which was fetched by the ServiceWorker.
-  // This may be empty if the response was created inside the ServiceWorker.
+  // The URL of the Response object the ServiceWorker passed to respondWith().
+  // See ServiceWorkerResponseInfo::original_url_via_service_worker() for
+  // details.
   BLINK_PLATFORM_EXPORT WebURL originalURLViaServiceWorker() const;
   BLINK_PLATFORM_EXPORT void setOriginalURLViaServiceWorker(const WebURL&);
 
@@ -288,15 +291,15 @@ class WebURLResponse {
   BLINK_PLATFORM_EXPORT void setRemotePort(unsigned short);
 
   // Original size of the response before decompression.
-  BLINK_PLATFORM_EXPORT long long encodedDataLength() const;
-  BLINK_PLATFORM_EXPORT void addToEncodedDataLength(long long);
+  BLINK_PLATFORM_EXPORT long long encodedDataLengthForTesting() const;
+  BLINK_PLATFORM_EXPORT void setEncodedDataLength(long long);
 
   // Original size of the response body before decompression.
-  BLINK_PLATFORM_EXPORT long long encodedBodyLength() const;
+  BLINK_PLATFORM_EXPORT long long encodedBodyLengthForTesting() const;
   BLINK_PLATFORM_EXPORT void addToEncodedBodyLength(long long);
 
   // Size of the response body after removing any content encoding.
-  BLINK_PLATFORM_EXPORT long long decodedBodyLength() const;
+  BLINK_PLATFORM_EXPORT long long decodedBodyLengthForTesting() const;
   BLINK_PLATFORM_EXPORT void addToDecodedBodyLength(long long);
 
   // Extra data associated with the underlying resource response. Resource

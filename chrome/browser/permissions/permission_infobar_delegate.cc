@@ -57,7 +57,7 @@ PermissionInfoBarDelegate::CreateDelegate(
     case content::PermissionType::PUSH_MESSAGING:
       return std::unique_ptr<PermissionInfoBarDelegate>(
           new NotificationPermissionInfoBarDelegate(
-              requesting_frame, user_gesture, profile, callback));
+              type, requesting_frame, user_gesture, profile, callback));
 #endif  // ENABLE_NOTIFICATIONS
     case content::PermissionType::MIDI_SYSEX:
       return std::unique_ptr<PermissionInfoBarDelegate>(
@@ -83,7 +83,7 @@ PermissionInfoBarDelegate::~PermissionInfoBarDelegate() {
   }
 }
 
-std::vector<int> PermissionInfoBarDelegate::content_settings() const {
+std::vector<int> PermissionInfoBarDelegate::content_settings_types() const {
   return std::vector<int>{content_settings_type_};
 }
 

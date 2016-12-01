@@ -32,6 +32,8 @@ class WebServiceWorkerRegistration {
   using WebGetNavigationPreloadStateCallbacks =
       WebCallbacks<const WebNavigationPreloadState&,
                    const WebServiceWorkerError&>;
+  using WebSetNavigationPreloadHeaderCallbacks =
+      WebCallbacks<void, const WebServiceWorkerError&>;
 
   // The handle interface that retains a reference to the implementation of
   // WebServiceWorkerRegistration in the embedder and is owned by
@@ -48,6 +50,7 @@ class WebServiceWorkerRegistration {
   virtual void proxyStopped() {}
 
   virtual WebURL scope() const { return WebURL(); }
+  virtual int64_t registrationId() const = 0;
   virtual void update(WebServiceWorkerProvider*,
                       WebServiceWorkerUpdateCallbacks*) {}
   virtual void unregister(WebServiceWorkerProvider*,
@@ -60,6 +63,10 @@ class WebServiceWorkerRegistration {
   virtual void getNavigationPreloadState(
       WebServiceWorkerProvider*,
       std::unique_ptr<WebGetNavigationPreloadStateCallbacks>) {}
+  virtual void setNavigationPreloadHeader(
+      const WebString& value,
+      WebServiceWorkerProvider*,
+      std::unique_ptr<WebSetNavigationPreloadHeaderCallbacks>) {}
 };
 
 }  // namespace blink

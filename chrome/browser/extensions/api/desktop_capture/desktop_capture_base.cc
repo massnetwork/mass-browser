@@ -26,8 +26,7 @@
 #include "extensions/common/manifest.h"
 #include "extensions/common/switches.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_capture_options.h"
-#include "third_party/webrtc/modules/desktop_capture/screen_capturer.h"
-#include "third_party/webrtc/modules/desktop_capture/window_capturer.h"
+#include "third_party/webrtc/modules/desktop_capture/desktop_capturer.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace extensions {
@@ -153,8 +152,8 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::Execute(
         webrtc::DesktopCaptureOptions options =
             webrtc::DesktopCaptureOptions::CreateDefault();
         options.set_disable_effects(false);
-        std::unique_ptr<webrtc::ScreenCapturer> screen_capturer(
-            webrtc::ScreenCapturer::Create(options));
+        std::unique_ptr<webrtc::DesktopCapturer> screen_capturer(
+            webrtc::DesktopCapturer::CreateScreenCapturer(options));
 
         screen_list = base::MakeUnique<NativeDesktopMediaList>(
             std::move(screen_capturer), nullptr);
@@ -171,8 +170,8 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::Execute(
         webrtc::DesktopCaptureOptions options =
             webrtc::DesktopCaptureOptions::CreateDefault();
         options.set_disable_effects(false);
-        std::unique_ptr<webrtc::WindowCapturer> window_capturer(
-            webrtc::WindowCapturer::Create(options));
+        std::unique_ptr<webrtc::DesktopCapturer> window_capturer(
+            webrtc::DesktopCapturer::CreateWindowCapturer(options));
 
         window_list = base::MakeUnique<NativeDesktopMediaList>(
             nullptr, std::move(window_capturer));

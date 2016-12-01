@@ -1,5 +1,5 @@
 {
-  "name": "service:ui",
+  "name": "ui",
   "display_name": "UI Service",
   "interface_provider_specs": {
     "service_manager:connector": {
@@ -8,6 +8,7 @@
         // Additional interfaces may be requested a-la-carte.
         "app": [
           "ui::mojom::Clipboard",
+          "ui::mojom::DisplayCompositor",
           "ui::mojom::DisplayManager",
           "ui::mojom::Gpu",
           "ui::mojom::GpuService",
@@ -44,8 +45,9 @@
       },
       "requires": {
         "*": [ "app" ],
-        "service:service_manager": [ "service_manager:all_users" ],
-        "service:ui": [ "ozone" ]
+        "catalog": [ "catalog:catalog" ],
+        "service_manager": [ "service_manager:all_users" ],
+        "ui": [ "ozone" ]
       }
     }
   }

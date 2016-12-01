@@ -84,6 +84,7 @@
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/codec/jpeg_codec.h"
 #include "ui/gfx/range/range.h"
+#include "ui/native_theme/native_theme_switches.h"
 
 #if defined(USE_AURA) && defined(USE_X11)
 #include <X11/Xlib.h>
@@ -220,6 +221,8 @@ class RenderViewImplTest : public RenderViewTest {
     // does not have to bother enabling each feature.
     WebRuntimeFeatures::enableExperimentalFeatures(true);
     WebRuntimeFeatures::enableTestOnlyFeatures(true);
+    WebRuntimeFeatures::enableOverlayScrollbars(
+        ui::IsOverlayScrollbarEnabled());
     RenderViewTest::SetUp();
   }
 
@@ -1745,7 +1748,7 @@ class RendererErrorPageTest : public RenderViewImplTest {
    public:
     bool ShouldSuppressErrorPage(RenderFrame* render_frame,
                                  const GURL& url) override {
-      return url == GURL("http://example.com/suppress");
+      return url == "http://example.com/suppress";
     }
 
     void GetNavigationErrorStrings(content::RenderFrame* render_frame,
@@ -1791,9 +1794,9 @@ TEST_F(RendererErrorPageTest, MAYBE_Suppresses) {
   main_frame->didFailProvisionalLoad(web_frame, error,
                                      blink::WebStandardCommit);
   const int kMaxOutputCharacters = 22;
-  EXPECT_EQ("", base::UTF16ToASCII(base::StringPiece16(
-                    WebFrameContentDumper::dumpWebViewAsText(
-                        view()->GetWebView(), kMaxOutputCharacters))));
+  EXPECT_EQ("", WebFrameContentDumper::dumpWebViewAsText(view()->GetWebView(),
+                                                         kMaxOutputCharacters)
+                    .ascii());
 }
 
 #if defined(OS_ANDROID)
@@ -2180,6 +2183,64 @@ TEST_F(RenderViewImplTest, HistoryIsProperlyUpdatedOnNavigation) {
   EXPECT_EQ(1, view()->historyBackListCount());
   EXPECT_EQ(2, view()->historyBackListCount() +
       view()->historyForwardListCount() + 1);
+}
+
+// IPC Listener that runs a callback when a console.log() is executed from
+// javascript.
+class ConsoleCallbackFilter : public IPC::Listener {
+ public:
+  explicit ConsoleCallbackFilter(
+      base::Callback<void(const base::string16&)> callback)
+      : callback_(callback) {}
+
+  bool OnMessageReceived(const IPC::Message& msg) override {
+    bool handled = true;
+    IPC_BEGIN_MESSAGE_MAP(ConsoleCallbackFilter, msg)
+      IPC_MESSAGE_HANDLER(FrameHostMsg_DidAddMessageToConsole,
+                          OnDidAddMessageToConsole)
+      IPC_MESSAGE_UNHANDLED(handled = false)
+    IPC_END_MESSAGE_MAP()
+    return handled;
+  }
+
+  void OnDidAddMessageToConsole(int32_t,
+                                const base::string16& message,
+                                int32_t,
+                                const base::string16&) {
+    callback_.Run(message);
+  }
+
+ private:
+  base::Callback<void(const base::string16&)> callback_;
+};
+
+// Tests that there's no UaF after dispatchBeforeUnloadEvent.
+// See https://crbug.com/666714.
+TEST_F(RenderViewImplTest, DispatchBeforeUnloadCanDetachFrame) {
+  LoadHTML(
+      "<script>window.onbeforeunload = function() { "
+      "window.console.log('OnBeforeUnload called'); }</script>");
+
+  // Creates a callback that swaps the frame when the 'OnBeforeUnload called'
+  // log is printed from the beforeunload handler.
+  std::unique_ptr<ConsoleCallbackFilter> callback_filter(
+      new ConsoleCallbackFilter(base::Bind(
+          [](RenderFrameImpl* frame, const base::string16& msg) {
+            // Makes sure this happens during the beforeunload handler.
+            EXPECT_EQ(base::UTF8ToUTF16("OnBeforeUnload called"), msg);
+
+            // Swaps the main frame.
+            frame->OnMessageReceived(FrameMsg_SwapOut(
+                frame->GetRoutingID(), 1, false, FrameReplicationState()));
+          },
+          base::Unretained(frame()))));
+  render_thread_->sink().AddFilter(callback_filter.get());
+
+  // Simulates a BeforeUnload IPC received from the browser.
+  frame()->OnMessageReceived(
+      FrameMsg_BeforeUnload(frame()->GetRoutingID(), false));
+
+  render_thread_->sink().RemoveFilter(callback_filter.get());
 }
 
 TEST_F(RenderViewImplBlinkSettingsTest, Default) {

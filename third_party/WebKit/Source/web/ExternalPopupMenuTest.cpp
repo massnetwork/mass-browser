@@ -39,8 +39,7 @@ class ExternalPopupMenuDisplayNoneItemsTest : public testing::Test {
     // Set the 4th an 5th items to have "display: none" property
     element->setInnerHTML(
         "<option><option><option><option style='display:none;'><option "
-        "style='display:none;'><option><option>",
-        ASSERT_NO_EXCEPTION);
+        "style='display:none;'><option><option>");
     m_dummyPageHolder->document().body()->appendChild(element,
                                                       ASSERT_NO_EXCEPTION);
     m_ownerElement = element;
@@ -140,7 +139,7 @@ class ExternalPopupMenuTest : public testing::Test {
   FrameTestHelpers::WebViewHelper m_helper;
 };
 
-TEST_F(ExternalPopupMenuTest, PopupAccountsForVisualViewportOffset) {
+TEST_F(ExternalPopupMenuTest, PopupAccountsForVisualViewportTransform) {
   registerMockedURLLoad("select_mid_screen.html");
   loadFrame("select_mid_screen.html");
 
@@ -157,15 +156,20 @@ TEST_F(ExternalPopupMenuTest, PopupAccountsForVisualViewportOffset) {
 
   IntRect rectInDocument = menuList->absoluteBoundingBoxRect();
 
-  webView()->setPageScaleFactor(2);
+  constexpr int scaleFactor = 2;
   ScrollOffset scrollDelta(20, 30);
-  visualViewport.move(scrollDelta);
 
+  const int expectedX =
+      (rectInDocument.x() - scrollDelta.width()) * scaleFactor;
+  const int expectedY =
+      (rectInDocument.y() - scrollDelta.height()) * scaleFactor;
+
+  webView()->setPageScaleFactor(scaleFactor);
+  visualViewport.move(scrollDelta);
   select->showPopup();
 
-  EXPECT_EQ(rectInDocument.x() - scrollDelta.width(), client().shownBounds().x);
-  EXPECT_EQ(rectInDocument.y() - scrollDelta.height(),
-            client().shownBounds().y);
+  EXPECT_EQ(expectedX, client().shownBounds().x);
+  EXPECT_EQ(expectedY, client().shownBounds().y);
 }
 
 TEST_F(ExternalPopupMenuTest, DidAcceptIndex) {

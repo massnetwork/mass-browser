@@ -23,9 +23,6 @@
 namespace aura {
 class Window;
 }
-namespace gfx {
-class FontList;
-}
 
 namespace views {
 
@@ -138,7 +135,6 @@ class VIEWS_EXPORT NativeWidgetAura
   void SetVisibilityAnimationTransition(
       Widget::VisibilityTransition transition) override;
   ui::NativeTheme* GetNativeTheme() const override;
-  void OnRootViewLayout() override;
   bool IsTranslucentWindowOpacitySupported() const override;
   void OnSizeConstraintsChanged() override;
   void RepostNativeEvent(gfx::NativeEvent native_event) override;

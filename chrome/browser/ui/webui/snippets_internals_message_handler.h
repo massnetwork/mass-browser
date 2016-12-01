@@ -15,7 +15,7 @@
 #include "components/ntp_snippets/category.h"
 #include "components/ntp_snippets/category_status.h"
 #include "components/ntp_snippets/content_suggestions_service.h"
-#include "components/ntp_snippets/remote/ntp_snippets_service.h"
+#include "components/ntp_snippets/remote/remote_suggestions_provider.h"
 #include "content/public/browser/web_ui_message_handler.h"
 
 namespace base {
@@ -43,6 +43,7 @@ class SnippetsInternalsMessageHandler
       ntp_snippets::CategoryStatus new_status) override;
   void OnSuggestionInvalidated(
       const ntp_snippets::ContentSuggestion::ID& suggestion_id) override;
+  void OnFullRefreshRequired() override;
   void ContentSuggestionsServiceShutdown() override;
 
   void HandleRefreshContent(const base::ListValue* args);
@@ -69,7 +70,7 @@ class SnippetsInternalsMessageHandler
   // Tracks whether we can already send messages to the page.
   bool dom_loaded_;
 
-  ntp_snippets::NTPSnippetsService* ntp_snippets_service_;
+  ntp_snippets::RemoteSuggestionsProvider* ntp_snippets_service_;
   ntp_snippets::ContentSuggestionsService* content_suggestions_service_;
 
   std::map<ntp_snippets::Category,

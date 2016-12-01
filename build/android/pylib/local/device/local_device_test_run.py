@@ -5,6 +5,7 @@
 import fnmatch
 import imp
 import logging
+import posixpath
 import signal
 import thread
 import threading
@@ -15,6 +16,11 @@ from pylib.base import base_test_result
 from pylib.base import test_run
 from pylib.base import test_collection
 from pylib.local.device import local_device_environment
+
+
+_SIGTERM_TEST_LOG = (
+  '  Suite execution terminated, probably due to swarming timeout.\n'
+  '  Your test may not have run.')
 
 
 def IncrementalInstall(device, apk_helper, installer_script):
@@ -37,6 +43,15 @@ def IncrementalInstall(device, apk_helper, installer_script):
                     native_libs=params['native_libs'],
                     dex_files=params['dex_files'],
                     permissions=None)  # Auto-grant permissions from manifest.
+
+
+def SubstituteDeviceRoot(device_path, device_root):
+  if not device_path:
+    return device_root
+  elif isinstance(device_path, list):
+    return posixpath.join(*(p if p else device_root for p in device_path))
+  else:
+    return device_path
 
 
 class LocalDeviceTestRun(test_run.TestRun):
@@ -87,7 +102,7 @@ class LocalDeviceTestRun(test_run.TestRun):
       raise TestsTerminated()
 
     try:
-      with signal_handler.AddSignalHandler(signal.SIGTERM, stop_tests):
+      with signal_handler.SignalHandler(signal.SIGTERM, stop_tests):
         tries = 0
         results = []
         while tries < self._env.max_tries and tests:
@@ -113,6 +128,14 @@ class LocalDeviceTestRun(test_run.TestRun):
             else:
               self._env.parallel_devices.pMap(
                   run_tests_on_device, tests, try_results).pGet(None)
+          except TestsTerminated:
+            for unknown_result in try_results.GetUnknown():
+              try_results.AddResult(
+                  base_test_result.BaseTestResult(
+                      unknown_result.GetName(),
+                      base_test_result.ResultType.TIMEOUT,
+                      log=_SIGTERM_TEST_LOG))
+            raise
           finally:
             results.append(try_results)
 

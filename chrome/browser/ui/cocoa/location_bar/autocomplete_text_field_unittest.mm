@@ -243,15 +243,6 @@ TEST_F(AutocompleteTextFieldTest, Display) {
   [field_ display];
 }
 
-// Test setting gray text, mostly to ensure nothing leaks or crashes.
-TEST_F(AutocompleteTextFieldTest, GrayText) {
-  [field_ display];
-  EXPECT_FALSE([field_ needsDisplay]);
-  [field_ setGrayTextAutocompletion:@"foo" textColor:[NSColor redColor]];
-  EXPECT_TRUE([field_ needsDisplay]);
-  [field_ display];
-}
-
 TEST_F(AutocompleteTextFieldObserverTest, FlagsChanged) {
   InSequence dummy;  // Call mock in exactly the order specified.
 
@@ -574,6 +565,8 @@ TEST_F(AutocompleteTextFieldTest, LeftDecorationMouseDown) {
       .WillRepeatedly(Return(true));
 
   AutocompleteTextFieldCell* cell = [field_ cell];
+  [cell updateMouseTrackingAndToolTipsInRect:[field_ frame] ofView:field_];
+
   const NSRect iconFrame =
       [cell frameForDecoration:&mock_left_decoration_ inFrame:[field_ bounds]];
   const NSPoint location = NSMakePoint(NSMidX(iconFrame), NSMidY(iconFrame));
@@ -621,6 +614,8 @@ TEST_F(AutocompleteTextFieldTest, RightDecorationMouseDown) {
       .WillRepeatedly(Return(true));
 
   AutocompleteTextFieldCell* cell = [field_ cell];
+  [cell updateMouseTrackingAndToolTipsInRect:[field_ frame] ofView:field_];
+
   const NSRect bounds = [field_ bounds];
   const NSRect iconFrame =
       [cell frameForDecoration:&mock_right_decoration_ inFrame:bounds];
@@ -797,6 +792,34 @@ TEST_F(AutocompleteTextFieldTest, HideFocusState) {
   EXPECT_TRUE([FieldEditor() shouldDrawInsertionPoint]);
 }
 
+// Verify that the tracking areas are added properly.
+TEST_F(AutocompleteTextFieldTest, UpdateTrackingAreas) {
+  AutocompleteTextFieldCell* cell = [field_ cell];
+
+  mock_left_decoration_.SetVisible(true);
+  mock_right_decoration_.SetVisible(true);
+
+  EXPECT_CALL(mock_left_decoration_, AcceptsMousePress())
+      .WillOnce(Return(true))
+      .WillRepeatedly(Return(true));
+  EXPECT_CALL(mock_right_decoration_, AcceptsMousePress())
+      .WillOnce(Return(false))
+      .WillRepeatedly(Return(false));
+  [cell updateMouseTrackingAndToolTipsInRect:[field_ bounds] ofView:field_];
+
+  EXPECT_EQ([cell mouseTrackingDecorations].size(), 1.0);
+
+  [cell clearTrackingArea];
+  EXPECT_TRUE([cell mouseTrackingDecorations].empty());
+
+  EXPECT_CALL(mock_right_decoration_, AcceptsMousePress())
+      .WillOnce(Return(true))
+      .WillRepeatedly(Return(true));
+
+  [cell updateMouseTrackingAndToolTipsInRect:[field_ bounds] ofView:field_];
+  EXPECT_EQ([cell mouseTrackingDecorations].size(), 2.0);
+}
+
 // Verify that clicking a decoration that accepts mouse clicks does not focus
 // the Omnibox.
 TEST_F(AutocompleteTextFieldObserverTest,
@@ -816,6 +839,7 @@ TEST_F(AutocompleteTextFieldObserverTest,
       .WillRepeatedly(testing::Return(true));
   interactive_decoration.SetVisible(true);
   [cell addLeftDecoration:&interactive_decoration];
+  [cell updateMouseTrackingAndToolTipsInRect:[field_ frame] ofView:field_];
   EXPECT_CALL(interactive_decoration, OnMousePressed(_, _))
       .WillRepeatedly(testing::Return(true));
 
@@ -827,6 +851,7 @@ TEST_F(AutocompleteTextFieldObserverTest,
   EXPECT_CALL(field_observer_, OnSetFocus(false)).Times(testing::AnyNumber());
   EXPECT_CALL(field_observer_, OnKillFocus()).Times(testing::AnyNumber());
   EXPECT_CALL(field_observer_, OnDidEndEditing()).Times(testing::AnyNumber());
+  EXPECT_CALL(field_observer_, OnBeforeDrawRect()).Times(testing::AnyNumber());
   EXPECT_CALL(field_observer_, OnDidDrawRect()).Times(testing::AnyNumber());
 
   // Ensure the field is currently not first responder.

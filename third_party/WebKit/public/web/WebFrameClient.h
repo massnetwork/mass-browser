@@ -36,6 +36,7 @@
 #include "WebDOMMessageEvent.h"
 #include "WebDataSource.h"
 #include "WebFileChooserParams.h"
+#include "WebFormElement.h"
 #include "WebFrame.h"
 #include "WebFrameOwnerProperties.h"
 #include "WebHistoryCommitType.h"
@@ -81,7 +82,6 @@ class WebEncryptedMediaClient;
 class WebExternalPopupMenu;
 class WebExternalPopupMenuClient;
 class WebFileChooserCompletion;
-class WebFormElement;
 class WebInstalledAppClient;
 class WebLocalFrame;
 class WebMediaPlayer;
@@ -229,6 +229,10 @@ class BLINK_EXPORT WebFrameClient {
   virtual void didChangeSandboxFlags(WebFrame* childFrame,
                                      WebSandboxFlags flags) {}
 
+  // Called when a Feature-Policy HTTP header is encountered while loading the
+  // frame's document.
+  virtual void didSetFeaturePolicyHeader(const WebString& headerValue) {}
+
   // Called when a new Content Security Policy is added to the frame's
   // document.  This can be triggered by handling of HTTP headers, handling
   // of <meta> element, or by inheriting CSP from the parent (in case of
@@ -270,6 +274,9 @@ class BLINK_EXPORT WebFrameClient {
                                  const WebString& downloadName,
                                  bool shouldReplaceCurrentEntry) {}
 
+  // The client should load an error page in the current frame.
+  virtual void loadErrorPage(int reason) {}
+
   // Navigational queries ------------------------------------------------
 
   // The client may choose to alter the navigation policy.  Otherwise,
@@ -289,6 +296,7 @@ class BLINK_EXPORT WebFrameClient {
     bool replacesCurrentHistoryItem;
     bool isHistoryNavigationInNewChildFrame;
     bool isClientRedirect;
+    WebFormElement form;
 
     NavigationPolicyInfo(WebURLRequest& urlRequest)
         : extraData(nullptr),
@@ -334,8 +342,7 @@ class BLINK_EXPORT WebFrameClient {
   virtual void didCreateDataSource(WebLocalFrame*, WebDataSource*) {}
 
   // A new provisional load has been started.
-  virtual void didStartProvisionalLoad(WebLocalFrame* localFrame,
-                                       double triggeringEventTime) {}
+  virtual void didStartProvisionalLoad(WebLocalFrame* localFrame) {}
 
   // The provisional load was redirected via a HTTP 3xx response.
   virtual void didReceiveServerRedirectForProvisionalLoad(WebLocalFrame*) {}

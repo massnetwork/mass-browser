@@ -27,6 +27,9 @@ Informacje na temat prywatności znajdziesz w Polityce prywatności Google (http
 <translation id="1654128982815600832">Włączam połączenia zdalne z tym komputerem…</translation>
 <translation id="170207782578677537">Nie udało się zarejestrować tego komputera.</translation>
 <translation id="1704090719919187045">Ustawienia hosta funkcji Chromoting</translation>
+<translation id="1730409684442507495">• Wyższa jakość obrazu pulpitu, poprawa reakcji i mniejsze zużycie baterii.
+• Poprawiona reakcja na czynności klikania i przeciągania.
+• Poprawione niektóre animacje interfejsu użytkownika.</translation>
 <translation id="174018511426417793">Nie masz zarejestrowanych komputerów. Aby umożliwić zdalne połączenia z komputerem, zainstaluj na nim Pulpit zdalny Chrome i kliknij „<ph name="BUTTON_NAME" />”.</translation>
 <translation id="1742469581923031760">Łączę…</translation>
 <translation id="1770394049404108959">Nie mogę otworzyć aplikacji.</translation>
@@ -73,7 +76,6 @@ Informacje na temat prywatności znajdziesz w Polityce prywatności Google (http
 <translation id="2699970397166997657">Chromoting</translation>
 <translation id="2747641796667576127">Aktualizacje oprogramowania są zwykle instalowane automatycznie, ale w niektórych rzadkich przypadkach kończą się niepowodzeniem. Aktualizacja oprogramowania nie powinna trwać dłużej niż kilka minut i można ją wykonać przy zdalnym połączeniu z komputerem.</translation>
 <translation id="2841013758207633010">Godzina</translation>
-<translation id="2851674870054673688">Po wprowadzeniu kodu przez drugą stronę rozpocznie się sesja udostępniania.</translation>
 <translation id="2851754573186462851">Chromium App Streaming</translation>
 <translation id="2855866366045322178">offline</translation>
 <translation id="2888969873284818612">Wystąpił błąd sieci. Uruchomimy ponownie aplikację, gdy urządzenie znów będzie online.</translation>
@@ -221,6 +223,7 @@ zdalnego Chrome</translation>
 <translation id="6640610550128933069">ostatnio online: <ph name="DATE" /></translation>
 <translation id="6668065415969892472">PIN został zaktualizowany.</translation>
 <translation id="6681800064886881394">Copyright 2013 Google Inc. Wszelkie prawa zastrzeżone.</translation>
+<translation id="6705482892455291412">Gdy poda kod, zobaczysz pytanie o zgodę na połączenie i rozpoczęcie sesji udostępniania.</translation>
 <translation id="6746493157771801606">Wyczyść historię</translation>
 <translation id="6748108480210050150">Od</translation>
 <translation id="677755392401385740">Uruchomiono host dla użytkownika: <ph name="HOST_USERNAME" />.</translation>
@@ -297,6 +300,7 @@ zdalnego Chrome</translation>
 <translation id="9188433529406846933">Autoryzuj</translation>
 <translation id="9213184081240281106">Nieprawidłowa konfiguracja hosta.</translation>
 <translation id="951991426597076286">Odrzuć</translation>
+<translation id="962733587145768554">Aby dokończyć procedurę, wybierz „<ph name="SHARE" />” w oknie połączenia.</translation>
 <translation id="979100198331752041">Pulpit zdalny Chrome na komputerze <ph name="HOSTNAME" /> jest nieaktualny i wymaga aktualizacji.</translation>
 <translation id="985602178874221306">Autorzy Chromium</translation>
 <translation id="992215271654996353"><ph name="HOSTNAME" /> (ostatnio online <ph name="DATE_OR_TIME" />)</translation>

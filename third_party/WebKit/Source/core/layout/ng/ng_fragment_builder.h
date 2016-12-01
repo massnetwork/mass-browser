@@ -15,8 +15,10 @@ class CORE_EXPORT NGFragmentBuilder final
  public:
   NGFragmentBuilder(NGPhysicalFragmentBase::NGFragmentType);
 
+  using WeakBoxList = HeapLinkedHashSet<WeakMember<NGBlockNode>>;
+
   NGFragmentBuilder& SetWritingMode(NGWritingMode);
-  NGFragmentBuilder& SetDirection(NGDirection);
+  NGFragmentBuilder& SetDirection(TextDirection);
 
   NGFragmentBuilder& SetInlineSize(LayoutUnit);
   NGFragmentBuilder& SetBlockSize(LayoutUnit);
@@ -24,7 +26,10 @@ class CORE_EXPORT NGFragmentBuilder final
   NGFragmentBuilder& SetInlineOverflow(LayoutUnit);
   NGFragmentBuilder& SetBlockOverflow(LayoutUnit);
 
-  NGFragmentBuilder& AddChild(NGFragment*, NGLogicalOffset);
+  NGFragmentBuilder& AddChild(NGFragmentBase*, NGLogicalOffset);
+
+  NGFragmentBuilder& SetOutOfFlowDescendants(WeakBoxList&,
+                                             Vector<NGLogicalOffset>&);
 
   // Sets MarginStrut for the resultant fragment.
   NGFragmentBuilder& SetMarginStrutBlockStart(const NGMarginStrut& from);
@@ -36,12 +41,12 @@ class CORE_EXPORT NGFragmentBuilder final
   // Creates the fragment. Can only be called once.
   NGPhysicalFragment* ToFragment();
 
-  DEFINE_INLINE_VIRTUAL_TRACE() { visitor->trace(children_); }
+  DECLARE_VIRTUAL_TRACE();
 
  private:
   NGPhysicalFragmentBase::NGFragmentType type_;
   NGWritingMode writing_mode_;
-  NGDirection direction_;
+  TextDirection direction_;
 
   NGLogicalSize size_;
   NGLogicalSize overflow_;
@@ -50,6 +55,8 @@ class CORE_EXPORT NGFragmentBuilder final
 
   HeapVector<Member<NGPhysicalFragmentBase>> children_;
   Vector<NGLogicalOffset> offsets_;
+  WeakBoxList out_of_flow_descendants_;
+  Vector<NGLogicalOffset> out_of_flow_offsets_;
 };
 
 }  // namespace blink

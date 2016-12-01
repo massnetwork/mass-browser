@@ -27,6 +27,9 @@ Za več informacij o zasebnosti si oglejte Googlov pravilnik o zasebnosti (http:
 <translation id="1654128982815600832">Omogočanje oddaljenih povezav za ta računalnik ...</translation>
 <translation id="170207782578677537">Računalnika ni bilo mogoče registrirati.</translation>
 <translation id="1704090719919187045">Nastavitve gostitelja za Oddaljeno povezovanje s Chromom</translation>
+<translation id="1730409684442507495">• Izboljšana kakovost slike namizja, odzivnost in poraba energije akumulatorja.
+• Izboljšana odzivnost dejanj klika in vlečenja.
+• Izboljšanih več učinkov animacije uporabniškega vmesnika.</translation>
 <translation id="174018511426417793">Nimate registriranih računalnikov. Če želite omogočiti oddaljene povezave z računalnikom, vanj namestite Oddaljeno namizje za Chrome in kliknite »<ph name="BUTTON_NAME" />«.</translation>
 <translation id="1742469581923031760">Vzpostavljanje povezave ...</translation>
 <translation id="1770394049404108959">Ne morem odpreti aplikacije.</translation>
@@ -73,7 +76,6 @@ Za več informacij o zasebnosti si oglejte Googlov pravilnik o zasebnosti (http:
 <translation id="2699970397166997657">Oddaljeno povezovanje s Chromom</translation>
 <translation id="2747641796667576127">Posodobitve programske opreme se običajno izvedejo samodejno, vendar v redkih primerih posodobitev ni uspešna. Posodabljanje naj bi trajalo samo nekaj minut in se lahko izvaja, medtem ko ste s svojim računalnikom povezani oddaljeno.</translation>
 <translation id="2841013758207633010">Čas</translation>
-<translation id="2851674870054673688">Ko je koda vnesena, se seja skupne rabe začne.</translation>
 <translation id="2851754573186462851">Chromium App Streaming</translation>
 <translation id="2855866366045322178">brez povezave</translation>
 <translation id="2888969873284818612">Prišlo je do napake v omrežju. Ko bo naprava spet dosegljiva, bo aplikacija znova zagnana.</translation>
@@ -221,6 +223,7 @@ namizje za Chrome</translation>
 <translation id="6640610550128933069">nazadnje povezan v splet: <ph name="DATE" /></translation>
 <translation id="6668065415969892472">PIN je posodobljen.</translation>
 <translation id="6681800064886881394">Copyright 2013 Google Inc. Vse pravice pridržane.</translation>
+<translation id="6705482892455291412">Ko uporabnik vnese kodo, boste pozvani, da sprejmete povezavo in začnete sejo skupne rabe.</translation>
 <translation id="6746493157771801606">Počisti zgodovino</translation>
 <translation id="6748108480210050150">Od</translation>
 <translation id="677755392401385740">Gostitelj zagnan za uporabnika: <ph name="HOST_USERNAME" />.</translation>
@@ -297,6 +300,7 @@ namizje za Chrome</translation>
 <translation id="9188433529406846933">Pooblasti</translation>
 <translation id="9213184081240281106">Neveljavna konfiguracija gostitelja.</translation>
 <translation id="951991426597076286">Zavrni</translation>
+<translation id="962733587145768554">V pogovornem polju povezave izberite »<ph name="SHARE" />«, če želite dokončati postopek.</translation>
 <translation id="979100198331752041">Oddaljeno namizje za Chrome pri gostitelju <ph name="HOSTNAME" /> je zastarelo in ga je treba posodobiti.</translation>
 <translation id="985602178874221306">Ustvarjalci Chromiuma</translation>
 <translation id="992215271654996353"><ph name="HOSTNAME" /> (nazadnje s povezavo: <ph name="DATE_OR_TIME" />)</translation>

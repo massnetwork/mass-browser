@@ -60,7 +60,7 @@
 #import "chrome/browser/ui/cocoa/infobars/infobar_container_controller.h"
 #import "chrome/browser/ui/cocoa/location_bar/autocomplete_text_field_editor.h"
 #import "chrome/browser/ui/cocoa/fullscreen/fullscreen_toolbar_visibility_lock_controller.h"
-#import "chrome/browser/ui/cocoa/fullscreen_toolbar_controller.h"
+#import "chrome/browser/ui/cocoa/fullscreen/fullscreen_toolbar_controller.h"
 #include "chrome/browser/ui/cocoa/l10n_util.h"
 #import "chrome/browser/ui/cocoa/profiles/avatar_base_controller.h"
 #import "chrome/browser/ui/cocoa/profiles/avatar_button_controller.h"
@@ -383,9 +383,6 @@ bool IsTabDetachingInFullscreenEnabled() {
             extensions::ExtensionKeybindingRegistry::ALL_EXTENSIONS,
             windowShim_.get()));
 
-    PrefService* prefs = browser_->profile()->GetPrefs();
-    shouldShowFullscreenToolbar_ =
-        prefs->GetBoolean(prefs::kShowFullscreenToolbar);
     blockLayoutSubviews_ = NO;
 
     // We are done initializing now.
@@ -397,9 +394,8 @@ bool IsTabDetachingInFullscreenEnabled() {
 - (void)dealloc {
   browser_->tab_strip_model()->CloseAllTabs();
 
-  // Explicitly release |fullscreenToolbarController_| here, as it may call back
-  // to this BWC in |-dealloc|.  We are required to call |-exitFullscreenMode|
-  // before releasing the controller.
+  // Explicitly release |fullscreenToolbarController_| here, as it may call
+  // back to this BWC in |-dealloc|.
   [fullscreenToolbarController_ exitFullscreenMode];
   fullscreenToolbarController_.reset();
 
@@ -1585,9 +1581,9 @@ bool IsTabDetachingInFullscreenEnabled() {
 }
 
 - (void)dismissPermissionBubble {
-  PermissionRequestManager* manager = [self permissionRequestManager];
-  if (manager)
-    manager->HideBubble();
+  PermissionPrompt::Delegate* delegate = [self permissionRequestManager];
+  if (delegate)
+    delegate->Closing();
 }
 
 // Nil out the weak translate bubble controller reference.
@@ -1828,16 +1824,9 @@ willAnimateFromState:(BookmarkBar::State)oldState
 - (void)updateUIForTabFullscreen:
     (ExclusiveAccessContext::TabFullscreenState)state {
   DCHECK([self isInAnyFullscreenMode]);
-  if (state == ExclusiveAccessContext::STATE_ENTER_TAB_FULLSCREEN) {
-    [self adjustUIForSlidingFullscreenStyle:FullscreenSlidingStyle::
-                                                OMNIBOX_TABS_NONE];
-    return;
-  }
-
-  [self adjustUIForSlidingFullscreenStyle:
-            shouldShowFullscreenToolbar_
-                ? FullscreenSlidingStyle::OMNIBOX_TABS_PRESENT
-                : FullscreenSlidingStyle::OMNIBOX_TABS_HIDDEN];
+  [fullscreenToolbarController_
+      updateToolbarStyleExitingTabFullscreen:
+          state == ExclusiveAccessContext::STATE_EXIT_TAB_FULLSCREEN];
 }
 
 - (void)updateFullscreenExitBubble {
@@ -1854,17 +1843,6 @@ willAnimateFromState:(BookmarkBar::State)oldState
   return NO;
 }
 
-- (void)setFullscreenToolbarVisible:(BOOL)visible {
-  if (shouldShowFullscreenToolbar_ == visible)
-    return;
-
-  shouldShowFullscreenToolbar_ = visible;
-  [self adjustUIForSlidingFullscreenStyle:
-            shouldShowFullscreenToolbar_
-                ? FullscreenSlidingStyle::OMNIBOX_TABS_PRESENT
-                : FullscreenSlidingStyle::OMNIBOX_TABS_HIDDEN];
-}
-
 - (BOOL)isInAnyFullscreenMode {
   return [self isInImmersiveFullscreen] || [self isInAppKitFullscreen];
 }
@@ -1878,10 +1856,6 @@ willAnimateFromState:(BookmarkBar::State)oldState
          (([[self window] styleMask] & NSFullScreenWindowMask) ==
               NSFullScreenWindowMask ||
           enteringAppKitFullscreen_);
-}
-
-- (CGFloat)menubarOffset {
-  return [fullscreenToolbarController_ menubarOffset];
 }
 
 - (NSView*)avatarView {
@@ -1955,6 +1929,13 @@ willAnimateFromState:(BookmarkBar::State)oldState
 - (BOOL)floatingBarHasFocus {
   NSResponder* focused = [[self window] firstResponder];
   return [focused isKindOfClass:[AutocompleteTextFieldEditor class]];
+}
+
+- (BOOL)isFullscreenForTabContentOrExtension {
+  FullscreenController* controller =
+      browser_->exclusive_access_manager()->fullscreen_controller();
+  return controller->IsWindowFullscreenForTabOrPending() ||
+         controller->IsExtensionFullscreenOrPending();
 }
 
 - (ExclusiveAccessController*)exclusiveAccessController {

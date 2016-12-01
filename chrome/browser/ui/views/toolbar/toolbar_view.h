@@ -39,11 +39,6 @@ namespace bookmarks {
 class BookmarkBubbleObserver;
 }
 
-namespace extensions {
-class Command;
-class Extension;
-}
-
 // The Browser Window's toolbar.
 class ToolbarView : public views::AccessiblePaneView,
                     public views::MenuButtonListener,
@@ -115,7 +110,7 @@ class ToolbarView : public views::AccessiblePaneView,
 
   // AccessiblePaneView:
   bool SetPaneFocus(View* initial_focus) override;
-  void GetAccessibleState(ui::AXViewState* state) override;
+  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
 
   // views::MenuButtonListener:
   void OnMenuButtonClicked(views::MenuButton* source,
@@ -134,8 +129,7 @@ class ToolbarView : public views::AccessiblePaneView,
   void ShowWebsiteSettings(
       content::WebContents* web_contents,
       const GURL& virtual_url,
-      const security_state::SecurityStateModel::SecurityInfo& security_info)
-      override;
+      const security_state::SecurityInfo& security_info) override;
 
   // CommandObserver:
   void EnabledStateChangedForCommand(int id, bool enabled) override;

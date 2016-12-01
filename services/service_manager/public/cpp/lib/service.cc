@@ -4,15 +4,15 @@
 
 #include "services/service_manager/public/cpp/service.h"
 
-#include "services/service_manager/public/cpp/service_context.h"
-#include "services/service_manager/public/cpp/service_info.h"
+#include "base/logging.h"
 
 namespace service_manager {
 
-Service::Service() {}
-Service::~Service() {}
+Service::Service() = default;
 
-void Service::OnStart(const ServiceInfo& info) {}
+Service::~Service() = default;
+
+void Service::OnStart() {}
 
 bool Service::OnConnect(const ServiceInfo& remote_info,
                         InterfaceRegistry* registry) {
@@ -21,16 +21,26 @@ bool Service::OnConnect(const ServiceInfo& remote_info,
 
 bool Service::OnStop() { return true; }
 
-Connector* Service::connector() {
-  return context_->connector();
+ServiceContext* Service::context() const {
+  DCHECK(service_context_)
+      << "Service::context() may only be called during or after OnStart().";
+  return service_context_;
 }
 
-ServiceContext* Service::context() {
-  return context_.get();
+ForwardingService::ForwardingService(Service* target) : target_(target) {}
+
+ForwardingService::~ForwardingService() {}
+
+void ForwardingService::OnStart() {
+  target_->set_context(context());
+  target_->OnStart();
 }
 
-void Service::set_context(std::unique_ptr<ServiceContext> context) {
-  context_ = std::move(context);
+bool ForwardingService::OnConnect(const ServiceInfo& remote_info,
+                                  InterfaceRegistry* registry) {
+  return target_->OnConnect(remote_info, registry);
 }
+
+bool ForwardingService::OnStop() { return target_->OnStop(); }
 
 }  // namespace service_manager

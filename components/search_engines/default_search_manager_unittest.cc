@@ -18,6 +18,7 @@
 #include "components/pref_registry/testing_pref_service_syncable.h"
 #include "components/search_engines/search_engines_pref_names.h"
 #include "components/search_engines/template_url_data.h"
+#include "components/search_engines/template_url_data_util.h"
 #include "components/search_engines/template_url_prepopulate_data.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -41,7 +42,6 @@ void ExpectSimilar(const TemplateURLData* expected,
   EXPECT_EQ(expected->suggestions_url, actual->suggestions_url);
   EXPECT_EQ(expected->favicon_url, actual->favicon_url);
   EXPECT_EQ(expected->alternate_urls, actual->alternate_urls);
-  EXPECT_EQ(expected->show_in_default_list, actual->show_in_default_list);
   EXPECT_EQ(expected->safe_for_autoreplace, actual->safe_for_autoreplace);
   EXPECT_EQ(expected->input_encodings, actual->input_encodings);
   EXPECT_EQ(expected->search_terms_replacement_key,
@@ -90,35 +90,8 @@ void SetPolicy(user_prefs::TestingPrefServiceSyncable* prefs,
     EXPECT_FALSE(data->keyword().empty());
     EXPECT_FALSE(data->url().empty());
   }
-  std::unique_ptr<base::DictionaryValue> entry(new base::DictionaryValue);
-  entry->SetString(DefaultSearchManager::kShortName, data->short_name());
-  entry->SetString(DefaultSearchManager::kKeyword, data->keyword());
-  entry->SetString(DefaultSearchManager::kURL, data->url());
-  entry->SetString(DefaultSearchManager::kFaviconURL, data->favicon_url.spec());
-  entry->SetString(DefaultSearchManager::kSuggestionsURL,
-                   data->suggestions_url);
-  entry->SetBoolean(DefaultSearchManager::kSafeForAutoReplace,
-                    data->safe_for_autoreplace);
-  std::unique_ptr<base::ListValue> alternate_urls(new base::ListValue);
-  for (std::vector<std::string>::const_iterator it =
-           data->alternate_urls.begin();
-       it != data->alternate_urls.end();
-       ++it) {
-    alternate_urls->AppendString(*it);
-  }
-  entry->Set(DefaultSearchManager::kAlternateURLs, alternate_urls.release());
-
-  std::unique_ptr<base::ListValue> encodings(new base::ListValue);
-  for (std::vector<std::string>::const_iterator it =
-           data->input_encodings.begin();
-       it != data->input_encodings.end();
-       ++it) {
-    encodings->AppendString(*it);
-  }
-  entry->Set(DefaultSearchManager::kInputEncodings, encodings.release());
-
-  entry->SetString(DefaultSearchManager::kSearchTermsReplacementKey,
-                   data->search_terms_replacement_key);
+  std::unique_ptr<base::DictionaryValue> entry(
+      TemplateURLDataToDictionary(*data));
   entry->SetBoolean(DefaultSearchManager::kDisabledByPolicy, !enabled);
   prefs->SetManagedPref(kDefaultSearchProviderData, entry.release());
 }
@@ -134,7 +107,6 @@ std::unique_ptr<TemplateURLData> GenerateDummyTemplateURLData(
       std::string("http://").append(type).append("foo/alt"));
   data->favicon_url = GURL("http://icon1");
   data->safe_for_autoreplace = true;
-  data->show_in_default_list = true;
   data->input_encodings = base::SplitString(
       "UTF-8;UTF-16", ";", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
   data->date_created = base::Time();
@@ -176,7 +148,6 @@ TEST_F(DefaultSearchManagerTest, ReadAndWritePref) {
   data.alternate_urls.push_back("http://foo1/alt");
   data.favicon_url = GURL("http://icon1");
   data.safe_for_autoreplace = true;
-  data.show_in_default_list = true;
   data.input_encodings = base::SplitString(
       "UTF-8;UTF-16", ";", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
   data.date_created = base::Time();

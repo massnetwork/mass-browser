@@ -7,7 +7,7 @@
 
 #include "base/macros.h"
 #include "components/keyed_service/core/keyed_service.h"
-#include "ios/chrome/browser/reading_list/reading_list_model_observer.h"
+#include "components/reading_list/ios/reading_list_model_observer.h"
 #include "ios/chrome/browser/reading_list/url_downloader.h"
 #include "net/base/network_change_notifier.h"
 
@@ -80,7 +80,7 @@ class ReadingListDownloadService
   // Callback for entry download.
   void OnDownloadEnd(const GURL& url,
                      URLDownloader::SuccessState success,
-                     const GURL& distilled_url,
+                     const base::FilePath& distilled_path,
                      const std::string& title);
 
   // Callback for entry deletion.

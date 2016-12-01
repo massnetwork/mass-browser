@@ -33,12 +33,14 @@
 #include "content/browser/renderer_host/input/touch_emulator_client.h"
 #include "content/browser/renderer_host/render_widget_host_delegate.h"
 #include "content/browser/renderer_host/render_widget_host_view_base.h"
+#include "content/common/drag_event_source_info.h"
 #include "content/common/input/input_event_ack_state.h"
 #include "content/common/input/synthetic_gesture_packet.h"
 #include "content/common/view_message_enums.h"
 #include "content/public/browser/readback_types.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/common/page_zoom.h"
+#include "content/public/common/url_constants.h"
 #include "ipc/ipc_listener.h"
 #include "third_party/WebKit/public/platform/WebDisplayMode.h"
 #include "ui/base/ime/text_input_mode.h"
@@ -57,15 +59,8 @@ class RefCountedBytes;
 
 namespace blink {
 class WebInputEvent;
-#if defined(OS_ANDROID)
-class WebLayer;
-#endif
 class WebMouseEvent;
 struct WebCompositionUnderline;
-}
-
-namespace cc {
-class CompositorFrameAck;
 }
 
 #if defined(OS_MACOSX)
@@ -165,7 +160,7 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
   int GetRoutingID() const override;
   RenderWidgetHostViewBase* GetView() const override;
   bool IsLoading() const override;
-  void RestartHangMonitorTimeout() override;
+  void RestartHangMonitorTimeoutIfNecessary() override;
   void DisableHangMonitorForTesting() override;
   void SetIgnoreInputEvents(bool ignore_input_events) override;
   void WasResized() override;
@@ -180,6 +175,35 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
       RenderWidgetHost::InputEventObserver* observer) override;
   void GetScreenInfo(content::ScreenInfo* result) override;
   void HandleCompositorProto(const std::vector<uint8_t>& proto) override;
+  // |drop_data| must have been filtered. The embedder should call
+  // FilterDropData before passing the drop data to RWHI.
+  void DragTargetDragEnter(const DropData& drop_data,
+                           const gfx::Point& client_pt,
+                           const gfx::Point& screen_pt,
+                           blink::WebDragOperationsMask operations_allowed,
+                           int key_modifiers) override;
+  void DragTargetDragEnterWithMetaData(
+      const std::vector<DropData::Metadata>& metadata,
+      const gfx::Point& client_pt,
+      const gfx::Point& screen_pt,
+      blink::WebDragOperationsMask operations_allowed,
+      int key_modifiers) override;
+  void DragTargetDragOver(const gfx::Point& client_pt,
+                          const gfx::Point& screen_pt,
+                          blink::WebDragOperationsMask operations_allowed,
+                          int key_modifiers) override;
+  void DragTargetDragLeave() override;
+  // |drop_data| must have been filtered. The embedder should call
+  // FilterDropData before passing the drop data to RWHI.
+  void DragTargetDrop(const DropData& drop_data,
+                      const gfx::Point& client_pt,
+                      const gfx::Point& screen_pt,
+                      int key_modifiers) override;
+  void DragSourceEndedAt(const gfx::Point& client_pt,
+                         const gfx::Point& screen_pt,
+                         blink::WebDragOperation operation) override;
+  void DragSourceSystemDragEnded() override;
+  void FilterDropData(DropData* drop_data) override;
 
   // Notification that the screen info has changed.
   void NotifyScreenInfoChanged();
@@ -249,6 +273,11 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
   // it is possible in some edge cases that a view was requested to be focused
   // but it failed, thus HasFocus() returns false.
   bool is_focused() const { return is_focused_; }
+
+  // Support for focus tracking on multi-WebContents cases. This will notify all
+  // renderers involved in a page about a page-level focus update. Users other
+  // than WebContents and RenderWidgetHost should use Focus()/Blur().
+  void SetPageFocus(bool focused);
 
   // Called to notify the RenderWidget that it has lost the mouse lock.
   void LostMouseLock();
@@ -447,9 +476,9 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
   // Update the renderer's cache of the screen rect of the view and window.
   void SendScreenRects();
 
-  // Suppreses future char events until a keydown. See
-  // suppress_next_char_events_.
-  void SuppressNextCharEvents();
+  // Suppresses Char and KeyUp events until the next (Raw)KeyDown. See
+  // suppress_events_until_keydown_.
+  void SuppressEventsUntilKeyDown();
 
   // Called by the view in response to a flush request.
   void FlushInput();
@@ -543,6 +572,10 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
 
   bool needs_begin_frames() const { return needs_begin_frames_; }
 
+  base::WeakPtr<RenderWidgetHostImpl> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
+
  protected:
   // ---------------------------------------------------------------------------
   // The following method is overridden by RenderViewHost to send upwards to
@@ -565,6 +598,7 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
 
  private:
   friend class MockRenderWidgetHost;
+  friend class TestRenderViewHost;
 
   // Tell this object to destroy itself. If |also_delete| is specified, the
   // destructor is called as well.
@@ -611,6 +645,12 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
   void OnForwardCompositorProto(const std::vector<uint8_t>& proto);
   void OnSetNeedsBeginFrames(bool needs_begin_frames);
   void OnHittestData(const FrameHostMsg_HittestData_Params& params);
+  void OnStartDragging(const DropData& drop_data,
+                       blink::WebDragOperationsMask operations_allowed,
+                       const SkBitmap& bitmap,
+                       const gfx::Vector2d& bitmap_offset_in_dip,
+                       const DragEventSourceInfo& event_info);
+  void OnUpdateDragCursor(blink::WebDragOperation current_op);
 
   // Called (either immediately or asynchronously) after we're done with our
   // BackingStore and can send an ACK to the renderer so it can paint onto it
@@ -628,7 +668,7 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
       const ui::LatencyInfo& latency_info) override;
   void IncrementInFlightEventCount(
       blink::WebInputEvent::Type event_type) override;
-  void DecrementInFlightEventCount() override;
+  void DecrementInFlightEventCount(InputEventAckSource ack_source) override;
   void OnHasTouchEventHandlers(bool has_handlers) override;
   void DidFlush() override;
   void DidOverscroll(const ui::DidOverscrollParams& params) override;
@@ -666,6 +706,12 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
   void OnSnapshotDataReceivedAsync(
       int snapshot_id,
       scoped_refptr<base::RefCountedBytes> png_data);
+
+  // 1. Grants permissions to URL (if any)
+  // 2. Grants permissions to filenames
+  // 3. Grants permissions to file system files.
+  // 4. Register the files with the IsolatedContext.
+  void GrantFileAccessFromDropData(DropData* drop_data);
 
   // true if a renderer has once been valid. We use this flag to display a sad
   // tab only when we lose our renderer and not if a paint occurs during
@@ -767,20 +813,18 @@ class CONTENT_EXPORT RenderWidgetHostImpl : public RenderWidgetHost,
   // NotifyTextDirection().
   bool text_direction_canceled_;
 
-  // Indicates if the next sequence of Char events should be suppressed or not.
-  // System may translate a RawKeyDown event into zero or more Char events,
-  // usually we send them to the renderer directly in sequence. However, If a
-  // RawKeyDown event was not handled by the renderer but was handled by
-  // our UnhandledKeyboardEvent() method, e.g. as an accelerator key, then we
-  // shall not send the following sequence of Char events, which was generated
-  // by this RawKeyDown event, to the renderer. Otherwise the renderer may
-  // handle the Char events and cause unexpected behavior.
-  // For example, pressing alt-2 may let the browser switch to the second tab,
-  // but the Char event generated by alt-2 may also activate a HTML element
-  // if its accesskey happens to be "2", then the user may get confused when
-  // switching back to the original tab, because the content may already be
-  // changed.
-  bool suppress_next_char_events_;
+  // Indicates if Char and KeyUp events should be suppressed or not. Usually all
+  // events are sent to the renderer directly in sequence. However, if a
+  // RawKeyDown event was handled by PreHandleKeyboardEvent() or
+  // KeyPressListenersHandleEvent(), e.g. as an accelerator key, then the
+  // RawKeyDown event is not sent to the renderer, and the following sequence of
+  // Char and KeyUp events should also not be sent. Otherwise the renderer will
+  // see only the Char and KeyUp events and cause unexpected behavior. For
+  // example, pressing alt-2 may let the browser switch to the second tab, but
+  // the Char event generated by alt-2 may also activate a HTML element if its
+  // accesskey happens to be "2", then the user may get confused when switching
+  // back to the original tab, because the content may already have changed.
+  bool suppress_events_until_keydown_;
 
   bool pending_mouse_lock_request_;
   bool allow_privileged_mouse_lock_;

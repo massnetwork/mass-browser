@@ -134,7 +134,7 @@ inline unsigned CSSSelector::specificityForOneSelector() const {
     case Unknown:
       return 0;
   }
-  ASSERT_NOT_REACHED();
+  NOTREACHED();
   return 0;
 }
 
@@ -158,7 +158,7 @@ unsigned CSSSelector::specificityForPage() const {
             s += 1;
             break;
           default:
-            ASSERT_NOT_REACHED();
+            NOTREACHED();
         }
         break;
       default:
@@ -223,6 +223,7 @@ PseudoId CSSSelector::pseudoId(PseudoType type) {
     case PseudoDefault:
     case PseudoDisabled:
     case PseudoOptional:
+    case PseudoPlaceholder:
     case PseudoPlaceholderShown:
     case PseudoRequired:
     case PseudoReadOnly:
@@ -271,7 +272,7 @@ PseudoId CSSSelector::pseudoId(PseudoType type) {
       return PseudoIdNone;
   }
 
-  ASSERT_NOT_REACHED();
+  NOTREACHED();
   return PseudoIdNone;
 }
 
@@ -357,6 +358,7 @@ const static NameToPseudoStruct pseudoTypeWithoutArgumentsMap[] = {
     {"optional", CSSSelector::PseudoOptional},
     {"out-of-range", CSSSelector::PseudoOutOfRange},
     {"past", CSSSelector::PseudoPastCue},
+    {"placeholder", CSSSelector::PseudoPlaceholder},
     {"placeholder-shown", CSSSelector::PseudoPlaceholderShown},
     {"read-only", CSSSelector::PseudoReadOnly},
     {"read-write", CSSSelector::PseudoReadWrite},
@@ -511,6 +513,7 @@ void CSSSelector::updatePseudoType(const AtomicString& value,
     // fallthrough
     case PseudoBackdrop:
     case PseudoCue:
+    case PseudoPlaceholder:
     case PseudoResizer:
     case PseudoScrollbar:
     case PseudoScrollbarCorner:
@@ -762,6 +765,8 @@ String CSSSelector::selectorText(const String& rightSide) const {
       case ShadowDeep:
         return tagHistory->selectorText(" /deep/ " + str.toString() +
                                         rightSide);
+      case ShadowPiercingDescendant:
+        return tagHistory->selectorText(" >>> " + str.toString() + rightSide);
       case DirectAdjacent:
         return tagHistory->selectorText(" + " + str.toString() + rightSide);
       case IndirectAdjacent:
@@ -969,6 +974,7 @@ bool CSSSelector::hasDeepCombinatorOrShadowPseudo() const {
   return forEachTagHistory(
       [](const CSSSelector& selector) -> bool {
         return selector.relation() == CSSSelector::ShadowDeep ||
+               selector.relation() == CSSSelector::ShadowPiercingDescendant ||
                selector.getPseudoType() == CSSSelector::PseudoShadow;
       },
       *this);

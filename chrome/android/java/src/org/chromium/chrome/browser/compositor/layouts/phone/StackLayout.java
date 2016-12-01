@@ -1213,13 +1213,13 @@ public class StackLayout extends Layout implements Animatable<StackLayout.Proper
     }
 
     @Override
-    protected void updateSceneLayer(Rect viewport, Rect contentViewport,
+    protected void updateSceneLayer(RectF viewport, RectF contentViewport,
             LayerTitleCache layerTitleCache, TabContentManager tabContentManager,
             ResourceManager resourceManager, ChromeFullscreenManager fullscreenManager) {
         super.updateSceneLayer(viewport, contentViewport, layerTitleCache, tabContentManager,
                 resourceManager, fullscreenManager);
         assert mSceneLayer != null;
         mSceneLayer.pushLayers(getContext(), viewport, contentViewport, this, layerTitleCache,
-                tabContentManager, resourceManager);
+                tabContentManager, resourceManager, fullscreenManager);
     }
 }

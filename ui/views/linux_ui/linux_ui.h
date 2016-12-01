@@ -40,7 +40,6 @@ namespace views {
 class Border;
 class LabelButton;
 class LabelButtonBorder;
-class View;
 class WindowButtonOrderObserver;
 
 // Adapter class with targets to render like different toolkits. Set by any
@@ -154,7 +153,7 @@ class VIEWS_EXPORT LinuxUI : public ui::LinuxInputMethodContextFactory,
 
   // Updates the device scale factor so that the default font size can be
   // recalculated.
-  virtual void UpdateDeviceScaleFactor(float device_scale_factor) = 0;
+  virtual void UpdateDeviceScaleFactor() = 0;
 
   // Determines the device scale factor of the primary screen.
   virtual float GetDeviceScaleFactor() const = 0;

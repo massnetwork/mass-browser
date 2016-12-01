@@ -523,7 +523,7 @@ size_t HTMLDocumentParser::processTokenizedChunkFromBackgroundParser(
       // To match main-thread parser behavior (which never checks
       // locationChangePending on the EOF path) we peek to see if this chunk has
       // an EOF and process it anyway.
-      if (tokens->last().type() == HTMLToken::EndOfFile) {
+      if (tokens->back().type() == HTMLToken::EndOfFile) {
         ASSERT(
             m_speculations
                 .isEmpty());  // There should never be any chunks after the EOF.
@@ -684,8 +684,13 @@ void HTMLDocumentParser::pumpTokenizer() {
       // http/tests/security/xssAuditor/dom-write-innerHTML.html
       if (std::unique_ptr<XSSInfo> xssInfo =
               m_xssAuditor.filterToken(FilterTokenRequest(
-                  token(), m_sourceTracker, m_tokenizer->shouldAllowCDATA())))
+                  token(), m_sourceTracker, m_tokenizer->shouldAllowCDATA()))) {
         m_xssAuditorDelegate.didBlockScript(*xssInfo);
+        // If we're in blocking mode, we might stop the parser in
+        // 'didBlockScript()'. In that case, exit early.
+        if (!isParsing())
+          return;
+      }
     }
 
     constructTreeFromHTMLToken();
@@ -1142,7 +1147,7 @@ void HTMLDocumentParser::appendBytes(const char* data, size_t length) {
     if (!m_haveBackgroundParser)
       startBackgroundParser();
 
-    std::unique_ptr<Vector<char>> buffer = wrapUnique(new Vector<char>(length));
+    std::unique_ptr<Vector<char>> buffer = makeUnique<Vector<char>>(length);
     memcpy(buffer->data(), data, length);
     TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("blink.debug"),
                  "HTMLDocumentParser::appendBytes", "size", (unsigned)length);

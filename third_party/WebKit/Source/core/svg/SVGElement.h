@@ -42,6 +42,7 @@ class SVGAnimatedString;
 class SVGCursorElement;
 class SVGDocumentExtensions;
 class SVGElement;
+class SVGElementProxySet;
 class SVGElementRareData;
 class SVGFitToViewBox;
 class SVGPropertyBase;
@@ -58,7 +59,7 @@ class CORE_EXPORT SVGElement : public Element {
   void attachLayoutTree(const AttachContext&) override;
   void detachLayoutTree(const AttachContext&) override;
 
-  short tabIndex() const override;
+  int tabIndex() const override;
   bool supportsFocus() const override { return false; }
 
   bool isOutermostSVGSVGElement() const;
@@ -167,6 +168,8 @@ class CORE_EXPORT SVGElement : public Element {
 
   bool inUseShadowTree() const;
 
+  SVGElementProxySet* elementProxySet();
+
   SVGElementSet* setOfIncomingReferences() const;
   void addReferenceTo(SVGElement*);
   void rebuildAllIncomingReferences();
@@ -206,9 +209,7 @@ class CORE_EXPORT SVGElement : public Element {
   static const AtomicString& eventParameterName();
 
   bool isPresentationAttribute(const QualifiedName&) const override;
-  virtual bool isPresentationAttributeWithSVGDOM(const QualifiedName&) const {
-    return false;
-  }
+  virtual bool isPresentationAttributeWithSVGDOM(const QualifiedName&) const;
 
  protected:
   SVGElement(const QualifiedName&,

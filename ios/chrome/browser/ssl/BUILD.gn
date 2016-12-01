@@ -3,9 +3,10 @@
 # found in the LICENSE file.
 
 source_set("ssl") {
+  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
-    "ios_chrome_security_state_model_client.h",
-    "ios_chrome_security_state_model_client.mm",
+    "ios_security_state_tab_helper.h",
+    "ios_security_state_tab_helper.mm",
     "ios_ssl_blocking_page.h",
     "ios_ssl_blocking_page.mm",
     "ios_ssl_error_handler.h",
@@ -14,7 +15,7 @@ source_set("ssl") {
   deps = [
     "//base",
     "//components/security_interstitials/core",
-    "//components/security_state",
+    "//components/security_state/core",
     "//components/strings",
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/browser_state",
@@ -28,6 +29,7 @@ source_set("ssl") {
 }
 
 source_set("unit_tests") {
+  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [
     "ios_ssl_error_handler_unittest.mm",

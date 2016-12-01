@@ -17,8 +17,6 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/net/safe_search_util.h"
-#include "components/data_use_measurement/content/data_use_measurement.h"
-#include "components/metrics/data_use_tracker.h"
 #include "components/prefs/pref_member.h"
 #include "net/base/network_delegate_impl.h"
 #include "chrome/browser/net/blockers/blockers_worker.h"
@@ -29,10 +27,6 @@ class PrefService;
 template<class T> class PrefMember;
 
 typedef PrefMember<bool> BooleanPrefMember;
-
-namespace base {
-class Value;
-}
 
 namespace content_settings {
 class CookieSettings;
@@ -66,10 +60,8 @@ class ChromeNetworkDelegate : public net::NetworkDelegateImpl {
   // |enable_referrers| (and all of the other optional PrefMembers) should be
   // initialized on the UI thread (see below) beforehand. This object's owner is
   // responsible for cleaning them up at shutdown.
-  ChromeNetworkDelegate(
-      extensions::EventRouterForwarder* event_router,
-      BooleanPrefMember* enable_referrers,
-      const metrics::UpdateUsagePrefCallbackType& metrics_data_use_forwarder);
+  ChromeNetworkDelegate(extensions::EventRouterForwarder* event_router,
+                        BooleanPrefMember* enable_referrers);
   ~ChromeNetworkDelegate() override;
 
   // Pass through to ChromeExtensionsNetworkDelegate::set_extension_info_map().
@@ -233,9 +225,6 @@ class ChromeNetworkDelegate : public net::NetworkDelegateImpl {
 
   // When true, allow access to all file:// URLs.
   static bool g_allow_file_access_;
-
-  // Component to measure data use.
-  data_use_measurement::DataUseMeasurement data_use_measurement_;
 
   bool experimental_web_platform_features_enabled_;
 

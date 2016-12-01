@@ -9,5 +9,13 @@ mojom("interfaces") {
     "login.mojom",
   ]
 
-  use_new_wrapper_types = false
+  public_deps = [
+    ":constants",
+  ]
+}
+
+mojom("constants") {
+  sources = [
+    "constants.mojom",
+  ]
 }

@@ -4,12 +4,12 @@
 /**
  * @unrestricted
  */
-WebInspector.ProfileNode = class {
+SDK.ProfileNode = class {
   /**
-   * @param {!RuntimeAgent.CallFrame} callFrame
+   * @param {!Protocol.Runtime.CallFrame} callFrame
    */
   constructor(callFrame) {
-    /** @type {!RuntimeAgent.CallFrame} */
+    /** @type {!Protocol.Runtime.CallFrame} */
     this.callFrame = callFrame;
     /** @type {string} */
     this.callUID = `${this.callFrame.functionName}@${this.callFrame.scriptId}:${this.callFrame.lineNumber}`;
@@ -19,9 +19,9 @@ WebInspector.ProfileNode = class {
     this.total = 0;
     /** @type {number} */
     this.id = 0;
-    /** @type {?WebInspector.ProfileNode} */
+    /** @type {?SDK.ProfileNode} */
     this.parent = null;
-    /** @type {!Array<!WebInspector.ProfileNode>} */
+    /** @type {!Array<!SDK.ProfileNode>} */
     this.children = [];
   }
 
@@ -64,9 +64,9 @@ WebInspector.ProfileNode = class {
 /**
  * @unrestricted
  */
-WebInspector.ProfileTreeModel = class {
+SDK.ProfileTreeModel = class {
   /**
-   * @param {!WebInspector.ProfileNode} root
+   * @param {!SDK.ProfileNode} root
    * @protected
    */
   initialize(root) {
@@ -99,7 +99,7 @@ WebInspector.ProfileTreeModel = class {
   }
 
   /**
-   * @param {!WebInspector.ProfileNode} root
+   * @param {!SDK.ProfileNode} root
    * @return {number}
    */
   _calculateTotals(root) {

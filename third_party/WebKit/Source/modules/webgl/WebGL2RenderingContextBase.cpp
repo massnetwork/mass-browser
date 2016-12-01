@@ -247,6 +247,31 @@ WebGL2RenderingContextBase::WebGL2RenderingContextBase(
           WTF_ARRAY_LENGTH(kSupportedInternalFormatsStorage));
 }
 
+WebGL2RenderingContextBase::WebGL2RenderingContextBase(
+    OffscreenCanvas* passedOffscreenCanvas,
+    std::unique_ptr<WebGraphicsContext3DProvider> contextProvider,
+    const CanvasContextCreationAttributes& requestedAttributes)
+    : WebGLRenderingContextBase(passedOffscreenCanvas,
+                                std::move(contextProvider),
+                                requestedAttributes,
+                                2),
+      m_readFramebufferBinding(this, nullptr),
+      m_transformFeedbackBinding(this, nullptr),
+      m_boundCopyReadBuffer(this, nullptr),
+      m_boundCopyWriteBuffer(this, nullptr),
+      m_boundPixelPackBuffer(this, nullptr),
+      m_boundPixelUnpackBuffer(this, nullptr),
+      m_boundTransformFeedbackBuffer(this, nullptr),
+      m_boundUniformBuffer(this, nullptr),
+      m_currentBooleanOcclusionQuery(this, nullptr),
+      m_currentTransformFeedbackPrimitivesWrittenQuery(this, nullptr),
+      m_currentElapsedQuery(this, nullptr) {
+  m_supportedInternalFormatsStorage.insert(
+      kSupportedInternalFormatsStorage,
+      kSupportedInternalFormatsStorage +
+          WTF_ARRAY_LENGTH(kSupportedInternalFormatsStorage));
+}
+
 WebGL2RenderingContextBase::~WebGL2RenderingContextBase() {
   m_readFramebufferBinding = nullptr;
 
@@ -761,6 +786,12 @@ bool WebGL2RenderingContextBase::checkAndTranslateAttachments(
     }
   }
   return true;
+}
+
+IntRect WebGL2RenderingContextBase::getTextureSourceSubRectangle(
+    GLsizei width,
+    GLsizei height) {
+  return IntRect(m_unpackSkipPixels, m_unpackSkipRows, width, height);
 }
 
 bool WebGL2RenderingContextBase::canUseTexImageByGPU(
@@ -1309,8 +1340,11 @@ void WebGL2RenderingContextBase::texImage2D(GLenum target,
                                             GLint border,
                                             GLenum format,
                                             GLenum type,
-                                            ImageData* imageData) {
-  // TODO(zmo): To be implemented.
+                                            ImageData* pixels) {
+  DCHECK(pixels);
+  texImageHelperImageData(TexImage2D, target, level, internalformat, 0, format,
+                          type, 1, 0, 0, 0, pixels,
+                          getTextureSourceSubRectangle(width, height), 0);
 }
 
 void WebGL2RenderingContextBase::texImage2D(GLenum target,
@@ -1323,15 +1357,10 @@ void WebGL2RenderingContextBase::texImage2D(GLenum target,
                                             GLenum type,
                                             HTMLImageElement* image,
                                             ExceptionState& exceptionState) {
-  IntRect sourceImageRect;
-  if (image) {
-    sourceImageRect.setLocation(IntPoint(m_unpackSkipPixels, m_unpackSkipRows));
-    sourceImageRect.setSize(IntSize(width, height));
-  }
-
   texImageHelperHTMLImageElement(TexImage2D, target, level, internalformat,
-                                 format, type, 0, 0, 0, image, sourceImageRect,
-                                 exceptionState);
+                                 format, type, 0, 0, 0, image,
+                                 getTextureSourceSubRectangle(width, height), 1,
+                                 m_unpackImageHeight, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texImage2D(GLenum target,
@@ -1344,7 +1373,9 @@ void WebGL2RenderingContextBase::texImage2D(GLenum target,
                                             GLenum type,
                                             HTMLCanvasElement* canvas,
                                             ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  texImageHelperHTMLCanvasElement(
+      TexImage2D, target, level, internalformat, format, type, 0, 0, 0, canvas,
+      getTextureSourceSubRectangle(width, height), 1, 0, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texImage2D(GLenum target,
@@ -1357,7 +1388,9 @@ void WebGL2RenderingContextBase::texImage2D(GLenum target,
                                             GLenum type,
                                             HTMLVideoElement* video,
                                             ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  texImageHelperHTMLVideoElement(
+      TexImage2D, target, level, internalformat, format, type, 0, 0, 0, video,
+      getTextureSourceSubRectangle(width, height), 1, 0, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texImage2D(GLenum target,
@@ -1368,9 +1401,12 @@ void WebGL2RenderingContextBase::texImage2D(GLenum target,
                                             GLint border,
                                             GLenum format,
                                             GLenum type,
-                                            ImageBitmap* imageBitMap,
+                                            ImageBitmap* bitmap,
                                             ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  DCHECK(bitmap);
+  texImageHelperImageBitmap(
+      TexImage2D, target, level, internalformat, format, type, 0, 0, 0, bitmap,
+      getTextureSourceSubRectangle(width, height), 1, 0, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texImage2D(GLenum target,
@@ -1464,7 +1500,10 @@ void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
                                                GLenum format,
                                                GLenum type,
                                                ImageData* pixels) {
-  // TODO(zmo): To be implemented.
+  DCHECK(pixels);
+  texImageHelperImageData(TexSubImage2D, target, level, 0, 0, format, type, 1,
+                          xoffset, yoffset, 0, pixels,
+                          getTextureSourceSubRectangle(width, height), 0);
 }
 
 void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
@@ -1477,15 +1516,9 @@ void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
                                                GLenum type,
                                                HTMLImageElement* image,
                                                ExceptionState& exceptionState) {
-  IntRect sourceImageRect;
-  if (image) {
-    sourceImageRect.setLocation(IntPoint(m_unpackSkipPixels, m_unpackSkipRows));
-    sourceImageRect.setSize(IntSize(width, height));
-  }
-
-  texImageHelperHTMLImageElement(TexSubImage2D, target, level, 0, format, type,
-                                 xoffset, yoffset, 0, image, sourceImageRect,
-                                 exceptionState);
+  texImageHelperHTMLImageElement(
+      TexSubImage2D, target, level, 0, format, type, xoffset, yoffset, 0, image,
+      getTextureSourceSubRectangle(width, height), 1, 0, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
@@ -1498,7 +1531,10 @@ void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
                                                GLenum type,
                                                HTMLCanvasElement* canvas,
                                                ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  texImageHelperHTMLCanvasElement(TexSubImage2D, target, level, 0, format, type,
+                                  xoffset, yoffset, 0, canvas,
+                                  getTextureSourceSubRectangle(width, height),
+                                  1, 0, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
@@ -1511,7 +1547,9 @@ void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
                                                GLenum type,
                                                HTMLVideoElement* video,
                                                ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  texImageHelperHTMLVideoElement(
+      TexSubImage2D, target, level, 0, format, type, xoffset, yoffset, 0, video,
+      getTextureSourceSubRectangle(width, height), 1, 0, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
@@ -1524,7 +1562,11 @@ void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
                                                GLenum type,
                                                ImageBitmap* bitmap,
                                                ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  DCHECK(bitmap);
+  texImageHelperImageBitmap(TexSubImage2D, target, level, 0, format, type,
+                            xoffset, yoffset, 0, bitmap,
+                            getTextureSourceSubRectangle(width, height), 1, 0,
+                            exceptionState);
 }
 
 void WebGL2RenderingContextBase::texSubImage2D(GLenum target,
@@ -1686,8 +1728,14 @@ void WebGL2RenderingContextBase::texImage3D(GLenum target,
                                             GLint border,
                                             GLenum format,
                                             GLenum type,
-                                            ImageData* imageData) {
-  // TODO(zmo): To be implemented.
+                                            ImageData* pixels) {
+  DCHECK(pixels);
+  IntRect sourceImageRect;
+  sourceImageRect.setLocation(IntPoint(m_unpackSkipPixels, m_unpackSkipRows));
+  sourceImageRect.setSize(IntSize(width, height));
+  texImageHelperImageData(TexImage3D, target, level, internalformat, 0, format,
+                          type, depth, 0, 0, 0, pixels, sourceImageRect,
+                          m_unpackImageHeight);
 }
 
 void WebGL2RenderingContextBase::texImage3D(GLenum target,
@@ -1701,7 +1749,10 @@ void WebGL2RenderingContextBase::texImage3D(GLenum target,
                                             GLenum type,
                                             HTMLImageElement* image,
                                             ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  texImageHelperHTMLImageElement(TexImage3D, target, level, internalformat,
+                                 format, type, 0, 0, 0, image,
+                                 getTextureSourceSubRectangle(width, height),
+                                 depth, m_unpackImageHeight, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texImage3D(GLenum target,
@@ -1715,7 +1766,10 @@ void WebGL2RenderingContextBase::texImage3D(GLenum target,
                                             GLenum type,
                                             HTMLCanvasElement* canvas,
                                             ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  texImageHelperHTMLCanvasElement(TexImage3D, target, level, internalformat,
+                                  format, type, 0, 0, 0, canvas,
+                                  getTextureSourceSubRectangle(width, height),
+                                  depth, m_unpackImageHeight, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texImage3D(GLenum target,
@@ -1729,7 +1783,10 @@ void WebGL2RenderingContextBase::texImage3D(GLenum target,
                                             GLenum type,
                                             HTMLVideoElement* video,
                                             ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  texImageHelperHTMLVideoElement(TexImage3D, target, level, internalformat,
+                                 format, type, 0, 0, 0, video,
+                                 getTextureSourceSubRectangle(width, height),
+                                 depth, m_unpackImageHeight, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texImage3D(GLenum target,
@@ -1741,9 +1798,12 @@ void WebGL2RenderingContextBase::texImage3D(GLenum target,
                                             GLint border,
                                             GLenum format,
                                             GLenum type,
-                                            ImageBitmap* imageBitMap,
+                                            ImageBitmap* bitmap,
                                             ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
+  texImageHelperImageBitmap(TexImage3D, target, level, internalformat, format,
+                            type, 0, 0, 0, bitmap,
+                            getTextureSourceSubRectangle(width, height), depth,
+                            m_unpackImageHeight, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
@@ -1806,7 +1866,11 @@ void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
                                                GLenum format,
                                                GLenum type,
                                                ImageData* pixels) {
-  // TODO(zmo): To be implemented.
+  DCHECK(pixels);
+  texImageHelperImageData(TexSubImage3D, target, level, 0, 0, format, type,
+                          depth, xoffset, yoffset, zoffset, pixels,
+                          getTextureSourceSubRectangle(width, height),
+                          m_unpackImageHeight);
 }
 
 void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
@@ -1817,82 +1881,14 @@ void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
                                                GLsizei width,
                                                GLsizei height,
                                                GLsizei depth,
-                                               GLenum format,
-                                               GLenum type,
-                                               HTMLImageElement* image,
-                                               ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
-}
-
-void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
-                                               GLint level,
-                                               GLint xoffset,
-                                               GLint yoffset,
-                                               GLint zoffset,
-                                               GLsizei width,
-                                               GLsizei height,
-                                               GLsizei depth,
-                                               GLenum format,
-                                               GLenum type,
-                                               HTMLCanvasElement* canvas,
-                                               ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
-}
-
-void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
-                                               GLint level,
-                                               GLint xoffset,
-                                               GLint yoffset,
-                                               GLint zoffset,
-                                               GLsizei width,
-                                               GLsizei height,
-                                               GLsizei depth,
-                                               GLenum format,
-                                               GLenum type,
-                                               HTMLVideoElement* video,
-                                               ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
-}
-
-void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
-                                               GLint level,
-                                               GLint xoffset,
-                                               GLint yoffset,
-                                               GLint zoffset,
-                                               GLsizei width,
-                                               GLsizei height,
-                                               GLsizei depth,
-                                               GLenum format,
-                                               GLenum type,
-                                               ImageBitmap* bitmap,
-                                               ExceptionState& exceptionState) {
-  // TODO(zmo): To be implemented.
-}
-
-void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
-                                               GLint level,
-                                               GLint xoffset,
-                                               GLint yoffset,
-                                               GLint zoffset,
-                                               GLenum format,
-                                               GLenum type,
-                                               ImageData* pixels) {
-  texImageHelperImageData(TexSubImage3D, target, level, 0, 0, format, type, 1,
-                          xoffset, yoffset, zoffset, pixels);
-}
-
-void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
-                                               GLint level,
-                                               GLint xoffset,
-                                               GLint yoffset,
-                                               GLint zoffset,
                                                GLenum format,
                                                GLenum type,
                                                HTMLImageElement* image,
                                                ExceptionState& exceptionState) {
   texImageHelperHTMLImageElement(TexSubImage3D, target, level, 0, format, type,
                                  xoffset, yoffset, zoffset, image,
-                                 sentinelEmptyRect(), exceptionState);
+                                 getTextureSourceSubRectangle(width, height),
+                                 depth, m_unpackImageHeight, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
@@ -1900,13 +1896,17 @@ void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
                                                GLint xoffset,
                                                GLint yoffset,
                                                GLint zoffset,
+                                               GLsizei width,
+                                               GLsizei height,
+                                               GLsizei depth,
                                                GLenum format,
                                                GLenum type,
                                                HTMLCanvasElement* canvas,
                                                ExceptionState& exceptionState) {
   texImageHelperHTMLCanvasElement(TexSubImage3D, target, level, 0, format, type,
                                   xoffset, yoffset, zoffset, canvas,
-                                  exceptionState);
+                                  getTextureSourceSubRectangle(width, height),
+                                  depth, m_unpackImageHeight, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
@@ -1914,13 +1914,17 @@ void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
                                                GLint xoffset,
                                                GLint yoffset,
                                                GLint zoffset,
+                                               GLsizei width,
+                                               GLsizei height,
+                                               GLsizei depth,
                                                GLenum format,
                                                GLenum type,
                                                HTMLVideoElement* video,
                                                ExceptionState& exceptionState) {
   texImageHelperHTMLVideoElement(TexSubImage3D, target, level, 0, format, type,
                                  xoffset, yoffset, zoffset, video,
-                                 exceptionState);
+                                 getTextureSourceSubRectangle(width, height),
+                                 depth, m_unpackImageHeight, exceptionState);
 }
 
 void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
@@ -1928,12 +1932,17 @@ void WebGL2RenderingContextBase::texSubImage3D(GLenum target,
                                                GLint xoffset,
                                                GLint yoffset,
                                                GLint zoffset,
+                                               GLsizei width,
+                                               GLsizei height,
+                                               GLsizei depth,
                                                GLenum format,
                                                GLenum type,
                                                ImageBitmap* bitmap,
                                                ExceptionState& exceptionState) {
   texImageHelperImageBitmap(TexSubImage3D, target, level, 0, format, type,
-                            xoffset, yoffset, zoffset, bitmap, exceptionState);
+                            xoffset, yoffset, zoffset, bitmap,
+                            getTextureSourceSubRectangle(width, height), depth,
+                            m_unpackImageHeight, exceptionState);
 }
 
 void WebGL2RenderingContextBase::copyTexSubImage3D(GLenum target,
@@ -1997,6 +2006,7 @@ void WebGL2RenderingContextBase::compressedTexImage2D(
   } else if (srcLengthOverride > data->byteLength() - srcOffset) {
     synthesizeGLError(GL_INVALID_VALUE, "compressedTexImage2D",
                       "srcLengthOverride is out of range");
+    return;
   }
   contextGL()->CompressedTexImage2D(
       target, level, internalformat, width, height, border, srcLengthOverride,
@@ -2043,6 +2053,7 @@ void WebGL2RenderingContextBase::compressedTexSubImage2D(
   } else if (srcLengthOverride > data->byteLength() - srcOffset) {
     synthesizeGLError(GL_INVALID_VALUE, "compressedTexImage2D",
                       "srcLengthOverride is out of range");
+    return;
   }
   contextGL()->CompressedTexSubImage2D(
       target, level, xoffset, yoffset, width, height, format, srcLengthOverride,
@@ -2076,6 +2087,7 @@ void WebGL2RenderingContextBase::compressedTexImage3D(
   } else if (srcLengthOverride > data->byteLength() - srcOffset) {
     synthesizeGLError(GL_INVALID_VALUE, "compressedTexImage3D",
                       "srcLengthOverride is out of range");
+    return;
   }
   contextGL()->CompressedTexImage3D(
       target, level, internalformat, width, height, depth, border,
@@ -2112,6 +2124,7 @@ void WebGL2RenderingContextBase::compressedTexSubImage3D(
   } else if (srcLengthOverride > data->byteLength() - srcOffset) {
     synthesizeGLError(GL_INVALID_VALUE, "compressedTexSubImage3D",
                       "srcLengthOverride is out of range");
+    return;
   }
   contextGL()->CompressedTexSubImage3D(
       target, level, xoffset, yoffset, zoffset, width, height, depth, format,
@@ -2815,12 +2828,7 @@ GLboolean WebGL2RenderingContextBase::isQuery(WebGLQuery* query) {
 
 void WebGL2RenderingContextBase::beginQuery(GLenum target, WebGLQuery* query) {
   bool deleted;
-  if (!query) {
-    synthesizeGLError(GL_INVALID_OPERATION, "beginQuery",
-                      "query object is null");
-    return;
-  }
-
+  DCHECK(query);
   if (!checkObjectToBeBound("beginQuery", query, deleted))
     return;
   if (deleted) {
@@ -2980,12 +2988,8 @@ ScriptValue WebGL2RenderingContextBase::getQueryParameter(
     ScriptState* scriptState,
     WebGLQuery* query,
     GLenum pname) {
+  DCHECK(query);
   bool deleted;
-  if (!query) {
-    synthesizeGLError(GL_INVALID_OPERATION, "getQueryParameter",
-                      "query object is null");
-    return ScriptValue::createNull(scriptState);
-  }
   if (!checkObjectToBeBound("getQueryParameter", query, deleted))
     return ScriptValue::createNull(scriptState);
   if (deleted) {
@@ -3405,7 +3409,7 @@ void WebGL2RenderingContextBase::transformFeedbackVaryings(
   Vector<const char*> varyingStrings;
   for (size_t i = 0; i < varyings.size(); ++i) {
     keepAlive.append(varyings[i].ascii());
-    varyingStrings.append(keepAlive.last().data());
+    varyingStrings.append(keepAlive.back().data());
   }
 
   contextGL()->TransformFeedbackVaryings(objectOrZero(program), varyings.size(),
@@ -3590,7 +3594,7 @@ Vector<GLuint> WebGL2RenderingContextBase::getUniformIndices(
   Vector<const char*> uniformStrings;
   for (size_t i = 0; i < uniformNames.size(); ++i) {
     keepAlive.append(uniformNames[i].ascii());
-    uniformStrings.append(keepAlive.last().data());
+    uniformStrings.append(keepAlive.back().data());
   }
 
   result.resize(uniformNames.size());

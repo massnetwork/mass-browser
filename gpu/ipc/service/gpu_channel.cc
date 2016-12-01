@@ -45,10 +45,6 @@
 #include "ui/gl/gl_image_shared_memory.h"
 #include "ui/gl/gl_surface.h"
 
-#if defined(OS_POSIX)
-#include "ipc/ipc_channel_posix.h"
-#endif
-
 namespace gpu {
 namespace {
 
@@ -461,7 +457,6 @@ void GpuChannelMessageFilter::OnFilterAdded(IPC::Channel* channel) {
 }
 
 void GpuChannelMessageFilter::OnFilterRemoved() {
-  DCHECK(channel_);
   for (scoped_refptr<IPC::MessageFilter>& filter : channel_filters_) {
     filter->OnFilterRemoved();
   }
@@ -647,7 +642,8 @@ base::WeakPtr<GpuChannel> GpuChannel::AsWeakPtr() {
 }
 
 base::ProcessId GpuChannel::GetClientPID() const {
-  return channel_->GetPeerPID();
+  DCHECK_NE(peer_pid_, base::kNullProcessId);
+  return peer_pid_;
 }
 
 uint32_t GpuChannel::GetProcessedOrderNum() const {
@@ -672,6 +668,10 @@ bool GpuChannel::OnMessageReceived(const IPC::Message& msg) {
   // All messages should be pushed to channel_messages_ and handled separately.
   NOTREACHED();
   return false;
+}
+
+void GpuChannel::OnChannelConnected(int32_t peer_pid) {
+  peer_pid_ = peer_pid;
 }
 
 void GpuChannel::OnChannelError() {

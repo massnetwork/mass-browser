@@ -101,6 +101,9 @@ bool MetricsWebContentsObserver::OnMessageReceived(
 
 void MetricsWebContentsObserver::WillStartNavigationRequest(
     content::NavigationHandle* navigation_handle) {
+  // Same-page navigations should never go through WillStartNavigationRequest.
+  DCHECK(!navigation_handle->IsSamePage());
+
   if (!navigation_handle->IsInMainFrame())
     return;
 
@@ -250,7 +253,7 @@ void MetricsWebContentsObserver::HandleFailedNavigationForTrackedLoad(
 void MetricsWebContentsObserver::HandleCommittedNavigationForTrackedLoad(
     content::NavigationHandle* navigation_handle,
     std::unique_ptr<PageLoadTracker> tracker) {
-  if (!navigation_handle->HasUserGesture() &&
+  if (!IsNavigationUserInitiated(navigation_handle) &&
       (navigation_handle->GetPageTransition() &
        ui::PAGE_TRANSITION_CLIENT_REDIRECT) != 0 &&
       committed_load_)

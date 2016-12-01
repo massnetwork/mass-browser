@@ -76,6 +76,8 @@
 #include "core/page/Page.h"
 #include "core/page/WindowFeatures.h"
 #include "core/page/scrolling/ScrollingCoordinator.h"
+#include "core/timing/DOMWindowPerformance.h"
+#include "core/timing/Performance.h"
 #include "platform/EventDispatchForbiddenScope.h"
 #include "platform/weborigin/SecurityOrigin.h"
 #include "platform/weborigin/Suborigin.h"
@@ -494,7 +496,9 @@ void LocalDOMWindow::registerEventListenerObserver(
 
 void LocalDOMWindow::reset() {
   DCHECK(document());
-  document()->notifyContextDestroyed();
+  // Since |Document| class has multiple |LifecycleNotifier| as base class,
+  // we need to have |static_cast<ExecutionContext>| here.
+  static_cast<ExecutionContext*>(document())->notifyContextDestroyed();
   frameDestroyed();
 
   m_screen = nullptr;
@@ -621,9 +625,10 @@ void LocalDOMWindow::schedulePostMessage(MessageEvent* event,
   // Allowing unbounded amounts of messages to build up for a suspended context
   // is problematic; consider imposing a limit or other restriction if this
   // surfaces often as a problem (see crbug.com/587012).
-  PostMessageTimer* timer = new PostMessageTimer(
-      *this, event, std::move(target), SourceLocation::capture(source),
-      UserGestureIndicator::currentToken());
+  std::unique_ptr<SourceLocation> location = SourceLocation::capture(source);
+  PostMessageTimer* timer =
+      new PostMessageTimer(*this, event, std::move(target), std::move(location),
+                           UserGestureIndicator::currentToken());
   timer->startOneShot(0, BLINK_FROM_HERE);
   timer->suspendIfNeeded();
   m_postMessageTimers.add(timer);
@@ -1400,6 +1405,12 @@ void LocalDOMWindow::dispatchLoadEvent() {
                                          BLINK_FROM_HERE);
   } else {
     dispatchEvent(loadEvent, document());
+  }
+
+  if (frame()) {
+    Performance* performance = DOMWindowPerformance::performance(*this);
+    DCHECK(performance);
+    performance->addNavigationTiming(frame());
   }
 
   // For load events, send a separate load event to the enclosing frame only.

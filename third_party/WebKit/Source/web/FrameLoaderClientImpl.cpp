@@ -59,6 +59,8 @@
 #include "modules/device_orientation/DeviceOrientationController.h"
 #include "modules/encryptedmedia/HTMLMediaElementEncryptedMedia.h"
 #include "modules/gamepad/NavigatorGamepad.h"
+#include "modules/remoteplayback/HTMLMediaElementRemotePlayback.h"
+#include "modules/remoteplayback/RemotePlayback.h"
 #include "modules/serviceworkers/NavigatorServiceWorker.h"
 #include "modules/serviceworkers/ServiceWorkerLinkResource.h"
 #include "modules/storage/DOMWindowStorageController.h"
@@ -74,7 +76,6 @@
 #include "public/platform/Platform.h"
 #include "public/platform/WebApplicationCacheHost.h"
 #include "public/platform/WebMediaPlayerSource.h"
-#include "public/platform/WebMimeRegistry.h"
 #include "public/platform/WebRTCPeerConnectionHandler.h"
 #include "public/platform/WebSecurityOrigin.h"
 #include "public/platform/WebURL.h"
@@ -417,11 +418,9 @@ void FrameLoaderClientImpl::dispatchWillCommitProvisionalLoad() {
     m_webFrame->client()->willCommitProvisionalLoad(m_webFrame);
 }
 
-void FrameLoaderClientImpl::dispatchDidStartProvisionalLoad(
-    double triggeringEventTime) {
+void FrameLoaderClientImpl::dispatchDidStartProvisionalLoad() {
   if (m_webFrame->client())
-    m_webFrame->client()->didStartProvisionalLoad(m_webFrame,
-                                                  triggeringEventTime);
+    m_webFrame->client()->didStartProvisionalLoad(m_webFrame);
   if (WebDevToolsAgentImpl* devTools = devToolsAgent())
     devTools->didStartProvisionalLoad(m_webFrame->frame());
 }
@@ -521,7 +520,8 @@ NavigationPolicy FrameLoaderClientImpl::decidePolicyForNavigation(
     NavigationType type,
     NavigationPolicy policy,
     bool replacesCurrentHistoryItem,
-    bool isClientRedirect) {
+    bool isClientRedirect,
+    HTMLFormElement* form) {
   if (!m_webFrame->client())
     return NavigationPolicyIgnore;
 
@@ -557,6 +557,8 @@ NavigationPolicy FrameLoaderClientImpl::decidePolicyForNavigation(
   navigationInfo.isHistoryNavigationInNewChildFrame =
       isHistoryNavigationInNewChildFrame;
   navigationInfo.isClientRedirect = isClientRedirect;
+  if (form)
+    navigationInfo.form = WebFormElement(form);
 
   WebNavigationPolicy webPolicy =
       m_webFrame->client()->decidePolicyForNavigation(navigationInfo);
@@ -600,6 +602,11 @@ void FrameLoaderClientImpl::loadURLExternally(const ResourceRequest& request,
   m_webFrame->client()->loadURLExternally(
       WrappedResourceRequest(request), static_cast<WebNavigationPolicy>(policy),
       suggestedName, shouldReplaceCurrentEntry);
+}
+
+void FrameLoaderClientImpl::loadErrorPage(int reason) {
+  if (m_webFrame->client())
+    m_webFrame->client()->loadErrorPage(reason);
 }
 
 bool FrameLoaderClientImpl::navigateBackForward(int offset) const {
@@ -778,6 +785,11 @@ std::unique_ptr<WebMediaPlayer> FrameLoaderClientImpl::createWebMediaPlayer(
       sinkId));
 }
 
+WebRemotePlaybackClient* FrameLoaderClientImpl::createWebRemotePlaybackClient(
+    HTMLMediaElement& htmlMediaElement) {
+  return HTMLMediaElementRemotePlayback::remote(htmlMediaElement);
+}
+
 ObjectContentType FrameLoaderClientImpl::getObjectContentType(
     const KURL& url,
     const String& explicitMimeType,
@@ -857,6 +869,12 @@ void FrameLoaderClientImpl::didChangeSandboxFlags(Frame* childFrame,
     return;
   m_webFrame->client()->didChangeSandboxFlags(
       WebFrame::fromFrame(childFrame), static_cast<WebSandboxFlags>(flags));
+}
+
+void FrameLoaderClientImpl::didSetFeaturePolicyHeader(
+    const String& headerValue) {
+  if (m_webFrame->client())
+    m_webFrame->client()->didSetFeaturePolicyHeader(headerValue);
 }
 
 void FrameLoaderClientImpl::didAddContentSecurityPolicy(

@@ -260,6 +260,7 @@ IPC_STRUCT_TRAITS_BEGIN(content::ResourceRequestCompletionStatus)
   IPC_STRUCT_TRAITS_MEMBER(exists_in_cache)
   IPC_STRUCT_TRAITS_MEMBER(completion_time)
   IPC_STRUCT_TRAITS_MEMBER(encoded_data_length)
+  IPC_STRUCT_TRAITS_MEMBER(encoded_body_length)
 IPC_STRUCT_TRAITS_END()
 
 // Resource messages sent from the browser to the renderer.
@@ -363,10 +364,6 @@ IPC_SYNC_MESSAGE_ROUTED2_1(ResourceHostMsg_SyncLoad,
 // Sent when the renderer process is done processing a DataReceived
 // message.
 IPC_MESSAGE_CONTROL1(ResourceHostMsg_DataReceived_ACK,
-                     int /* request_id */)
-
-// Sent when the renderer has processed a DataDownloaded message.
-IPC_MESSAGE_CONTROL1(ResourceHostMsg_DataDownloaded_ACK,
                      int /* request_id */)
 
 // Sent by the renderer process to acknowledge receipt of a

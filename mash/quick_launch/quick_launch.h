@@ -10,6 +10,7 @@
 #include "base/macros.h"
 #include "mash/public/interfaces/launchable.mojom.h"
 #include "mojo/public/cpp/bindings/binding_set.h"
+#include "services/service_manager/public/cpp/interface_factory.h"
 #include "services/service_manager/public/cpp/service.h"
 #include "services/tracing/public/cpp/provider.h"
 
@@ -24,8 +25,8 @@ namespace quick_launch {
 
 class QuickLaunch
     : public service_manager::Service,
-      public mojom::Launchable,
-      public service_manager::InterfaceFactory<mojom::Launchable> {
+      public ::mash::mojom::Launchable,
+      public service_manager::InterfaceFactory<::mash::mojom::Launchable> {
  public:
   QuickLaunch();
   ~QuickLaunch() override;
@@ -34,18 +35,18 @@ class QuickLaunch
 
  private:
   // service_manager::Service:
-  void OnStart(const service_manager::ServiceInfo& info) override;
+  void OnStart() override;
   bool OnConnect(const service_manager::ServiceInfo& remote_info,
                  service_manager::InterfaceRegistry* registry) override;
 
-  // mojom::Launchable:
-  void Launch(uint32_t what, mojom::LaunchMode how) override;
+  // ::mash::mojom::Launchable:
+  void Launch(uint32_t what, ::mash::mojom::LaunchMode how) override;
 
-  // service_manager::InterfaceFactory<mojom::Launchable>:
+  // service_manager::InterfaceFactory<::mash::mojom::Launchable>:
   void Create(const service_manager::Identity& remote_identity,
-              mojom::LaunchableRequest request) override;
+              ::mash::mojom::LaunchableRequest request) override;
 
-  mojo::BindingSet<mojom::Launchable> bindings_;
+  mojo::BindingSet<::mash::mojom::Launchable> bindings_;
   std::vector<views::Widget*> windows_;
 
   tracing::Provider tracing_;

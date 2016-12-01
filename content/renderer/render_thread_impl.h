@@ -36,8 +36,8 @@
 #include "content/public/renderer/render_thread.h"
 #include "content/renderer/gpu/compositor_dependencies.h"
 #include "content/renderer/layout_test_dependencies.h"
-#include "device/time_zone_monitor/public/interfaces/time_zone_monitor.mojom.h"
 #include "gpu/ipc/client/gpu_channel_host.h"
+#include "media/media_features.h"
 #include "mojo/public/cpp/bindings/associated_binding.h"
 #include "mojo/public/cpp/bindings/binding.h"
 #include "net/base/network_change_notifier.h"
@@ -50,7 +50,6 @@
 #include "third_party/WebKit/public/web/mac/WebScrollbarTheme.h"
 #endif
 
-class GrContext;
 class SkBitmap;
 struct WorkerProcessMsg_CreateWorker_Params;
 
@@ -69,6 +68,7 @@ class Thread;
 }
 
 namespace cc {
+class BeginFrameSource;
 class ContextProvider;
 class ImageSerializationProcessor;
 class CompositorFrameSink;
@@ -118,7 +118,6 @@ class InputHandlerManager;
 class MediaStreamCenter;
 class MemoryObserver;
 class MidiMessageFilter;
-class NetInfoDispatcher;
 class P2PSocketDispatcher;
 class PeerConnectionDependencyFactory;
 class PeerConnectionTracker;
@@ -157,8 +156,6 @@ class CONTENT_EXPORT RenderThreadImpl
       public ChildMemoryCoordinatorDelegate,
       public base::MemoryCoordinatorClient,
       NON_EXPORTED_BASE(public mojom::Renderer),
-      // TODO(blundell): Separate this impl out into Blink.
-      NON_EXPORTED_BASE(public device::mojom::TimeZoneMonitorClient),
       NON_EXPORTED_BASE(public CompositorDependencies) {
  public:
   static RenderThreadImpl* Create(const InProcessChildThreadParams& params);
@@ -177,10 +174,6 @@ class CONTENT_EXPORT RenderThreadImpl
   // When initializing WebKit, ensure that any schemes needed for the content
   // module are registered properly.  Static to allow sharing with tests.
   static void RegisterSchemes();
-
-  // Notify V8 that the date/time configuration of the system might have
-  // changed.
-  static void NotifyTimezoneChange();
 
   // RenderThread implementation:
   bool Send(IPC::Message* msg) override;
@@ -209,6 +202,7 @@ class CONTENT_EXPORT RenderThreadImpl
   int PostTaskToAllWebWorkers(const base::Closure& closure) override;
   bool ResolveProxy(const GURL& url, std::string* proxy_list) override;
   base::WaitableEvent* GetShutdownEvent() override;
+  int32_t GetClientId() override;
 
   // IPC::Listener implementation via ChildThreadImpl:
   void OnAssociatedInterfaceRequest(
@@ -329,7 +323,7 @@ class CONTENT_EXPORT RenderThreadImpl
     return browser_plugin_manager_.get();
   }
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   // Returns a factory used for creating RTC PeerConnection objects.
   PeerConnectionDependencyFactory* GetPeerConnectionDependencyFactory();
 
@@ -530,8 +524,6 @@ class CONTENT_EXPORT RenderThreadImpl
                              const std::string& highlight_color) override;
   void PurgePluginListCache(bool reload_pages) override;
 
-  // device::mojom::TimeZoneClient:
-  void OnTimeZoneChange(const std::string& zoneId) override;
   void OnMemoryPressure(
       base::MemoryPressureListener::MemoryPressureLevel memory_pressure_level);
 
@@ -576,7 +568,7 @@ class CONTENT_EXPORT RenderThreadImpl
 
   std::unique_ptr<BrowserPluginManager> browser_plugin_manager_;
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   std::unique_ptr<PeerConnectionDependencyFactory> peer_connection_factory_;
 
   // This is used to communicate to the browser process the status
@@ -592,9 +584,6 @@ class CONTENT_EXPORT RenderThreadImpl
   // chrome://webrtc-internals.
   scoped_refptr<AecDumpMessageFilter> aec_dump_message_filter_;
 #endif
-
-  mojo::Binding<device::mojom::TimeZoneMonitorClient>
-      time_zone_monitor_binding_;
 
   // Used on the render thread.
   std::unique_ptr<VideoCaptureImplManager> vc_manager_;
@@ -742,6 +731,8 @@ class CONTENT_EXPORT RenderThreadImpl
 
   base::CancelableClosure record_purge_suspend_metric_closure_;
   bool is_renderer_suspended_;
+
+  int32_t client_id_;
 
   DISALLOW_COPY_AND_ASSIGN(RenderThreadImpl);
 };

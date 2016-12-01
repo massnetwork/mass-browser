@@ -10,9 +10,14 @@
 #include "services/ui/public/interfaces/mus_constants.mojom.h"
 #include "services/ui/public/interfaces/window_tree.mojom.h"
 
+namespace cc {
+namespace mojom {
+class DisplayCompositor;
+}
+}
+
 namespace ui {
 
-class DisplayCompositor;
 
 namespace ws {
 
@@ -22,14 +27,13 @@ struct WindowId;
 
 class ServerWindowDelegate {
  public:
-  virtual DisplayCompositor* GetDisplayCompositor() = 0;
-
-  virtual void OnScheduleWindowPaint(ServerWindow* window) = 0;
+  // Returns a display compositor interface pointer. There is only one
+  // DisplayCompositor running in the system.
+  virtual cc::mojom::DisplayCompositor* GetDisplayCompositor() = 0;
 
   // Returns the root of the window tree to which this |window| is attached.
   // Returns null if this window is not attached up through to a root window.
-  virtual const ServerWindow* GetRootWindow(
-      const ServerWindow* window) const = 0;
+  virtual ServerWindow* GetRootWindow(const ServerWindow* window) = 0;
 
  protected:
   virtual ~ServerWindowDelegate() {}

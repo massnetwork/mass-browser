@@ -247,15 +247,13 @@ class CORE_EXPORT LayoutText : public LayoutObject {
   unsigned length() const final { return textLength(); }
 
   // See the class comment as to why we shouldn't call this function directly.
-  void paint(const PaintInfo&, const LayoutPoint&) const final {
-    ASSERT_NOT_REACHED();
-  }
-  void layout() final { ASSERT_NOT_REACHED(); }
+  void paint(const PaintInfo&, const LayoutPoint&) const final { NOTREACHED(); }
+  void layout() final { NOTREACHED(); }
   bool nodeAtPoint(HitTestResult&,
                    const HitTestLocation&,
                    const LayoutPoint&,
                    HitTestAction) final {
-    ASSERT_NOT_REACHED();
+    NOTREACHED();
     return false;
   }
 
@@ -325,12 +323,13 @@ inline UChar LayoutText::characterAt(unsigned i) const {
 }
 
 inline UChar32 LayoutText::codepointAt(unsigned i) const {
-  UChar32 character = characterAt(i);
-  if (!U16_IS_LEAD(character))
-    return character;
-  UChar trail = characterAt(i + 1);
-  return U16_IS_TRAIL(trail) ? U16_GET_SUPPLEMENTARY(character, trail)
-                             : character;
+  if (i >= textLength())
+    return 0;
+  if (is8Bit())
+    return characters8()[i];
+  UChar32 c;
+  U16_GET(characters16(), 0, i, textLength(), c);
+  return c;
 }
 
 inline float LayoutText::hyphenWidth(const Font& font,

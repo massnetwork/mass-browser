@@ -33,7 +33,6 @@
 #include "core/layout/LayoutFlexibleBox.h"
 #include "core/layout/LayoutGeometryMap.h"
 #include "core/layout/LayoutInline.h"
-#include "core/layout/LayoutTheme.h"
 #include "core/layout/LayoutView.h"
 #include "core/layout/compositing/CompositedLayerMapping.h"
 #include "core/layout/compositing/PaintLayerCompositor.h"
@@ -113,12 +112,6 @@ bool LayoutBoxModelObject::usesCompositedScrolling() const {
 }
 
 bool LayoutBoxModelObject::hasLocalEquivalentBackground() const {
-  int minBorderWidth = std::min(
-      style()->borderTopWidth(),
-      std::min(
-          style()->borderLeftWidth(),
-          std::min(style()->borderRightWidth(), style()->borderBottomWidth())));
-  bool outlineOverlapsPaddingBox = style()->outlineOffset() < -minBorderWidth;
   bool hasCustomScrollbars = false;
   // TODO(flackr): Detect opaque custom scrollbars which would cover up a
   // border-box background.
@@ -146,15 +139,6 @@ bool LayoutBoxModelObject::hasLocalEquivalentBackground() const {
   for (; layer; layer = layer->next()) {
     if (layer->attachment() == LocalBackgroundAttachment)
       continue;
-
-    // If the outline draws inside the border, it intends to draw on top of the
-    // scroller's background, however because it is painted into a layer behind
-    // the scrolling contents layer we avoid auto promoting in this case to
-    // avoid obscuring the outline.
-    // TODO(flackr): Outlines should be drawn on top of the scrolling contents
-    // layer so that they cannot be covered up by composited scrolling contents.
-    if (outlineOverlapsPaddingBox)
-      return false;
 
     // Solid color layers with an effective background clip of the padding box
     // can be treated as local.
@@ -297,6 +281,8 @@ void LayoutBoxModelObject::styleDidChange(StyleDifference diff,
     // transforms, so just null out the bit.
     setHasTransformRelatedProperty(false);
     setHasReflection(false);
+    layer()->updateFilters(oldStyle, styleRef());
+    layer()->updateClipPath(oldStyle, styleRef());
     // Calls destroyLayer() which clears m_layer.
     layer()->removeOnlyThisLayerAfterStyleChange();
     if (wasFloatingBeforeStyleChanged && isFloating())
@@ -429,7 +415,7 @@ void LayoutBoxModelObject::invalidateStickyConstraints() {
 
 void LayoutBoxModelObject::createLayer() {
   ASSERT(!m_layer);
-  m_layer = wrapUnique(new PaintLayer(this));
+  m_layer = makeUnique<PaintLayer>(this);
   setHasLayer(true);
   m_layer->insertOnlyThisLayerAfterStyleChange();
 }
@@ -471,18 +457,6 @@ void LayoutBoxModelObject::addLayerHitTestRects(
   }
 }
 
-static bool hasPercentageTransform(const ComputedStyle& style) {
-  if (TransformOperation* translate = style.translate()) {
-    if (translate->dependsOnBoxSize())
-      return true;
-  }
-  return style.transform().dependsOnBoxSize() ||
-         (style.transformOriginX() != Length(50, Percent) &&
-          style.transformOriginX().isPercentOrCalc()) ||
-         (style.transformOriginY() != Length(50, Percent) &&
-          style.transformOriginY().isPercentOrCalc());
-}
-
 DISABLE_CFI_PERF
 void LayoutBoxModelObject::invalidateTreeIfNeeded(
     const PaintInvalidationState& paintInvalidationState) {
@@ -498,24 +472,16 @@ void LayoutBoxModelObject::invalidateTreeIfNeeded(
     newPaintInvalidationState
         .setForceSubtreeInvalidationCheckingWithinContainer();
 
+  ObjectPaintInvalidator paintInvalidator(*this);
   LayoutRect previousVisualRect = this->previousVisualRect();
-  LayoutPoint previousPosition = previousPositionFromPaintInvalidationBacking();
+  LayoutPoint previousLocation = paintInvalidator.previousLocationInBacking();
   PaintInvalidationReason reason =
       invalidatePaintIfNeeded(newPaintInvalidationState);
-  clearPaintInvalidationFlags();
 
-  if (previousPosition != previousPositionFromPaintInvalidationBacking())
+  if (previousLocation != paintInvalidator.previousLocationInBacking()) {
     newPaintInvalidationState
         .setForceSubtreeInvalidationCheckingWithinContainer();
-
-  // TODO(wangxianzhu): Combine this function into LayoutObject::
-  // invalidateTreeIfNeeded() when removing the following workarounds.
-
-  // TODO(wangxianzhu): This is a workaround for crbug.com/533277. Will remove
-  // when we enable paint offset caching.
-  if (reason != PaintInvalidationNone && hasPercentageTransform(styleRef()))
-    newPaintInvalidationState
-        .setForceSubtreeInvalidationCheckingWithinContainer();
+  }
 
   // TODO(wangxianzhu): This is a workaround for crbug.com/490725. We don't have
   // enough saved information to do accurate check of clipping change. Will
@@ -525,12 +491,15 @@ void LayoutBoxModelObject::invalidateTreeIfNeeded(
       !usesCompositedScrolling()
       // Note that isLayoutView() below becomes unnecessary after the launch of
       // root layer scrolling.
-      && (hasOverflowClip() || isLayoutView()))
+      && (hasOverflowClip() || isLayoutView())) {
     newPaintInvalidationState
         .setForceSubtreeInvalidationRectUpdateWithinContainer();
+  }
 
   newPaintInvalidationState.updateForChildren(reason);
   invalidatePaintOfSubtreesIfNeeded(newPaintInvalidationState);
+
+  clearPaintInvalidationFlags();
 }
 
 void LayoutBoxModelObject::addOutlineRectsForNormalChildren(
@@ -801,9 +770,15 @@ void LayoutBoxModelObject::updateStickyPositionConstraints() const {
   // allowed to move.
   LayoutUnit maxWidth = containingBlock->availableLogicalWidth();
 
-  // Map the containing block to the scroll ancestor without transforms.
+  // Map the containing block to the inner corner of the scroll ancestor without
+  // transforms.
   FloatRect scrollContainerRelativePaddingBoxRect(
       containingBlock->layoutOverflowRect());
+  FloatSize scrollContainerBorderOffset;
+  if (scrollAncestor) {
+    scrollContainerBorderOffset =
+        FloatSize(scrollAncestor->borderLeft(), scrollAncestor->borderTop());
+  }
   if (containingBlock != scrollAncestor) {
     FloatQuad localQuad(FloatRect(containingBlock->paddingBoxRect()));
     TransformState transformState(TransformState::ApplyTransformDirection,
@@ -824,6 +799,8 @@ void LayoutBoxModelObject::updateStickyPositionConstraints() const {
             : FloatSize());
     scrollContainerRelativePaddingBoxRect.move(scrollOffset);
   }
+  // Remove top-left border offset from overflow scroller.
+  scrollContainerRelativePaddingBoxRect.move(-scrollContainerBorderOffset);
 
   LayoutRect scrollContainerRelativeContainingBlockRect(
       scrollContainerRelativePaddingBoxRect);
@@ -859,12 +836,12 @@ void LayoutBoxModelObject::updateStickyPositionConstraints() const {
 
   // The scrollContainerRelativePaddingBoxRect's position is the padding box so
   // we need to remove the border when finding the position of the sticky box
-  // within the scroll ancestor if the container is not our scroll ancestor.
-  if (containingBlock != scrollAncestor) {
-    FloatSize containerBorderOffset(containingBlock->borderLeft(),
-                                    containingBlock->borderTop());
-    stickyLocation -= containerBorderOffset;
-  }
+  // within the scroll ancestor if the container is not our scroll ancestor. If
+  // the container is our scroll ancestor, we also need to remove the border
+  // box because we want the position from within the scroller border.
+  FloatSize containerBorderOffset(containingBlock->borderLeft(),
+                                  containingBlock->borderTop());
+  stickyLocation -= containerBorderOffset;
   constraints.setScrollContainerRelativeStickyBoxRect(
       FloatRect(scrollContainerRelativePaddingBoxRect.location() +
                     toFloatSize(stickyLocation),
@@ -946,8 +923,9 @@ FloatRect LayoutBoxModelObject::computeStickyConstrainingRect() const {
   constrainingRect =
       FloatRect(enclosingClippingBox->overflowClipRect(LayoutPoint(DoublePoint(
           enclosingClippingBox->getScrollableArea()->scrollPosition()))));
-  constrainingRect.move(enclosingClippingBox->paddingLeft(),
-                        enclosingClippingBox->paddingTop());
+  constrainingRect.move(
+      -enclosingClippingBox->borderLeft() + enclosingClippingBox->paddingLeft(),
+      -enclosingClippingBox->borderTop() + enclosingClippingBox->paddingTop());
   constrainingRect.contract(
       FloatSize(enclosingClippingBox->paddingLeft() +
                     enclosingClippingBox->paddingRight(),
@@ -979,7 +957,7 @@ LayoutSize LayoutBoxModelObject::stickyPositionOffset() const {
 
 LayoutPoint LayoutBoxModelObject::adjustedPositionRelativeTo(
     const LayoutPoint& startPoint,
-    const Element* element) const {
+    const Element* offsetParent) const {
   // If the element is the HTML body element or doesn't have a parent
   // return 0 and stop this algorithm.
   if (isBody() || !parent())
@@ -987,38 +965,56 @@ LayoutPoint LayoutBoxModelObject::adjustedPositionRelativeTo(
 
   LayoutPoint referencePoint = startPoint;
 
-  // If the base element is null, return the distance between the canvas origin
-  // and the left border edge of the element and stop this algorithm.
-  if (!element)
+  // If the offsetParent is null, return the distance between the canvas origin
+  // and the left/top border edge of the element and stop this algorithm.
+  if (!offsetParent)
     return referencePoint;
 
-  if (const LayoutBoxModelObject* offsetParent =
-          element->layoutBoxModelObject()) {
+  if (const LayoutBoxModelObject* offsetParentObject =
+          offsetParent->layoutBoxModelObject()) {
     if (!isOutOfFlowPositioned()) {
       if (isInFlowPositioned())
         referencePoint.move(offsetForInFlowPosition());
 
       // Note that we may fail to find |offsetParent| while walking the
       // container chain, if |offsetParent| is an inline split into
-      // continuations: <body style="display:inline;" id="offsetParent"><div>
-      // </div><span id="this">
+      // continuations: <body style="display:inline;" id="offsetParent">
+      // <div id="this">
       // This is why we have to do a nullptr check here.
-      // offset(Left|Top) is generally broken when offsetParent is inline.
       for (const LayoutObject* current = container();
-           current && current != offsetParent; current = current->container()) {
+           current && current->node() != offsetParent;
+           current = current->container()) {
         // FIXME: What are we supposed to do inside SVG content?
         referencePoint.move(current->columnOffset(referencePoint));
         if (current->isBox() && !current->isTableRow())
           referencePoint.moveBy(toLayoutBox(current)->topLeftLocation());
       }
 
-      if (offsetParent->isBox() && offsetParent->isBody() &&
-          !offsetParent->isPositioned())
-        referencePoint.moveBy(toLayoutBox(offsetParent)->topLeftLocation());
+      if (offsetParentObject->isBox() && offsetParentObject->isBody() &&
+          !offsetParentObject->isPositioned()) {
+        referencePoint.moveBy(
+            toLayoutBox(offsetParentObject)->topLeftLocation());
+      }
     }
-    if (offsetParent->isBox() && !offsetParent->isBody())
-      referencePoint.move(-toLayoutBox(offsetParent)->borderLeft(),
-                          -toLayoutBox(offsetParent)->borderTop());
+
+    if (offsetParentObject->isLayoutInline()) {
+      const LayoutInline* inlineParent = toLayoutInline(offsetParentObject);
+
+      if (isBox() && style()->position() == AbsolutePosition &&
+          inlineParent->isInFlowPositioned()) {
+        // Offset for absolute elements with inline parent is a special
+        // case in the CSS spec
+        referencePoint +=
+            inlineParent->offsetForInFlowPositionedInline(*toLayoutBox(this));
+      }
+
+      referencePoint -= inlineParent->firstLineBoxTopLeft();
+    }
+
+    if (offsetParentObject->isBox() && !offsetParentObject->isBody()) {
+      referencePoint.move(-toLayoutBox(offsetParentObject)->borderLeft(),
+                          -toLayoutBox(offsetParentObject)->borderTop());
+    }
   }
 
   return referencePoint;
@@ -1061,63 +1057,6 @@ LayoutUnit LayoutBoxModelObject::computedCSSPadding(
   if (padding.isPercentOrCalc())
     w = containingBlockLogicalWidthForContent();
   return minimumValueForLength(padding, w);
-}
-
-bool LayoutBoxModelObject::boxShadowShouldBeAppliedToBackground(
-    BackgroundBleedAvoidance bleedAvoidance,
-    const InlineFlowBox* inlineFlowBox) const {
-  if (bleedAvoidance != BackgroundBleedNone)
-    return false;
-
-  if (style()->hasAppearance())
-    return false;
-
-  const ShadowList* shadowList = style()->boxShadow();
-  if (!shadowList)
-    return false;
-
-  bool hasOneNormalBoxShadow = false;
-  size_t shadowCount = shadowList->shadows().size();
-  for (size_t i = 0; i < shadowCount; ++i) {
-    const ShadowData& currentShadow = shadowList->shadows()[i];
-    if (currentShadow.style() != Normal)
-      continue;
-
-    if (hasOneNormalBoxShadow)
-      return false;
-    hasOneNormalBoxShadow = true;
-
-    if (currentShadow.spread())
-      return false;
-  }
-
-  if (!hasOneNormalBoxShadow)
-    return false;
-
-  Color backgroundColor = resolveColor(CSSPropertyBackgroundColor);
-  if (backgroundColor.hasAlpha())
-    return false;
-
-  const FillLayer* lastBackgroundLayer = &style()->backgroundLayers();
-  for (const FillLayer* next = lastBackgroundLayer->next(); next;
-       next = lastBackgroundLayer->next())
-    lastBackgroundLayer = next;
-
-  if (lastBackgroundLayer->clip() != BorderFillBox)
-    return false;
-
-  if (lastBackgroundLayer->image() && style()->hasBorderRadius())
-    return false;
-
-  if (inlineFlowBox &&
-      !inlineFlowBox->boxShadowCanBeAppliedToBackground(*lastBackgroundLayer))
-    return false;
-
-  if (hasOverflowClip() &&
-      lastBackgroundLayer->attachment() == LocalBackgroundAttachment)
-    return false;
-
-  return true;
 }
 
 LayoutUnit LayoutBoxModelObject::containingBlockLogicalWidthForContent() const {
@@ -1168,23 +1107,23 @@ LayoutRect LayoutBoxModelObject::localCaretRectForEmptyElement(
   CaretAlignment alignment = AlignLeft;
 
   switch (currentStyle.textAlign()) {
-    case LEFT:
-    case WEBKIT_LEFT:
+    case ETextAlign::Left:
+    case ETextAlign::WebkitLeft:
       break;
-    case CENTER:
-    case WEBKIT_CENTER:
+    case ETextAlign::Center:
+    case ETextAlign::WebkitCenter:
       alignment = AlignCenter;
       break;
-    case RIGHT:
-    case WEBKIT_RIGHT:
+    case ETextAlign::Right:
+    case ETextAlign::WebkitRight:
       alignment = AlignRight;
       break;
-    case JUSTIFY:
-    case TASTART:
+    case ETextAlign::Justify:
+    case ETextAlign::Start:
       if (!currentStyle.isLeftToRightDirection())
         alignment = AlignRight;
       break;
-    case TAEND:
+    case ETextAlign::End:
       if (currentStyle.isLeftToRightDirection())
         alignment = AlignRight;
       break;

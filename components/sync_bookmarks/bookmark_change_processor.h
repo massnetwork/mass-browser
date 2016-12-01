@@ -16,11 +16,9 @@
 #include "base/threading/thread_checker.h"
 #include "components/bookmarks/browser/bookmark_model_observer.h"
 #include "components/bookmarks/browser/bookmark_node.h"
-#include "components/sync/driver/change_processor.h"
+#include "components/sync/model/change_processor.h"
 #include "components/sync/model/data_type_error_handler.h"
 #include "components/sync_bookmarks/bookmark_model_associator.h"
-
-class Profile;
 
 namespace base {
 class RefCountedMemory;

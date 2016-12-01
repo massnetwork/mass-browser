@@ -24,11 +24,6 @@ namespace ui {
 class Window;
 }
 
-namespace views {
-class ImageButton;
-class ToggleImageButton;
-}
-
 class BrowserNonClientFrameViewMus : public BrowserNonClientFrameView,
                                      public TabIconViewModel,
                                      public TabStripObserver {
@@ -65,7 +60,7 @@ class BrowserNonClientFrameViewMus : public BrowserNonClientFrameView,
   void OnPaint(gfx::Canvas* canvas) override;
   void Layout() override;
   const char* GetClassName() const override;
-  void GetAccessibleState(ui::AXViewState* state) override;
+  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
   gfx::Size GetMinimumSize() const override;
 
   // TabIconViewModel:

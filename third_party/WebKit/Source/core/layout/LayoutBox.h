@@ -26,8 +26,8 @@
 #include "core/CoreExport.h"
 #include "core/layout/LayoutBoxModelObject.h"
 #include "core/layout/OverflowModel.h"
-#include "core/layout/ScrollEnums.h"
 #include "platform/scroll/ScrollTypes.h"
+#include "wtf/Compiler.h"
 #include "wtf/PtrUtil.h"
 #include <memory>
 
@@ -251,7 +251,10 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
     return style()->isHorizontalWritingMode() ? m_frameRect.height()
                                               : m_frameRect.width();
   }
-  LayoutUnit logicalHeightIncludingOverflow() const;
+
+  // Logical height of the object, including content overflowing the
+  // border-after edge.
+  virtual LayoutUnit logicalHeightWithVisibleOverflow() const;
 
   LayoutUnit constrainLogicalWidthByMinMax(LayoutUnit,
                                            LayoutUnit,
@@ -996,7 +999,6 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
   IntSize calculateAutoscrollDirection(const IntPoint& pointInRootFrame) const;
   static LayoutBox* findAutoscrollable(LayoutObject*);
   virtual void stopAutoscroll() {}
-  virtual void middleClickAutoscroll(const IntPoint&);
 
   DISABLE_CFI_PERF bool hasAutoVerticalScrollbar() const {
     return hasOverflowClip() && (style()->overflowY() == OverflowAuto ||
@@ -1140,23 +1142,23 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
 
   LayoutPoint flipForWritingModeForChild(const LayoutBox* child,
                                          const LayoutPoint&) const;
-  LayoutUnit flipForWritingMode(LayoutUnit position) const WARN_UNUSED_RETURN {
+  WARN_UNUSED_RESULT LayoutUnit flipForWritingMode(LayoutUnit position) const {
     // The offset is in the block direction (y for horizontal writing modes, x
     // for vertical writing modes).
     if (!UNLIKELY(hasFlippedBlocksWritingMode()))
       return position;
     return logicalHeight() - position;
   }
-  LayoutPoint flipForWritingMode(const LayoutPoint& position) const
-      WARN_UNUSED_RETURN {
+  WARN_UNUSED_RESULT LayoutPoint
+  flipForWritingMode(const LayoutPoint& position) const {
     if (!UNLIKELY(hasFlippedBlocksWritingMode()))
       return position;
     return isHorizontalWritingMode()
                ? LayoutPoint(position.x(), m_frameRect.height() - position.y())
                : LayoutPoint(m_frameRect.width() - position.x(), position.y());
   }
-  LayoutSize flipForWritingMode(const LayoutSize& offset) const
-      WARN_UNUSED_RETURN {
+  WARN_UNUSED_RESULT LayoutSize
+  flipForWritingMode(const LayoutSize& offset) const {
     if (!UNLIKELY(hasFlippedBlocksWritingMode()))
       return offset;
     return LayoutSize(m_frameRect.width() - offset.width(), offset.height());
@@ -1166,8 +1168,8 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
       return;
     rect.setX(m_frameRect.width() - rect.maxX());
   }
-  FloatPoint flipForWritingMode(const FloatPoint& position) const
-      WARN_UNUSED_RETURN {
+  WARN_UNUSED_RESULT FloatPoint
+  flipForWritingMode(const FloatPoint& position) const {
     if (!UNLIKELY(hasFlippedBlocksWritingMode()))
       return position;
     return FloatPoint(m_frameRect.width() - position.x(), position.y());
@@ -1242,7 +1244,7 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
 
   virtual LayoutBox* createAnonymousBoxWithSameTypeAs(
       const LayoutObject*) const {
-    ASSERT_NOT_REACHED();
+    NOTREACHED();
     return nullptr;
   }
 
@@ -1301,6 +1303,8 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
   bool intersectsVisibleViewport() const;
 
   bool hasNonCompositedScrollbars() const final;
+
+  void ensureIsReadyForPaintInvalidation() override;
 
  protected:
   void willBeDestroyed() override;
@@ -1479,7 +1483,7 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
 
   LayoutBoxRareData& ensureRareData() {
     if (!m_rareData)
-      m_rareData = wrapUnique(new LayoutBoxRareData());
+      m_rareData = makeUnique<LayoutBoxRareData>();
     return *m_rareData.get();
   }
 

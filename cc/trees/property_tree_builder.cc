@@ -9,8 +9,6 @@
 #include <map>
 #include <set>
 
-#include "cc/animation/animation_host.h"
-#include "cc/animation/mutable_properties.h"
 #include "cc/base/math_util.h"
 #include "cc/layers/layer.h"
 #include "cc/layers/layer_impl.h"
@@ -20,6 +18,8 @@
 #include "cc/trees/effect_node.h"
 #include "cc/trees/layer_tree_impl.h"
 #include "cc/trees/layer_tree_settings.h"
+#include "cc/trees/mutable_properties.h"
+#include "cc/trees/mutator_host.h"
 #include "cc/trees/scroll_node.h"
 #include "cc/trees/transform_node.h"
 #include "ui/gfx/geometry/point_f.h"
@@ -52,7 +52,6 @@ struct DataForRecursion {
   bool affected_by_inner_viewport_bounds_delta;
   bool affected_by_outer_viewport_bounds_delta;
   bool should_flatten;
-  bool target_is_clipped;
   bool is_hidden;
   uint32_t main_thread_scrolling_reasons;
   bool scroll_tree_parent_created_by_uninheritable_criteria;
@@ -244,56 +243,56 @@ static const gfx::Transform& Transform(LayerImpl* layer) {
 // Methods to query state from the AnimationHost ----------------------
 template <typename LayerType>
 bool OpacityIsAnimating(LayerType* layer) {
-  return layer->GetAnimationHost()->IsAnimatingOpacityProperty(
+  return layer->GetMutatorHost()->IsAnimatingOpacityProperty(
       layer->element_id(), layer->GetElementTypeForAnimation());
 }
 
 template <typename LayerType>
 bool HasPotentiallyRunningOpacityAnimation(LayerType* layer) {
-  return layer->GetAnimationHost()->HasPotentiallyRunningOpacityAnimation(
+  return layer->GetMutatorHost()->HasPotentiallyRunningOpacityAnimation(
       layer->element_id(), layer->GetElementTypeForAnimation());
 }
 
 template <typename LayerType>
 bool FilterIsAnimating(LayerType* layer) {
-  return layer->GetAnimationHost()->IsAnimatingFilterProperty(
+  return layer->GetMutatorHost()->IsAnimatingFilterProperty(
       layer->element_id(), layer->GetElementTypeForAnimation());
 }
 
 template <typename LayerType>
 bool HasPotentiallyRunningFilterAnimation(LayerType* layer) {
-  return layer->GetAnimationHost()->HasPotentiallyRunningFilterAnimation(
+  return layer->GetMutatorHost()->HasPotentiallyRunningFilterAnimation(
       layer->element_id(), layer->GetElementTypeForAnimation());
 }
 
 template <typename LayerType>
 bool TransformIsAnimating(LayerType* layer) {
-  return layer->GetAnimationHost()->IsAnimatingTransformProperty(
+  return layer->GetMutatorHost()->IsAnimatingTransformProperty(
       layer->element_id(), layer->GetElementTypeForAnimation());
 }
 
 template <typename LayerType>
 bool HasPotentiallyRunningTransformAnimation(LayerType* layer) {
-  return layer->GetAnimationHost()->HasPotentiallyRunningTransformAnimation(
+  return layer->GetMutatorHost()->HasPotentiallyRunningTransformAnimation(
       layer->element_id(), layer->GetElementTypeForAnimation());
 }
 
 template <typename LayerType>
 bool HasOnlyTranslationTransforms(LayerType* layer) {
-  return layer->GetAnimationHost()->HasOnlyTranslationTransforms(
+  return layer->GetMutatorHost()->HasOnlyTranslationTransforms(
       layer->element_id(), layer->GetElementTypeForAnimation());
 }
 
 template <typename LayerType>
 bool AnimationsPreserveAxisAlignment(LayerType* layer) {
-  return layer->GetAnimationHost()->AnimationsPreserveAxisAlignment(
+  return layer->GetMutatorHost()->AnimationsPreserveAxisAlignment(
       layer->element_id());
 }
 
 template <typename LayerType>
 bool HasAnyAnimationTargetingProperty(LayerType* layer,
                                       TargetProperty::Type property) {
-  return layer->GetAnimationHost()->HasAnyAnimationTargetingProperty(
+  return layer->GetMutatorHost()->HasAnyAnimationTargetingProperty(
       layer->element_id(), property);
 }
 
@@ -374,12 +373,15 @@ void AddClipNodeIfNeeded(const DataForRecursion<LayerType>& data_from_ancestor,
     // A surface with unclipped descendants cannot be clipped by its ancestor
     // clip at draw time since the unclipped descendants aren't affected by the
     // ancestor clip.
-    data_for_children->target_is_clipped =
+    EffectNode* effect_node =
+        data_for_children->property_trees->effect_tree.Node(
+            data_for_children->render_target);
+    DCHECK(effect_node->owner_id == layer->id());
+    effect_node->surface_is_clipped =
         ancestor_clips_subtree && !NumUnclippedDescendants(layer);
   } else {
     // Without a new render surface, layer clipping state from ancestors needs
     // to continue to propagate.
-    data_for_children->target_is_clipped = data_from_ancestor.target_is_clipped;
     layers_are_clipped = ancestor_clips_subtree;
   }
 
@@ -434,7 +436,6 @@ void AddClipNodeIfNeeded(const DataForRecursion<LayerType>& data_from_ancestor,
     else
       node.clip_type = ClipNode::ClipType::NONE;
     node.resets_clip = has_unclipped_surface;
-    node.target_is_clipped = data_for_children->target_is_clipped;
     node.layers_are_clipped = layers_are_clipped;
     node.layers_are_clipped_when_surfaces_disabled =
         layers_are_clipped_when_surfaces_disabled;
@@ -636,12 +637,10 @@ bool AddTransformNodeIfNeeded(
   }
 
   float post_local_scale_factor = 1.0f;
-  if (is_root)
-    post_local_scale_factor =
-        data_for_children->property_trees->transform_tree.device_scale_factor();
 
   if (is_page_scale_layer) {
-    post_local_scale_factor *= data_from_ancestor.page_scale_factor;
+    if (!is_root)
+      post_local_scale_factor *= data_from_ancestor.page_scale_factor;
     data_for_children->property_trees->transform_tree.set_page_scale_factor(
         data_from_ancestor.page_scale_factor);
   }
@@ -649,10 +648,14 @@ bool AddTransformNodeIfNeeded(
   node->source_node_id = source_index;
   node->post_local_scale_factor = post_local_scale_factor;
   if (is_root) {
-    data_for_children->property_trees->transform_tree.SetDeviceTransform(
-        *data_from_ancestor.device_transform, layer->position());
+    float page_scale_factor_for_root =
+        is_page_scale_layer ? data_from_ancestor.page_scale_factor : 1.f;
     data_for_children->property_trees->transform_tree
-        .SetDeviceTransformScaleFactor(*data_from_ancestor.device_transform);
+        .SetRootTransformsAndScales(data_for_children->property_trees
+                                        ->transform_tree.device_scale_factor(),
+                                    page_scale_factor_for_root,
+                                    *data_from_ancestor.device_transform,
+                                    layer->position());
   } else {
     node->source_offset = source_offset;
     node->update_post_local_transform(layer->position(),
@@ -802,11 +805,11 @@ static inline float Opacity(LayerImpl* layer) {
   return layer->test_properties()->opacity;
 }
 
-static inline SkXfermode::Mode BlendMode(Layer* layer) {
+static inline SkBlendMode BlendMode(Layer* layer) {
   return layer->blend_mode();
 }
 
-static inline SkXfermode::Mode BlendMode(LayerImpl* layer) {
+static inline SkBlendMode BlendMode(LayerImpl* layer) {
   return layer->test_properties()->blend_mode;
 }
 
@@ -909,7 +912,7 @@ bool ShouldCreateRenderSurface(LayerType* layer,
   // TODO(rosca): this is temporary, until blending is implemented for other
   // types of quads than RenderPassDrawQuad. Layers having descendants that draw
   // content will still create a separate rendering surface.
-  if (BlendMode(layer) != SkXfermode::kSrcOver_Mode) {
+  if (BlendMode(layer) != SkBlendMode::kSrcOver) {
     TRACE_EVENT_INSTANT0(
         "cc", "PropertyTreeBuilder::ShouldCreateRenderSurface blending",
         TRACE_EVENT_SCOPE_THREAD);
@@ -1241,7 +1244,7 @@ void BuildPropertyTreesInternal(
 
   if (created_render_surface) {
     data_for_children.render_target = data_for_children.effect_tree_parent;
-    layer->set_draw_blend_mode(SkXfermode::kSrcOver_Mode);
+    layer->set_draw_blend_mode(SkBlendMode::kSrcOver);
   } else {
     layer->set_draw_blend_mode(BlendMode(layer));
   }
@@ -1359,8 +1362,11 @@ void BuildPropertyTreesTopLevelInternal(
     draw_property_utils::UpdateElasticOverscroll(
         property_trees, overscroll_elasticity_layer, elastic_overscroll);
     property_trees->clip_tree.SetViewportClip(gfx::RectF(viewport));
-    property_trees->transform_tree.SetDeviceTransform(device_transform,
-                                                      root_layer->position());
+    float page_scale_factor_for_root =
+        page_scale_layer == root_layer ? page_scale_factor : 1.f;
+    property_trees->transform_tree.SetRootTransformsAndScales(
+        device_scale_factor, page_scale_factor_for_root, device_transform,
+        root_layer->position());
     return;
   }
 
@@ -1384,7 +1390,6 @@ void BuildPropertyTreesTopLevelInternal(
   data_for_recursion.affected_by_inner_viewport_bounds_delta = false;
   data_for_recursion.affected_by_outer_viewport_bounds_delta = false;
   data_for_recursion.should_flatten = false;
-  data_for_recursion.target_is_clipped = false;
   data_for_recursion.is_hidden = false;
   data_for_recursion.main_thread_scrolling_reasons =
       MainThreadScrollingReason::kNotScrollingOnMain;

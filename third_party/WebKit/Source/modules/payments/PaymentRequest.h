@@ -35,7 +35,7 @@ class ScriptState;
 
 class MODULES_EXPORT PaymentRequest final
     : public EventTargetWithInlineData,
-      WTF_NON_EXPORTED_BASE(public mojom::blink::PaymentRequestClient),
+      NON_EXPORTED_BASE(public payments::mojom::blink::PaymentRequestClient),
       public PaymentCompleter,
       public PaymentUpdater,
       public ContextLifecycleObserver,
@@ -57,13 +57,6 @@ class MODULES_EXPORT PaymentRequest final
 
   virtual ~PaymentRequest();
 
-  struct MethodData {
-    MethodData(const Vector<String>& methods, const String& data)
-        : supportedMethods(methods), stringifiedData(data) {}
-    Vector<String> supportedMethods;
-    String stringifiedData;
-  };
-
   ScriptPromise show(ScriptState*);
   ScriptPromise abort(ScriptState*);
 
@@ -73,6 +66,8 @@ class MODULES_EXPORT PaymentRequest final
 
   DEFINE_ATTRIBUTE_EVENT_LISTENER(shippingaddresschange);
   DEFINE_ATTRIBUTE_EVENT_LISTENER(shippingoptionchange);
+
+  ScriptPromise canMakeActivePayment(ScriptState*);
 
   // ScriptWrappable:
   bool hasPendingActivity() const override;
@@ -102,13 +97,16 @@ class MODULES_EXPORT PaymentRequest final
   // LifecycleObserver:
   void contextDestroyed() override;
 
-  // mojom::blink::PaymentRequestClient:
-  void OnShippingAddressChange(mojom::blink::PaymentAddressPtr) override;
+  // payments::mojom::blink::PaymentRequestClient:
+  void OnShippingAddressChange(
+      payments::mojom::blink::PaymentAddressPtr) override;
   void OnShippingOptionChange(const String& shippingOptionId) override;
-  void OnPaymentResponse(mojom::blink::PaymentResponsePtr) override;
-  void OnError(mojom::blink::PaymentErrorReason) override;
+  void OnPaymentResponse(payments::mojom::blink::PaymentResponsePtr) override;
+  void OnError(payments::mojom::blink::PaymentErrorReason) override;
   void OnComplete() override;
   void OnAbort(bool abortedSuccessfully) override;
+  void OnCanMakeActivePayment(
+      payments::mojom::blink::ActivePaymentQueryResult) override;
 
   void onCompleteTimeout(TimerBase*);
 
@@ -122,8 +120,9 @@ class MODULES_EXPORT PaymentRequest final
   Member<ScriptPromiseResolver> m_showResolver;
   Member<ScriptPromiseResolver> m_completeResolver;
   Member<ScriptPromiseResolver> m_abortResolver;
-  mojom::blink::PaymentRequestPtr m_paymentProvider;
-  mojo::Binding<mojom::blink::PaymentRequestClient> m_clientBinding;
+  Member<ScriptPromiseResolver> m_canMakeActivePaymentResolver;
+  payments::mojom::blink::PaymentRequestPtr m_paymentProvider;
+  mojo::Binding<payments::mojom::blink::PaymentRequestClient> m_clientBinding;
   Timer<PaymentRequest> m_completeTimer;
 };
 

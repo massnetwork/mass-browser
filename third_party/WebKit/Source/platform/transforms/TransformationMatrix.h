@@ -32,6 +32,7 @@
 #include "wtf/Alignment.h"
 #include "wtf/Allocator.h"
 #include "wtf/CPU.h"
+#include "wtf/Compiler.h"
 #include "wtf/PtrUtil.h"
 #include <memory>
 #include <string.h>  // for memcpy
@@ -63,11 +64,11 @@ class PLATFORM_EXPORT TransformationMatrix {
 #endif
 
   static std::unique_ptr<TransformationMatrix> create() {
-    return wrapUnique(new TransformationMatrix());
+    return makeUnique<TransformationMatrix>();
   }
   static std::unique_ptr<TransformationMatrix> create(
       const TransformationMatrix& t) {
-    return wrapUnique(new TransformationMatrix(t));
+    return makeUnique<TransformationMatrix>(t);
   }
   static std::unique_ptr<TransformationMatrix> create(double a,
                                                       double b,
@@ -75,7 +76,7 @@ class PLATFORM_EXPORT TransformationMatrix {
                                                       double d,
                                                       double e,
                                                       double f) {
-    return wrapUnique(new TransformationMatrix(a, b, c, d, e, f));
+    return makeUnique<TransformationMatrix>(a, b, c, d, e, f);
   }
   static std::unique_ptr<TransformationMatrix> create(double m11,
                                                       double m12,
@@ -337,6 +338,16 @@ class PLATFORM_EXPORT TransformationMatrix {
     return applyTransformOrigin(origin.x(), origin.y(), origin.z());
   }
 
+  // Changes the transform to:
+  //
+  //     scale3d(z, z, z) * mat * scale3d(1/z, 1/z, 1/z)
+  //
+  // Useful for mapping zoomed points to their zoomed transformed result:
+  //
+  //     new_mat * (scale3d(z, z, z) * x) == scale3d(z, z, z) * (mat * x)
+  //
+  TransformationMatrix& zoom(double zoomFactor);
+
   bool isInvertible() const;
 
   // This method returns the identity matrix if it is not invertible.
@@ -352,7 +363,7 @@ class PLATFORM_EXPORT TransformationMatrix {
     double perspectiveX, perspectiveY, perspectiveZ, perspectiveW;
   } DecomposedType;
 
-  bool decompose(DecomposedType&) const WARN_UNUSED_RETURN;
+  WARN_UNUSED_RESULT bool decompose(DecomposedType&) const;
   void recompose(const DecomposedType&);
 
   void blend(const TransformationMatrix& from, double progress);

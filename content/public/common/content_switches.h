@@ -9,6 +9,7 @@
 
 #include "build/build_config.h"
 #include "content/common/content_export.h"
+#include "media/media_features.h"
 
 namespace switches {
 
@@ -25,7 +26,6 @@ CONTENT_EXPORT extern const char kAndroidFontsPath[];
 CONTENT_EXPORT extern const char kBlinkSettings[];
 CONTENT_EXPORT extern const char kBrowserCrashTest[];
 CONTENT_EXPORT extern const char kBrowserSubprocessPath[];
-CONTENT_EXPORT extern const char kUseCrossProcessFramesForGuests[];
 CONTENT_EXPORT extern const char kDefaultTileWidth[];
 CONTENT_EXPORT extern const char kDefaultTileHeight[];
 CONTENT_EXPORT extern const char kDisable2dCanvasAntialiasing[];
@@ -63,6 +63,7 @@ CONTENT_EXPORT extern const char kDisableGpuRasterization[];
 CONTENT_EXPORT extern const char kDisableGpuSandbox[];
 CONTENT_EXPORT extern const char kDisableInProcessStackTraces[];
 CONTENT_EXPORT extern const char kDisableJavaScriptHarmonyShipping[];
+CONTENT_EXPORT extern const char kDisableLowLatencyDxva[];
 CONTENT_EXPORT extern const char kDisableLowResTiling[];
 CONTENT_EXPORT extern const char kDisableHangMonitor[];
 CONTENT_EXPORT extern const char kDisableHideInactiveStackedTabCloseButtons[];
@@ -72,6 +73,7 @@ CONTENT_EXPORT extern const char kDisablePreferCompositingToLCDText[];
 CONTENT_EXPORT extern const char kDisableKillAfterBadIPC[];
 CONTENT_EXPORT extern const char kDisableLocalStorage[];
 CONTENT_EXPORT extern const char kDisableLogging[];
+CONTENT_EXPORT extern const char kDisableMojoServiceWorker[];
 CONTENT_EXPORT extern const char kDisableNamespaceSandbox[];
 CONTENT_EXPORT extern const char kDisableNativeGpuMemoryBuffers[];
 CONTENT_EXPORT extern const char kDisableNotifications[];
@@ -193,7 +195,6 @@ CONTENT_EXPORT extern const char kMHTMLGeneratorOption[];
 CONTENT_EXPORT extern const char kMHTMLSkipNostoreMain[];
 CONTENT_EXPORT extern const char kMHTMLSkipNostoreAll[];
 CONTENT_EXPORT extern const char kMojoLocalStorage[];
-CONTENT_EXPORT extern const char kMojoServiceWorker[];
 CONTENT_EXPORT extern const char kMuteAudio[];
 CONTENT_EXPORT extern const char kNoReferrers[];
 CONTENT_EXPORT extern const char kNoSandbox[];
@@ -217,6 +218,7 @@ CONTENT_EXPORT extern const char kReduceSecurityForTesting[];
 CONTENT_EXPORT extern const char kReducedReferrerGranularity[];
 CONTENT_EXPORT extern const char kRegisterPepperPlugins[];
 CONTENT_EXPORT extern const char kRemoteDebuggingPort[];
+CONTENT_EXPORT extern const char kRendererClientId[];
 extern const char kRendererCmdPrefix[];
 CONTENT_EXPORT extern const char kRendererProcess[];
 CONTENT_EXPORT extern const char kRendererProcessLimit[];
@@ -242,7 +244,6 @@ CONTENT_EXPORT extern const char kUseMusInRenderer[];
 CONTENT_EXPORT extern const char kEnableNativeGpuMemoryBuffers[];
 CONTENT_EXPORT extern const char kContentImageTextureTarget[];
 CONTENT_EXPORT extern const char kVideoImageTextureTarget[];
-CONTENT_EXPORT extern const char kUseLayerTreeHostRemote[];
 CONTENT_EXPORT extern const char kUseMobileUserAgent[];
 CONTENT_EXPORT extern const char kUseRemoteCompositing[];
 extern const char kUtilityCmdPrefix[];
@@ -258,7 +259,7 @@ CONTENT_EXPORT extern const char kWaitForDebuggerChildren[];
 CONTENT_EXPORT extern const char kZygoteCmdPrefix[];
 CONTENT_EXPORT extern const char kZygoteProcess[];
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 CONTENT_EXPORT extern const char kDisableWebRtcHWDecoding[];
 CONTENT_EXPORT extern const char kDisableWebRtcEncryption[];
 CONTENT_EXPORT extern const char kDisableWebRtcHWEncoding[];
@@ -277,6 +278,7 @@ CONTENT_EXPORT extern const char kDisableOverscrollEdgeEffect[];
 CONTENT_EXPORT extern const char kDisablePullToRefreshEffect[];
 CONTENT_EXPORT extern const char kDisableScreenOrientationLock[];
 CONTENT_EXPORT extern const char kEnableAdaptiveSelectionHandleOrientation[];
+CONTENT_EXPORT extern const char kEnableContentIntentDetection[];
 CONTENT_EXPORT extern const char kEnableLongpressDragSelection[];
 CONTENT_EXPORT extern const char kHideScrollbars[];
 extern const char kNetworkCountryIso[];
@@ -314,7 +316,6 @@ CONTENT_EXPORT extern const char kMemoryPressureThresholdsMb[];
 CONTENT_EXPORT extern const char kPpapiAntialiasedTextEnabled[];
 CONTENT_EXPORT extern const char kPpapiSubpixelRenderingSetting[];
 CONTENT_EXPORT extern const char kTraceExportEventsToETW[];
-CONTENT_EXPORT extern const char kDisableDirectXScreenCapturer[];
 #endif
 
 #if defined(ENABLE_IPC_FUZZER)

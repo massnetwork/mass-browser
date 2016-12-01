@@ -10,7 +10,6 @@ import android.os.Handler;
 import org.chromium.base.VisibleForTesting;
 import org.chromium.chrome.browser.compositor.layouts.OverviewModeBehavior;
 import org.chromium.chrome.browser.compositor.layouts.content.TabContentManager;
-import org.chromium.chrome.browser.ntp.NativePageFactory;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.TabModel.TabLaunchType;
 import org.chromium.chrome.browser.tabmodel.TabModel.TabSelectionType;
@@ -40,6 +39,10 @@ public class TabModelSelectorImpl extends TabModelSelectorBase implements TabMod
 
     private boolean mIsUndoSupported;
 
+    // Whether the Activity that owns that TabModelSelector is tabbed or not.
+    // Used by sync to determine how to handle restore on cold start.
+    private boolean mIsTabbedActivityForSync;
+
     private final TabModelOrderController mOrderController;
 
     private OverviewModeBehavior mOverviewModeBehavior;
@@ -61,7 +64,7 @@ public class TabModelSelectorImpl extends TabModelSelectorBase implements TabMod
      * @param supportUndo Whether a tab closure can be undone.
      */
     public TabModelSelectorImpl(Activity activity, TabCreatorManager tabCreatorManager,
-            TabPersistencePolicy persistencePolicy, boolean supportUndo) {
+            TabPersistencePolicy persistencePolicy, boolean supportUndo, boolean isTabbedActivity) {
         super();
         mTabCreatorManager = tabCreatorManager;
         mUma = new TabModelSelectorUma(activity);
@@ -73,6 +76,7 @@ public class TabModelSelectorImpl extends TabModelSelectorBase implements TabMod
             }
         };
         mIsUndoSupported = supportUndo;
+        mIsTabbedActivityForSync = isTabbedActivity;
         mTabSaver = new TabPersistentStore(
                 persistencePolicy, this, mTabCreatorManager, persistentStoreObserver);
         mOrderController = new TabModelOrderController(this);
@@ -128,8 +132,9 @@ public class TabModelSelectorImpl extends TabModelSelectorBase implements TabMod
                 (ChromeTabCreator) mTabCreatorManager.getTabCreator(false);
         ChromeTabCreator incognitoTabCreator =
                 (ChromeTabCreator) mTabCreatorManager.getTabCreator(true);
-        TabModelImpl normalModel = new TabModelImpl(false, regularTabCreator, incognitoTabCreator,
-                mUma, mOrderController, mTabContentManager, mTabSaver, this, mIsUndoSupported);
+        TabModelImpl normalModel = new TabModelImpl(false, mIsTabbedActivityForSync,
+                regularTabCreator, incognitoTabCreator, mUma, mOrderController, mTabContentManager,
+                mTabSaver, this, mIsUndoSupported);
         TabModel incognitoModel = new IncognitoTabModel(new IncognitoTabModelImplCreator(
                 regularTabCreator, incognitoTabCreator, mUma, mOrderController,
                 mTabContentManager, mTabSaver, this));
@@ -169,11 +174,7 @@ public class TabModelSelectorImpl extends TabModelSelectorBase implements TabMod
             @Override
             public void onPageLoadStarted(Tab tab, String url) {
                 String previousUrl = tab.getUrl();
-                if (NativePageFactory.isNativePageUrl(previousUrl, tab.isIncognito())) {
-                    mTabContentManager.invalidateTabThumbnail(tab.getId(), previousUrl);
-                } else {
-                    mTabContentManager.removeTabThumbnail(tab.getId());
-                }
+                mTabContentManager.invalidateTabThumbnail(tab.getId(), previousUrl);
             }
 
             @Override

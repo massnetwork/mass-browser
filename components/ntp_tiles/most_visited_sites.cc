@@ -9,29 +9,17 @@
 #include <string>
 #include <utility>
 
-#if defined(OS_ANDROID)
-#include <jni.h>
-#endif
-
 #include "base/callback.h"
-#include "base/command_line.h"
 #include "base/feature_list.h"
-#include "base/metrics/field_trial.h"
-#include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/history/core/browser/top_sites.h"
 #include "components/ntp_tiles/constants.h"
+#include "components/ntp_tiles/field_trial.h"
 #include "components/ntp_tiles/icon_cacher.h"
-#include "components/ntp_tiles/metrics.h"
 #include "components/ntp_tiles/pref_names.h"
 #include "components/ntp_tiles/switches.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
-
-#if defined(OS_ANDROID)
-#include "base/android/jni_android.h"
-#include "jni/MostVisitedSites_jni.h"
-#endif
 
 using history::TopSites;
 using suggestions::ChromeSuggestion;
@@ -45,30 +33,6 @@ namespace {
 const base::Feature kDisplaySuggestionsServiceTiles{
     "DisplaySuggestionsServiceTiles", base::FEATURE_ENABLED_BY_DEFAULT};
 
-bool ShouldShowPopularSites() {
-  // Note: It's important to query the field trial state first, to ensure that
-  // UMA reports the correct group.
-  const std::string group_name =
-      base::FieldTrialList::FindFullName(kPopularSitesFieldTrialName);
-
-  base::CommandLine* cmd_line = base::CommandLine::ForCurrentProcess();
-  if (cmd_line->HasSwitch(switches::kDisableNTPPopularSites))
-    return false;
-
-  if (cmd_line->HasSwitch(switches::kEnableNTPPopularSites))
-    return true;
-
-#if defined(OS_ANDROID)
-  if (Java_MostVisitedSites_isPopularSitesForceEnabled(
-          base::android::AttachCurrentThread())) {
-    return true;
-  }
-#endif
-
-  return base::StartsWith(group_name, "Enabled",
-                          base::CompareCase::INSENSITIVE_ASCII);
-}
-
 // Determine whether we need any tiles from PopularSites to fill up a grid of
 // |num_tiles| tiles.
 bool NeedPopularSites(const PrefService* prefs, int num_tiles) {
@@ -76,7 +40,8 @@ bool NeedPopularSites(const PrefService* prefs, int num_tiles) {
 }
 
 bool AreURLsEquivalent(const GURL& url1, const GURL& url2) {
-  return url1.host() == url2.host() && url1.path() == url2.path();
+  return url1.host_piece() == url2.host_piece() &&
+         url1.path_piece() == url2.path_piece();
 }
 
 }  // namespace
@@ -95,9 +60,6 @@ MostVisitedSites::MostVisitedSites(PrefService* prefs,
       supervisor_(supervisor),
       observer_(nullptr),
       num_sites_(0),
-      waiting_for_most_visited_sites_(true),
-      waiting_for_popular_sites_(true),
-      recorded_impressions_(false),
       top_sites_observer_(this),
       mv_source_(NTPTileSource::SUGGESTIONS_SERVICE),
       weak_ptr_factory_(this) {
@@ -120,13 +82,13 @@ void MostVisitedSites::SetMostVisitedURLsObserver(Observer* observer,
   observer_ = observer;
   num_sites_ = num_sites;
 
-  if (popular_sites_ && ShouldShowPopularSites() &&
-      NeedPopularSites(prefs_, num_sites_)) {
+  // The order for this condition is important, ShouldShowPopularSites() should
+  // always be called last to keep metrics as relevant as possible.
+  if (popular_sites_ && NeedPopularSites(prefs_, num_sites_) &&
+      ShouldShowPopularSites()) {
     popular_sites_->StartFetch(
         false, base::Bind(&MostVisitedSites::OnPopularSitesAvailable,
                           base::Unretained(this)));
-  } else {
-    waiting_for_popular_sites_ = false;
   }
 
   if (top_sites_) {
@@ -228,7 +190,6 @@ void MostVisitedSites::OnMostVisitedURLsAvailable(
     tiles.push_back(std::move(tile));
   }
 
-  waiting_for_most_visited_sites_ = false;
   mv_source_ = NTPTileSource::TOP_SITES;
   SaveNewTiles(std::move(tiles));
   NotifyMostVisitedURLsObserver();
@@ -262,7 +223,6 @@ void MostVisitedSites::OnSuggestionsProfileAvailable(
     tiles.push_back(std::move(tile));
   }
 
-  waiting_for_most_visited_sites_ = false;
   mv_source_ = NTPTileSource::SUGGESTIONS_SERVICE;
   SaveNewTiles(std::move(tiles));
   NotifyMostVisitedURLsObserver();
@@ -396,16 +356,6 @@ NTPTilesVector MostVisitedSites::MergeTiles(NTPTilesVector personal_tiles,
 }
 
 void MostVisitedSites::NotifyMostVisitedURLsObserver() {
-  if (!waiting_for_most_visited_sites_ && !waiting_for_popular_sites_ &&
-      !recorded_impressions_) {
-    // TODO(treib): Move this out of here. crbug.com/514752
-    int num_tiles = static_cast<int>(current_tiles_.size());
-    for (int i = 0; i < num_tiles; i++)
-      metrics::RecordTileImpression(i, current_tiles_[i].source);
-    metrics::RecordPageImpression(num_tiles);
-    recorded_impressions_ = true;
-  }
-
   if (!observer_)
     return;
 
@@ -413,8 +363,6 @@ void MostVisitedSites::NotifyMostVisitedURLsObserver() {
 }
 
 void MostVisitedSites::OnPopularSitesAvailable(bool success) {
-  waiting_for_popular_sites_ = false;
-
   if (!success) {
     LOG(WARNING) << "Download of popular sites failed";
     return;

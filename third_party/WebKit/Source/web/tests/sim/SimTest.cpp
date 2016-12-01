@@ -5,10 +5,10 @@
 #include "web/tests/sim/SimTest.h"
 
 #include "core/dom/Document.h"
+#include "core/frame/LocalDOMWindow.h"
 #include "platform/LayoutTestSupport.h"
 #include "platform/scroll/ScrollbarTheme.h"
 #include "platform/testing/UnitTestHelpers.h"
-#include "public/platform/WebSecurityOrigin.h"
 #include "public/web/WebCache.h"
 #include "web/WebLocalFrameImpl.h"
 #include "web/WebViewImpl.h"
@@ -27,6 +27,7 @@ SimTest::SimTest() : m_webViewClient(m_compositor) {
   ScrollbarTheme::setMockScrollbarsEnabled(true);
   m_webViewHelper.initialize(true, nullptr, &m_webViewClient);
   m_compositor.setWebViewImpl(webView());
+  m_page.setPage(webView().page());
 }
 
 SimTest::~SimTest() {
@@ -40,10 +41,16 @@ SimTest::~SimTest() {
 }
 
 void SimTest::loadURL(const String& url) {
-  WebURLRequest request;
-  request.setURL(KURL(ParsedURLString, url));
-  request.setRequestorOrigin(WebSecurityOrigin::createUnique());
+  WebURLRequest request(KURL(ParsedURLString, url));
   webView().mainFrameImpl()->loadRequest(request);
+}
+
+LocalDOMWindow& SimTest::window() {
+  return *document().domWindow();
+}
+
+SimPage& SimTest::page() {
+  return m_page;
 }
 
 Document& SimTest::document() {

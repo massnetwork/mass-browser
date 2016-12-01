@@ -4,6 +4,7 @@
 
 #include "build/build_config.h"
 #include "media/base/media_switches.h"
+#include "ppapi/features/features.h"
 
 namespace switches {
 
@@ -66,19 +67,19 @@ const char kWaveOutBuffers[] = "waveout-buffers";
 const char kUseCras[] = "use-cras";
 #endif
 
-#if !defined(OS_ANDROID) || defined(ENABLE_PLUGINS)
+#if !defined(OS_ANDROID) || BUILDFLAG(ENABLE_PLUGINS)
 // Use a media session for each tabs in a way that two tabs can't play on top of
 // each other. This is different from the Media Session API as it is enabling a
 // default behaviour for the browser. The allowed values are: "" (empty),
 // |kEnableDefaultMediaSessionDuckFlash|.
 const char kEnableDefaultMediaSession[] = "enable-default-media-session";
-#endif  // !defined(OS_ANDROID) || defined(ENABLE_PLUGINS)
+#endif  // !defined(OS_ANDROID) || BUILDFLAG(ENABLE_PLUGINS)
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // This value is used as an option for |kEnableDefaultMediaSession|. Flash will
 // be ducked when losing audio focus.
 const char kEnableDefaultMediaSessionDuckFlash[] = "duck-flash";
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 // Use fake device for Media Stream to replace actual camera and microphone.
 const char kUseFakeDeviceForMediaStream[] = "use-fake-device-for-media-stream";
@@ -154,6 +155,10 @@ const base::Feature kResumeBackgroundVideo {
 #endif
 };
 
+// Let video track be unselected when video is playing in the background.
+const base::Feature kBackgroundVideoTrackOptimization{
+    "BackgroundVideoTrackOptimization", base::FEATURE_DISABLED_BY_DEFAULT};
+
 // Use shared block-based buffering for media.
 const base::Feature kUseNewMediaCache{"use-new-media-cache",
                                       base::FEATURE_ENABLED_BY_DEFAULT};
@@ -171,7 +176,7 @@ const base::Feature kExternalClearKeyForTesting{
 #if defined(OS_ANDROID)
 // Replaces WPMA by the MediaPlayerRenderer for HLS and fallback playback.
 const base::Feature kAndroidMediaPlayerRenderer{
-    "android-media-player-renderer", base::FEATURE_DISABLED_BY_DEFAULT};
+    "android-media-player-renderer", base::FEATURE_ENABLED_BY_DEFAULT};
 #endif
 
 }  // namespace media

@@ -30,6 +30,7 @@
 #include "base/strings/string_split.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/threading/sequenced_worker_pool.h"
 #include "base/threading/simple_thread.h"
 #include "base/threading/thread_local.h"
 #include "base/threading/thread_restrictions.h"
@@ -132,6 +133,7 @@
 #include "ipc/ipc_channel_mojo.h"
 #include "ipc/ipc_platform_file.h"
 #include "media/base/media.h"
+#include "media/media_features.h"
 #include "media/renderers/gpu_video_accelerator_factories.h"
 #include "mojo/common/common_type_converters.h"
 #include "mojo/public/cpp/bindings/strong_binding.h"
@@ -139,6 +141,7 @@
 #include "net/base/port_util.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/base/url_util.h"
+#include "ppapi/features/features.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "services/service_manager/public/cpp/interface_registry.h"
 #include "skia/ext/event_tracer_impl.h"
@@ -160,7 +163,6 @@
 #include "third_party/WebKit/public/web/WebScriptController.h"
 #include "third_party/WebKit/public/web/WebSecurityPolicy.h"
 #include "third_party/WebKit/public/web/WebView.h"
-#include "third_party/icu/source/i18n/unicode/timezone.h"
 #include "third_party/skia/include/core/SkGraphics.h"
 #include "ui/base/layout.h"
 #include "ui/base/ui_base_switches.h"
@@ -180,16 +182,12 @@
 #include "content/renderer/webscrollbarbehavior_impl_mac.h"
 #endif
 
-#if defined(OS_POSIX)
-#include "ipc/ipc_channel_posix.h"
-#endif
-
 #if defined(OS_WIN)
 #include <windows.h>
 #include <objbase.h>
 #endif
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 #include "content/renderer/media/aec_dump_message_filter.h"
 #include "content/renderer/media/peer_connection_tracker.h"
 #include "content/renderer/media/rtc_peer_connection_handler.h"
@@ -204,7 +202,7 @@
 #include "content/public/common/service_manager_connection.h"
 #include "content/renderer/mus/render_widget_mus_connection.h"
 #include "content/renderer/mus/render_widget_window_tree_client_factory.h"
-#include "services/ui/public/cpp/gpu_service.h"
+#include "services/ui/public/cpp/gpu/gpu_service.h"
 #endif
 
 #if defined(ENABLE_IPC_FUZZER)
@@ -330,13 +328,6 @@ void AddHistogramSample(void* hist, int sample) {
   histogram->Add(sample);
 }
 
-void NotifyTimezoneChangeOnThisThread() {
-  v8::Isolate* isolate = v8::Isolate::GetCurrent();
-  if (!isolate)
-    return;
-  v8::Date::DateTimeConfigurationChangeNotification(isolate);
-}
-
 class FrameFactoryImpl : public mojom::FrameFactory {
  public:
   FrameFactoryImpl() : routing_id_highmark_(-1) {}
@@ -375,8 +366,7 @@ void CreateFrameFactory(mojom::FrameFactoryRequest request) {
 }
 
 void SetupEmbeddedWorkerOnWorkerThread(
-    service_manager::mojom::InterfaceProviderRequest request,
-    service_manager::mojom::InterfaceProviderPtrInfo remote_interfaces) {
+    mojom::ServiceWorkerEventDispatcherRequest request) {
   ServiceWorkerContextClient* client =
       ServiceWorkerContextClient::ThreadSpecificInstance();
   // It is possible for client to be null if for some reason the worker died
@@ -384,22 +374,19 @@ void SetupEmbeddedWorkerOnWorkerThread(
   // nothing and let mojo close the connection.
   if (!client)
     return;
-  client->BindInterfaceProviders(std::move(request),
-                                 mojo::MakeProxy(std::move(remote_interfaces)));
+  client->BindEventDispatcher(std::move(request));
 }
 
 class EmbeddedWorkerSetupImpl : public mojom::EmbeddedWorkerSetup {
  public:
   EmbeddedWorkerSetupImpl() = default;
 
-  void ExchangeInterfaceProviders(
+  void AttachServiceWorkerEventDispatcher(
       int32_t thread_id,
-      service_manager::mojom::InterfaceProviderRequest request,
-      service_manager::mojom::InterfaceProviderPtr remote_interfaces) override {
+      mojom::ServiceWorkerEventDispatcherRequest request) override {
     WorkerThreadRegistry::Instance()->GetTaskRunnerFor(thread_id)->PostTask(
         FROM_HERE,
-        base::Bind(&SetupEmbeddedWorkerOnWorkerThread, base::Passed(&request),
-                   base::Passed(remote_interfaces.PassInterface())));
+        base::Bind(&SetupEmbeddedWorkerOnWorkerThread, base::Passed(&request)));
   }
 };
 
@@ -600,6 +587,9 @@ void RenderThreadImpl::SetRenderMessageFilterForTesting(
   g_render_message_filter_for_testing = render_message_filter;
 }
 
+// In single-process mode used for debugging, we don't pass a renderer client
+// ID via command line because RenderThreadImpl lives in the same process as
+// the browser
 RenderThreadImpl::RenderThreadImpl(
     const InProcessChildThreadParams& params,
     std::unique_ptr<blink::scheduler::RendererScheduler> scheduler,
@@ -610,9 +600,9 @@ RenderThreadImpl::RenderThreadImpl(
                           .ConnectToBrowser(true)
                           .Build()),
       renderer_scheduler_(std::move(scheduler)),
-      time_zone_monitor_binding_(this),
       categorized_worker_pool_(new CategorizedWorkerPool()),
-      renderer_binding_(this) {
+      renderer_binding_(this),
+      client_id_(1) {
   Init(resource_task_queue);
 }
 
@@ -626,11 +616,15 @@ RenderThreadImpl::RenderThreadImpl(
                           .ConnectToBrowser(true)
                           .Build()),
       renderer_scheduler_(std::move(scheduler)),
-      time_zone_monitor_binding_(this),
       main_message_loop_(std::move(main_message_loop)),
       categorized_worker_pool_(new CategorizedWorkerPool()),
       renderer_binding_(this) {
   scoped_refptr<base::SingleThreadTaskRunner> test_task_counter;
+  DCHECK(base::CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kRendererClientId));
+  base::StringToInt(base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+                        switches::kRendererClientId),
+                    &client_id_);
   Init(test_task_counter);
 }
 
@@ -674,8 +668,7 @@ void RenderThreadImpl::Init(
   appcache_dispatcher_.reset(
       new AppCacheDispatcher(Get(), new AppCacheFrontendImpl()));
   dom_storage_dispatcher_.reset(new DomStorageDispatcher());
-  main_thread_indexed_db_dispatcher_.reset(new IndexedDBDispatcher(
-      thread_safe_sender()));
+  main_thread_indexed_db_dispatcher_.reset(new IndexedDBDispatcher());
   main_thread_cache_storage_dispatcher_.reset(
       new CacheStorageDispatcher(thread_safe_sender()));
   embedded_worker_dispatcher_.reset(new EmbeddedWorkerDispatcher());
@@ -700,7 +693,7 @@ void RenderThreadImpl::Init(
   browser_plugin_manager_.reset(new BrowserPluginManager());
   AddObserver(browser_plugin_manager_.get());
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   peer_connection_tracker_.reset(new PeerConnectionTracker());
   AddObserver(peer_connection_tracker_.get());
 
@@ -715,7 +708,7 @@ void RenderThreadImpl::Init(
 
   AddFilter(aec_dump_message_filter_.get());
 
-#endif  // defined(ENABLE_WEBRTC)
+#endif  // BUILDFLAG(ENABLE_WEBRTC)
 
   audio_input_message_filter_ = new AudioInputMessageFilter(GetIOTaskRunner());
   AddFilter(audio_input_message_filter_.get());
@@ -847,6 +840,10 @@ void RenderThreadImpl::Init(
                  base::Unretained(this))));
 
   if (base::FeatureList::IsEnabled(features::kMemoryCoordinator)) {
+    // Currently it is not possible to enable both PurgeAndSuspend and
+    // MemoryCoordinator at the same time.
+    DCHECK(!base::FeatureList::IsEnabled(features::kPurgeAndSuspend));
+
     // Disable MemoryPressureListener when memory coordinator is enabled.
     base::MemoryPressureListener::SetNotificationsSuppressed(true);
 
@@ -891,11 +888,6 @@ void RenderThreadImpl::Init(
   GetRemoteInterfaces()->GetInterface(
       mojo::GetProxy(&storage_partition_service_));
 
-  device::mojom::TimeZoneMonitorPtr time_zone_monitor;
-  GetRemoteInterfaces()->GetInterface(mojo::GetProxy(&time_zone_monitor));
-  time_zone_monitor->AddClient(
-      time_zone_monitor_binding_.CreateInterfacePtrAndBind());
-
 #if defined(OS_LINUX)
   ChildProcess::current()->SetIOThreadPriority(base::ThreadPriority::DISPLAY);
   ChildThreadImpl::current()->SetThreadPriority(
@@ -908,6 +900,13 @@ void RenderThreadImpl::Init(
   is_renderer_suspended_ = false;
 
   base::MemoryCoordinatorClientRegistry::GetInstance()->Register(this);
+
+  // If this renderer doesn't run inside the browser process, enable
+  // SequencedWorkerPool. Otherwise, it should already have been enabled.
+  // TODO(fdoray): Remove this once the SequencedWorkerPool to TaskScheduler
+  // redirection experiment concludes https://crbug.com/622400.
+  if (!command_line.HasSwitch(switches::kSingleProcess))
+    base::SequencedWorkerPool::EnableForProcess();
 }
 
 RenderThreadImpl::~RenderThreadImpl() {
@@ -939,7 +938,7 @@ void RenderThreadImpl::Shutdown() {
   RemoveFilter(audio_input_message_filter_.get());
   audio_input_message_filter_ = nullptr;
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   RTCPeerConnectionHandler::DestructAllHandlers();
   // |peer_connection_factory_| cannot be deleted until after the main message
   // loop has been destroyed.  This is because there may be pending tasks that
@@ -1331,7 +1330,7 @@ void RenderThreadImpl::InitializeWebKit(
 
 void RenderThreadImpl::RegisterSchemes() {
   // chrome:
-  WebString chrome_scheme(base::ASCIIToUTF16(kChromeUIScheme));
+  WebString chrome_scheme(WebString::fromASCII(kChromeUIScheme));
   WebSecurityPolicy::registerURLSchemeAsDisplayIsolated(chrome_scheme);
   WebSecurityPolicy::registerURLSchemeAsNotAllowingJavascriptURLs(
       chrome_scheme);
@@ -1339,18 +1338,12 @@ void RenderThreadImpl::RegisterSchemes() {
   WebSecurityPolicy::registerURLSchemeAsCORSEnabled(chrome_scheme);
 
   // chrome-devtools:
-  WebString devtools_scheme(base::ASCIIToUTF16(kChromeDevToolsScheme));
+  WebString devtools_scheme(WebString::fromASCII(kChromeDevToolsScheme));
   WebSecurityPolicy::registerURLSchemeAsDisplayIsolated(devtools_scheme);
 
   // view-source:
-  WebString view_source_scheme(base::ASCIIToUTF16(kViewSourceScheme));
+  WebString view_source_scheme(WebString::fromASCII(kViewSourceScheme));
   WebSecurityPolicy::registerURLSchemeAsDisplayIsolated(view_source_scheme);
-}
-
-void RenderThreadImpl::NotifyTimezoneChange() {
-  NotifyTimezoneChangeOnThisThread();
-  RenderThread::Get()->PostTaskToAllWebWorkers(
-      base::Bind(&NotifyTimezoneChangeOnThisThread));
 }
 
 void RenderThreadImpl::RecordAction(const base::UserMetricsAction& action) {
@@ -1580,6 +1573,10 @@ base::WaitableEvent* RenderThreadImpl::GetShutdownEvent() {
   return ChildProcess::current()->GetShutDownEvent();
 }
 
+int32_t RenderThreadImpl::GetClientId() {
+  return client_id_;
+}
+
 void RenderThreadImpl::OnAssociatedInterfaceRequest(
     const std::string& name,
     mojo::ScopedInterfaceEndpointHandle handle) {
@@ -1752,6 +1749,12 @@ void RenderThreadImpl::OnProcessBackgrounded(bool backgrounded) {
     renderer_scheduler_->OnRendererBackgrounded();
   } else {
     renderer_scheduler_->OnRendererForegrounded();
+    // TODO(tasak): after enabling MemoryCoordinator, remove this Notify
+    // and follow MemoryCoordinator's request.
+    if (base::FeatureList::IsEnabled(features::kPurgeAndSuspend))
+      base::MemoryCoordinatorClientRegistry::GetInstance()->Notify(
+          base::MemoryState::NORMAL);
+
     record_purge_suspend_metric_closure_.Cancel();
     record_purge_suspend_metric_closure_.Reset(
         base::Bind(&RenderThreadImpl::RecordPurgeAndSuspendMetrics,
@@ -1762,11 +1765,17 @@ void RenderThreadImpl::OnProcessBackgrounded(bool backgrounded) {
 
 void RenderThreadImpl::OnProcessPurgeAndSuspend() {
   ChildThreadImpl::OnProcessPurgeAndSuspend();
-  if (is_renderer_suspended_ || !RendererIsHidden())
+  DCHECK(!is_renderer_suspended_);
+  if (!RendererIsHidden())
     return;
-  // TODO(hajimehoshi): Implement purging e.g. cache (crbug/607077)
   is_renderer_suspended_ = true;
-  renderer_scheduler_->SuspendRenderer();
+  if (base::FeatureList::IsEnabled(features::kPurgeAndSuspend)) {
+    // TODO(tasak): After enabling MemoryCoordinator, remove this Notify
+    // and follow MemoryCoordinator's request.
+    base::MemoryCoordinatorClientRegistry::GetInstance()->Notify(
+        base::MemoryState::SUSPENDED);
+    renderer_scheduler_->SuspendRenderer();
+  }
 
   // Since purging is not a synchronous task (e.g. v8 GC, oilpan GC, ...),
   // we need to wait until the task is finished. So wait 15 seconds and
@@ -1879,7 +1888,13 @@ void RenderThreadImpl::OnProcessResume() {
 
   DCHECK(is_renderer_suspended_);
   is_renderer_suspended_ = false;
-  renderer_scheduler_->ResumeRenderer();
+  if (base::FeatureList::IsEnabled(features::kPurgeAndSuspend)) {
+    // TODO(tasak): after enabling MemoryCoordinator, remove this Notify
+    // and follow MemoryCoordinator's request.
+    base::MemoryCoordinatorClientRegistry::GetInstance()->Notify(
+        base::MemoryState::NORMAL);
+    renderer_scheduler_->ResumeRenderer();
+  }
 }
 
 scoped_refptr<gpu::GpuChannelHost> RenderThreadImpl::EstablishGpuChannelSync() {
@@ -2066,7 +2081,7 @@ RenderThreadImpl::RequestCopyOfOutputForLayoutTest(
 
 blink::WebMediaStreamCenter* RenderThreadImpl::CreateMediaStreamCenter(
     blink::WebMediaStreamCenterClient* client) {
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   if (!media_stream_center_) {
     media_stream_center_ = GetContentClient()->renderer()
         ->OverrideCreateWebMediaStreamCenter(client);
@@ -2080,7 +2095,7 @@ blink::WebMediaStreamCenter* RenderThreadImpl::CreateMediaStreamCenter(
   return media_stream_center_;
 }
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 PeerConnectionDependencyFactory*
 RenderThreadImpl::GetPeerConnectionDependencyFactory() {
   return peer_connection_factory_.get();
@@ -2111,7 +2126,8 @@ gpu::GpuChannelHost* RenderThreadImpl::GetGpuChannel() {
 void RenderThreadImpl::CreateView(mojom::CreateViewParamsPtr params) {
   CompositorDependencies* compositor_deps = this;
   // When bringing in render_view, also bring in webkit's glue and jsbindings.
-  RenderViewImpl::Create(compositor_deps, *params, false);
+  RenderViewImpl::Create(compositor_deps, *params,
+                         RenderWidget::ShowCallback());
 }
 
 void RenderThreadImpl::CreateFrame(mojom::CreateFrameParamsPtr params) {
@@ -2156,9 +2172,10 @@ void RenderThreadImpl::CreateFrameProxy(
                                 base::IntToString(opener_routing_id));
   base::debug::SetCrashKeyValue("newproxy_parent_id",
                                 base::IntToString(parent_routing_id));
-  RenderFrameProxy::CreateFrameProxy(routing_id, render_view_routing_id,
-                                     opener_routing_id, parent_routing_id,
-                                     replicated_state);
+  RenderFrameProxy::CreateFrameProxy(
+      routing_id, render_view_routing_id,
+      RenderFrameImpl::ResolveOpener(opener_routing_id), parent_routing_id,
+      replicated_state);
 }
 
 void RenderThreadImpl::OnNetworkConnectionChanged(
@@ -2214,7 +2231,7 @@ void RenderThreadImpl::OnSystemColorsChanged(
 }
 
 void RenderThreadImpl::PurgePluginListCache(bool reload_pages) {
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   // The call below will cause a GetPlugins call with refresh=true, but at this
   // point we already know that the browser has refreshed its list, so disable
   // refresh temporarily to prevent each renderer process causing the list to be
@@ -2228,18 +2245,6 @@ void RenderThreadImpl::PurgePluginListCache(bool reload_pages) {
 #else
   NOTREACHED();
 #endif
-}
-
-void RenderThreadImpl::OnTimeZoneChange(const std::string& zone_id) {
-  if (!blink_platform_impl_)
-    return;
-  if (!zone_id.empty()) {
-    icu::TimeZone *new_zone = icu::TimeZone::createTimeZone(
-        icu::UnicodeString::fromUTF8(zone_id));
-    icu::TimeZone::adoptDefault(new_zone);
-    VLOG(1) << "ICU default timezone is set to " << zone_id;
-  }
-  NotifyTimezoneChange();
 }
 
 void RenderThreadImpl::OnCreateNewSharedWorker(
@@ -2280,6 +2285,7 @@ void RenderThreadImpl::OnMemoryStateChange(base::MemoryState state) {
       ReleaseFreeMemory();
       break;
     case base::MemoryState::SUSPENDED:
+      OnTrimMemoryImmediately();
       ReleaseFreeMemory();
       ClearMemory();
       break;

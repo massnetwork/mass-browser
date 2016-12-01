@@ -84,8 +84,26 @@
   <message name="IDS_ASH_STATUS_TRAY_NETWORK" desc="The label used in the network dialog header.">
     Network
   </message>
+  <message name="IDS_ASH_STATUS_TRAY_NETWORK_STATUS_CONNECTED" desc="The label used when a network connection is connected.">
+    Connected
+  </message>
+  <message name="IDS_ASH_STATUS_TRAY_NETWORK_STATUS_CONNECTING" desc="The label used when a network connection is connecting.">
+    Connecting...
+  </message>
+  <message name="IDS_ASH_STATUS_TRAY_CELLULAR_STATUS_NOT_ACTIVATED" desc="The label used when a cellular connection is not activated.">
+    Not activated
+  </message>
   <message name="IDS_ASH_STATUS_TRAY_VPN" desc="The label used in the VPN detailed view header.">
     Private Network
+  </message>
+  <message name="IDS_ASH_STATUS_TRAY_VPN_BUILT_IN_PROVIDER" desc="The name of the built-in VPN provider that supports OpenVPN and L2TP over IPsec.">
+    OpenVPN / L2TP
+  </message>
+  <message name="IDS_ASH_STATUS_TRAY_VPN_DISCONNECT" desc="Message on button that disconnects from the current VPN.">
+    Disconnect
+  </message>
+  <message name="IDS_ASH_STATUS_TRAY_VPN_MONITORED" desc="The label used when a VPN connection may be monitored.">
+    Connection may be monitored
   </message>
   <message name="IDS_ASH_STATUS_TRAY_WIFI" desc="The wifi network device.">
     Wi-Fi
@@ -164,9 +182,6 @@
   </message>
   <message name="IDS_ASH_STATUS_TRAY_BLUETOOTH_PAIRED" desc="Notification shown when a new device is paired with the computer.">
     Bluetooth device "<ph name="DEVICE_NAME">$1<ex>Nexus S</ex></ph>" has been paired and is now available to all users. You may remove this pairing using Settings.
-  </message>
-  <message name="IDS_ASH_STATUS_TRAY_VPN_DISCONNECT" desc="Message on button that disconnects from the current VPN.">
-    Disconnect
   </message>
 
   <!-- Ash multi-user warning dialog -->
@@ -479,8 +494,14 @@ Press Shift + Alt to switch.
   <message name="IDS_ASH_STATUS_TRAY_WIFI_SCANNING_MESSAGE" desc="Scanning for wifi networks">
     Searching for Wi-Fi networks...
   </message>
+  <message name="IDS_ASH_STATUS_TRAY_NETWORK_CELLULAR" desc="The label used in the tray popup to separate cellular networks.">
+    Cellular
+  </message>
   <message name="IDS_ASH_STATUS_TRAY_NETWORK_WIFI" desc="The label used in the tray popup to separate Wi-Fi networks.">
     Wi-Fi
+  </message>
+  <message name="IDS_ASH_STATUS_TRAY_ADD_CONNECTION" desc="Title for control to add a new network connection." >
+    Add connection
   </message>
 
   <message name="IDS_ASH_VIRTUAL_KEYBOARD_TRAY_ACCESSIBLE_NAME" desc="The accessible text for virtual keyboard icon in status tray.">
@@ -597,5 +618,11 @@ Press Shift + Alt to switch.
   <message name="IDS_DEPRECATED_NEXT_IME_MSG"
            desc="Notification message to tell users about the deprecation of Shift+Alt shortcut to switch to the next input method.">
     The shortcut to switch to the next input method has changed. Please use <ph name="NEW_SHORTCUT">$1<ex>Ctrl+Shift+Space</ex></ph> instead of <ph name="OLD_SHORTCUT">$2<ex>Shift+Alt</ex></ph>.
+  </message>
+
+  <!-- Notification that an accelerator was pressed, so the user knows how to toggle it back -->
+  <message name="IDS_HIGH_CONTRAST_ACCEL_MSG"
+	   desc="Notification message to tell users that they just pressed the Search+Shift+H shortcut to toggle High Contrast Mode, and that pressing it again will toggle it off.">
+    High Contrast Mode enabled. Press Search+Shift+H again to toggle it off.
   </message>
 </grit-part>

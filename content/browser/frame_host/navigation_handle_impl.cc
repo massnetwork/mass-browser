@@ -4,16 +4,16 @@
 
 #include "content/browser/frame_host/navigation_handle_impl.h"
 
-#include <utility>
-
 #include "base/debug/dump_without_crashing.h"
 #include "base/logging.h"
 #include "content/browser/browsing_data/clear_site_data_throttle.h"
 #include "content/browser/child_process_security_policy_impl.h"
 #include "content/browser/devtools/render_frame_devtools_agent_host.h"
+#include "content/browser/frame_host/debug_urls.h"
 #include "content/browser/frame_host/frame_tree_node.h"
 #include "content/browser/frame_host/navigator.h"
 #include "content/browser/frame_host/navigator_delegate.h"
+#include "content/browser/loader/resource_dispatcher_host_impl.h"
 #include "content/browser/service_worker/service_worker_context_wrapper.h"
 #include "content/browser/service_worker/service_worker_navigation_handle.h"
 #include "content/common/frame_messages.h"
@@ -37,6 +37,12 @@ void UpdateThrottleCheckResult(
     NavigationThrottle::ThrottleCheckResult* to_update,
     NavigationThrottle::ThrottleCheckResult result) {
   *to_update = result;
+}
+
+void NotifyAbandonedTransferNavigation(const GlobalRequestID& id) {
+  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  if (ResourceDispatcherHostImpl* rdh = ResourceDispatcherHostImpl::Get())
+    rdh->CancelRequest(id.child_id, id.request_id);
 }
 
 }  // namespace
@@ -95,7 +101,8 @@ NavigationHandleImpl::NavigationHandleImpl(
   starting_site_instance_ =
       frame_tree_node_->current_frame_host()->GetSiteInstance();
 
-  GetDelegate()->DidStartNavigation(this);
+  if (!IsRendererDebugURL(url_))
+    GetDelegate()->DidStartNavigation(this);
 
   if (IsInMainFrame()) {
     TRACE_EVENT_ASYNC_BEGIN_WITH_TIMESTAMP1(
@@ -105,7 +112,17 @@ NavigationHandleImpl::NavigationHandleImpl(
 }
 
 NavigationHandleImpl::~NavigationHandleImpl() {
-  GetDelegate()->DidFinishNavigation(this);
+  // Transfer requests that have not matched up with another navigation request
+  // from the renderer need to be cleaned up. These are marked as protected in
+  // the RDHI, so they do not get cancelled when frames are destroyed.
+  if (is_transferring()) {
+    BrowserThread::PostTask(
+        BrowserThread::IO, FROM_HERE,
+        base::Bind(&NotifyAbandonedTransferNavigation, GetGlobalRequestID()));
+  }
+
+  if (!IsRendererDebugURL(url_))
+    GetDelegate()->DidFinishNavigation(this);
 
   // Cancel the navigation on the IO thread if the NavigationHandle is being
   // destroyed in the middle of the NavigationThrottles checks.
@@ -367,8 +384,26 @@ void NavigationHandleImpl::CallDidCommitNavigationForTesting(const GURL& url) {
   DidCommitNavigation(params, false, render_frame_host_);
 }
 
+bool NavigationHandleImpl::WasStartedFromContextMenu() const {
+  return started_from_context_menu_;
+}
+
+const GURL& NavigationHandleImpl::GetSearchableFormURL() {
+  return searchable_form_url_;
+}
+
+const std::string& NavigationHandleImpl::GetSearchableFormEncoding() {
+  return searchable_form_encoding_;
+}
+
 NavigationData* NavigationHandleImpl::GetNavigationData() {
   return navigation_data_.get();
+}
+
+const GlobalRequestID& NavigationHandleImpl::GetGlobalRequestID() {
+  DCHECK(state_ == WILL_PROCESS_RESPONSE || state_ == DEFERRING_RESPONSE ||
+         state_ == READY_TO_COMMIT);
+  return request_id_;
 }
 
 void NavigationHandleImpl::InitServiceWorkerHandle(
@@ -387,11 +422,8 @@ void NavigationHandleImpl::WillStartRequest(
     bool is_external_protocol,
     RequestContextType request_context_type,
     const ThrottleChecksFinishedCallback& callback) {
-  // |method != "POST"| should imply absence of |resource_request_body|.
-  if (method != "POST" && resource_request_body) {
-    NOTREACHED();
-    resource_request_body = nullptr;
-  }
+  if (method != "POST")
+    DCHECK(!resource_request_body);
 
   // Update the navigation parameters.
   method_ = method;
@@ -496,7 +528,8 @@ void NavigationHandleImpl::ReadyToCommitNavigation(
   render_frame_host_ = render_frame_host;
   state_ = READY_TO_COMMIT;
 
-  GetDelegate()->ReadyToCommitNavigation(this);
+  if (!IsRendererDebugURL(url_))
+    GetDelegate()->ReadyToCommitNavigation(this);
 }
 
 void NavigationHandleImpl::DidCommitNavigation(
@@ -755,10 +788,6 @@ void NavigationHandleImpl::RegisterNavigationThrottles() {
                       throttles_to_register.end());
     throttles_to_register.weak_clear();
   }
-}
-
-bool NavigationHandleImpl::WasStartedFromContextMenu() const {
-  return started_from_context_menu_;
 }
 
 }  // namespace content

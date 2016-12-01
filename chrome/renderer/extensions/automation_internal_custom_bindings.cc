@@ -496,6 +496,12 @@ AutomationInternalCustomBindings::AutomationInternalCustomBindings(
                                             v8::ReturnValue<v8::Value> result,
                                             TreeCache* cache) {
     result.Set(v8::Number::New(isolate, cache->tree.data().sel_anchor_offset));
+                                         });
+  RouteTreeIDFunction("GetAnchorAffinity", [](v8::Isolate* isolate,
+                                           v8::ReturnValue<v8::Value> result,
+                                           TreeCache* cache) {
+    result.Set(CreateV8String(isolate,
+          ToString(cache->tree.data().sel_anchor_affinity)));
   });
   RouteTreeIDFunction("GetFocusObjectID",
                       [](v8::Isolate* isolate,
@@ -507,6 +513,12 @@ AutomationInternalCustomBindings::AutomationInternalCustomBindings(
                                            v8::ReturnValue<v8::Value> result,
                                            TreeCache* cache) {
     result.Set(v8::Number::New(isolate, cache->tree.data().sel_focus_offset));
+  });
+  RouteTreeIDFunction("GetFocusAffinity", [](v8::Isolate* isolate,
+                                           v8::ReturnValue<v8::Value> result,
+                                           TreeCache* cache) {
+    result.Set(CreateV8String(isolate,
+          ToString(cache->tree.data().sel_focus_affinity)));
   });
 
   // Bindings that take a Tree ID and Node ID and return a property of the node.
@@ -1145,8 +1157,15 @@ void AutomationInternalCustomBindings::OnAccessibilityEvent(
   // Update the internal state whether it's the active profile or not.
   cache->location_offset = params.location_offset;
   deleted_node_ids_.clear();
+  v8::Isolate* isolate = GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context()->v8_context());
+  v8::Local<v8::Array> args(v8::Array::New(GetIsolate(), 1U));
   if (!cache->tree.Unserialize(params.update)) {
     LOG(ERROR) << cache->tree.error();
+    args->Set(0U, v8::Number::New(isolate, tree_id));
+    context()->DispatchEvent(
+        "automationInternal.onAccessibilityTreeSerializationError", args);
     return;
   }
 
@@ -1157,10 +1176,6 @@ void AutomationInternalCustomBindings::OnAccessibilityEvent(
   SendNodesRemovedEvent(&cache->tree, deleted_node_ids_);
   deleted_node_ids_.clear();
 
-  v8::Isolate* isolate = GetIsolate();
-  v8::HandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context()->v8_context());
-  v8::Local<v8::Array> args(v8::Array::New(GetIsolate(), 1U));
   v8::Local<v8::Object> event_params(v8::Object::New(GetIsolate()));
   event_params->Set(CreateV8String(isolate, "treeID"),
                     v8::Integer::New(GetIsolate(), params.tree_id));
@@ -1170,6 +1185,10 @@ void AutomationInternalCustomBindings::OnAccessibilityEvent(
                     CreateV8String(isolate, ToString(params.event_type)));
   event_params->Set(CreateV8String(isolate, "eventFrom"),
                     CreateV8String(isolate, ToString(params.event_from)));
+  event_params->Set(CreateV8String(isolate, "mouseX"),
+                    v8::Integer::New(GetIsolate(), params.mouse_location.x()));
+  event_params->Set(CreateV8String(isolate, "mouseY"),
+                    v8::Integer::New(GetIsolate(), params.mouse_location.y()));
   args->Set(0U, event_params);
   context()->DispatchEvent("automationInternal.onAccessibilityEvent", args);
 }

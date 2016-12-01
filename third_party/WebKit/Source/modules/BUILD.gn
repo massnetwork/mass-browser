@@ -81,6 +81,7 @@ target(modules_target_type, "modules") {
     "//third_party/WebKit/Source:config",
     "//third_party/WebKit/Source:non_test_config",
     "//third_party/WebKit/Source:inside_blink",
+    "//third_party/WebKit/Source/core:blink_core_pch",
   ]
 
   deps = [
@@ -145,6 +146,7 @@ target(modules_target_type, "modules") {
     "//third_party/WebKit/Source/modules/speech",
     "//third_party/WebKit/Source/modules/srcobject",
     "//third_party/WebKit/Source/modules/storage",
+    "//third_party/WebKit/Source/modules/time_zone_monitor",
     "//third_party/WebKit/Source/modules/vibration",
     "//third_party/WebKit/Source/modules/vr",
     "//third_party/WebKit/Source/modules/wake_lock",
@@ -197,6 +199,7 @@ source_set("modules_testing") {
   configs += [
     "//third_party/WebKit/Source:config",
     "//third_party/WebKit/Source:inside_blink",
+    "//third_party/WebKit/Source/core:blink_core_pch",
   ]
 
   deps = [
@@ -253,6 +256,7 @@ source_set("unit_tests") {
     "notifications/NotificationImageLoaderTest.cpp",
     "notifications/NotificationResourcesLoaderTest.cpp",
     "payments/AbortTest.cpp",
+    "payments/ActivePaymentTest.cpp",
     "payments/CompleteTest.cpp",
     "payments/OnPaymentResponseTest.cpp",
     "payments/PaymentAddressTest.cpp",
@@ -285,6 +289,7 @@ source_set("unit_tests") {
   configs += [
     "//third_party/WebKit/Source:config",
     "//third_party/WebKit/Source:inside_blink",
+    "//third_party/WebKit/Source/core:blink_core_pch",
   ]
 
   deps = [

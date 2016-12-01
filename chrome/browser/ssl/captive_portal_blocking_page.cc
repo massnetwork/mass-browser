@@ -88,7 +88,7 @@ CaptivePortalBlockingPage::CaptivePortalBlockingPage(
     cert_report_helper_.reset(new CertReportHelper(
         std::move(ssl_cert_reporter), web_contents, request_url, ssl_info,
         certificate_reporting::ErrorReport::INTERSTITIAL_CAPTIVE_PORTAL, false,
-        nullptr));
+        base::Time::Now(), nullptr));
   }
 
   RecordUMA(SHOW_ALL);
@@ -232,6 +232,9 @@ void CaptivePortalBlockingPage::CommandReceived(const std::string& command) {
       break;
     case security_interstitials::CMD_OPEN_REPORTING_PRIVACY:
       controller()->OpenExtendedReportingPrivacyPolicy();
+      break;
+    case security_interstitials::CMD_OPEN_WHITEPAPER:
+      controller()->OpenExtendedReportingWhitepaper();
       break;
     case security_interstitials::CMD_ERROR:
     case security_interstitials::CMD_TEXT_FOUND:

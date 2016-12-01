@@ -7,10 +7,33 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <memory>
+
+#include "base/environment.h"
 #include "chrome/installer/mini_installer/appid.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 using mini_installer::Configuration;
+
+namespace {
+
+// A helper class to set the "GoogleUpdateIsMachine" environment variable.
+class ScopedGoogleUpdateIsMachine {
+ public:
+  explicit ScopedGoogleUpdateIsMachine(bool value)
+      : env_(base::Environment::Create()) {
+    env_->SetVar("GoogleUpdateIsMachine", value ? "1" : "0");
+  }
+
+  ~ScopedGoogleUpdateIsMachine() {
+    env_->UnSetVar("GoogleUpdateIsMachine");
+  }
+
+ private:
+  std::unique_ptr<base::Environment> env_;
+};
+
+}  // namespace
 
 class TestConfiguration : public Configuration {
  public:
@@ -97,8 +120,6 @@ TEST(MiniInstallerConfigurationTest, ChromeAppGuid) {
               TestConfiguration(L"spam.exe").chrome_app_guid());
   EXPECT_TRUE(std::wstring(google_update::kAppGuid) ==
               TestConfiguration(L"spam.exe --chrome").chrome_app_guid());
-  EXPECT_TRUE(std::wstring(google_update::kChromeFrameAppGuid) ==
-              TestConfiguration(L"spam.exe --chrome-frame").chrome_app_guid());
   EXPECT_TRUE(std::wstring(google_update::kSxSAppGuid) ==
               TestConfiguration(L"spam.exe --chrome-sxs").chrome_app_guid());
   EXPECT_TRUE(std::wstring(google_update::kMultiInstallAppGuid) ==
@@ -127,30 +148,13 @@ TEST(MiniInstallerConfigurationTest, HasChrome) {
   EXPECT_TRUE(TestConfiguration(L"spam.exe --chrome").has_chrome());
   EXPECT_TRUE(TestConfiguration(L"spam.exe --multi-install --chrome")
                   .has_chrome());
-  EXPECT_FALSE(TestConfiguration(L"spam.exe --chrome-frame").has_chrome());
   EXPECT_FALSE(TestConfiguration(L"spam.exe --multi-install").has_chrome());
-}
-
-TEST(MiniInstallerConfigurationTest, HasChromeFrame) {
-  EXPECT_FALSE(TestConfiguration(L"spam.exe").has_chrome_frame());
-  EXPECT_FALSE(TestConfiguration(L"spam.exe --chrome").has_chrome_frame());
-  EXPECT_FALSE(TestConfiguration(L"spam.exe --multi-install --chrome")
-                   .has_chrome_frame());
-  EXPECT_TRUE(TestConfiguration(L"spam.exe --chrome-frame").has_chrome_frame());
-  EXPECT_TRUE(TestConfiguration(L"spam.exe --multi-install --chrome-frame")
-                  .has_chrome_frame());
-  EXPECT_FALSE(TestConfiguration(L"spam.exe --multi-install")
-                   .has_chrome_frame());
 }
 
 TEST(MiniInstallerConfigurationTest, IsMultiInstall) {
   EXPECT_FALSE(TestConfiguration(L"spam.exe").is_multi_install());
   EXPECT_FALSE(TestConfiguration(L"spam.exe --chrome").is_multi_install());
   EXPECT_TRUE(TestConfiguration(L"spam.exe --multi-install --chrome")
-                  .is_multi_install());
-  EXPECT_FALSE(TestConfiguration(L"spam.exe --chrome-frame")
-                   .is_multi_install());
-  EXPECT_TRUE(TestConfiguration(L"spam.exe --multi-install --chrome-frame")
                   .is_multi_install());
   EXPECT_TRUE(TestConfiguration(L"spam.exe --multi-install")
                   .is_multi_install());
@@ -160,4 +164,20 @@ TEST(MiniInstallerConfigurationTest, IsSystemLevel) {
   EXPECT_FALSE(TestConfiguration(L"spam.exe").is_system_level());
   EXPECT_FALSE(TestConfiguration(L"spam.exe --chrome").is_system_level());
   EXPECT_TRUE(TestConfiguration(L"spam.exe --system-level").is_system_level());
+
+  {
+    ScopedGoogleUpdateIsMachine env_setter(false);
+    EXPECT_FALSE(TestConfiguration(L"spam.exe").is_system_level());
+  }
+
+  {
+    ScopedGoogleUpdateIsMachine env_setter(true);
+    EXPECT_TRUE(TestConfiguration(L"spam.exe").is_system_level());
+  }
+}
+
+TEST(MiniInstallerConfigurationTest, HasInvalidSwitch) {
+  EXPECT_FALSE(TestConfiguration(L"spam.exe").has_invalid_switch());
+  EXPECT_TRUE(TestConfiguration(L"spam.exe --chrome-frame")
+                  .has_invalid_switch());
 }

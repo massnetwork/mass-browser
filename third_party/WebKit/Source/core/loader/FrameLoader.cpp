@@ -88,6 +88,7 @@
 #include "platform/PluginScriptForbiddenScope.h"
 #include "platform/ScriptForbiddenScope.h"
 #include "platform/UserGestureIndicator.h"
+#include "platform/feature_policy/FeaturePolicy.h"
 #include "platform/network/HTTPParsers.h"
 #include "platform/network/ResourceRequest.h"
 #include "platform/scroll/ScrollAnimatorBase.h"
@@ -227,10 +228,10 @@ void FrameLoader::init() {
   m_frame->document()->cancelParsing();
   m_stateMachine.advanceTo(
       FrameLoaderStateMachine::DisplayingInitialEmptyDocument);
-  // Self-suspend if created in an already deferred Page. Note that both
+  // Self-suspend if created in an already suspended Page. Note that both
   // startLoadingMainResource() and cancelParsing() may have already detached
   // the frame, since they both fire JS events.
-  if (m_frame->page() && m_frame->page()->defersLoading())
+  if (m_frame->page() && m_frame->page()->suspended())
     setDefersLoading(true);
   takeObjectSnapshot();
 }
@@ -522,6 +523,7 @@ void FrameLoader::didInstallNewDocument(bool dispatchWindowObjectAvailable) {
 
 void FrameLoader::didBeginDocument() {
   DCHECK(m_frame);
+  DCHECK(m_frame->client());
   DCHECK(m_frame->document());
   DCHECK(m_frame->document()->fetcher());
 
@@ -575,6 +577,27 @@ void FrameLoader::didBeginDocument() {
     OriginTrialContext::addTokensFromHeader(
         m_frame->document(),
         m_documentLoader->response().httpHeaderField(HTTPNames::Origin_Trial));
+    if (RuntimeEnabledFeatures::featurePolicyEnabled()) {
+      FeaturePolicy* parentFeaturePolicy =
+          (isLoadingMainFrame() ? nullptr
+                                : m_frame->client()
+                                      ->parent()
+                                      ->securityContext()
+                                      ->getFeaturePolicy());
+      const String& featurePolicyHeader =
+          m_documentLoader->response().httpHeaderField(
+              HTTPNames::Feature_Policy);
+      Vector<String> messages;
+      m_frame->securityContext()->setFeaturePolicyFromHeader(
+          featurePolicyHeader, parentFeaturePolicy, &messages);
+      for (auto& message : messages) {
+        m_frame->document()->addConsoleMessage(ConsoleMessage::create(
+            OtherMessageSource, ErrorMessageLevel,
+            "Error with Feature-Policy header: " + message));
+      }
+      if (!featurePolicyHeader.isEmpty())
+        client()->didSetFeaturePolicyHeader(featurePolicyHeader);
+    }
   }
 
   if (m_documentLoader) {
@@ -665,6 +688,11 @@ static bool shouldSendFinishNotification(LocalFrame* frame) {
   // An event might have restarted a child frame.
   if (!allDescendantsAreComplete(frame))
     return false;
+
+  // Don't notify if the frame is being detached.
+  if (frame->isDetaching())
+    return false;
+
   return true;
 }
 
@@ -727,7 +755,7 @@ void FrameLoader::checkCompleted() {
 
 void FrameLoader::checkTimerFired(TimerBase*) {
   if (Page* page = m_frame->page()) {
-    if (page->defersLoading())
+    if (page->suspended())
       return;
   }
   checkCompleted();
@@ -777,7 +805,9 @@ void FrameLoader::updateForSameDocumentNavigation(
   // Generate start and stop notifications only when loader is completed so that
   // we don't fire them for fragment redirection that happens in window.onload
   // handler. See https://bugs.webkit.org/show_bug.cgi?id=31838
-  if (m_frame->document()->loadEventFinished())
+  // Do not fire the notifications if the frame is concurrently navigating away
+  // from the document, since a new document is already loading.
+  if (m_frame->document()->loadEventFinished() && !m_provisionalDocumentLoader)
     client()->didStartLoading(NavigationWithinSameDocument);
 
   HistoryCommitType historyCommitType = loadTypeToCommitType(type);
@@ -800,7 +830,7 @@ void FrameLoader::updateForSameDocumentNavigation(
   client()->dispatchDidNavigateWithinPage(
       m_currentItem.get(), historyCommitType, !!initiatingDocument);
   client()->dispatchDidReceiveTitle(m_frame->document()->title());
-  if (m_frame->document()->loadEventFinished())
+  if (m_frame->document()->loadEventFinished() && !m_provisionalDocumentLoader)
     client()->didStopLoading();
 }
 
@@ -1069,8 +1099,7 @@ void FrameLoader::load(const FrameLoadRequest& passedRequest,
   if (m_inStopAllLoaders)
     return;
 
-  if (m_frame->page()->defersLoading() &&
-      isBackForwardLoadType(frameLoadType)) {
+  if (m_frame->page()->suspended() && isBackForwardLoadType(frameLoadType)) {
     m_deferredHistoryLoad = DeferredHistoryLoad::create(
         passedRequest.resourceRequest(), historyItem, frameLoadType,
         historyLoadType);
@@ -1492,13 +1521,16 @@ void FrameLoader::processFragment(const KURL& url,
         ->setSafeToPropagateScrollToParent(false);
   }
 
-  // If scroll position is restored from history fragment then we should not
-  // override it unless this is a same document reload.
+  // If scroll position is restored from history fragment or scroll
+  // restoration type is manual, then we should not override it unless this
+  // is a same document reload.
   bool shouldScrollToFragment =
       (loadStartType == NavigationWithinSameDocument &&
        !isBackForwardLoadType(m_loadType)) ||
       (documentLoader() &&
-       !documentLoader()->initialScrollState().didRestoreFromHistory);
+       !documentLoader()->initialScrollState().didRestoreFromHistory &&
+       !(m_currentItem &&
+         m_currentItem->scrollRestorationType() == ScrollRestorationManual));
 
   view->processUrlFragment(url, shouldScrollToFragment
                                     ? FrameView::UrlFragmentScroll
@@ -1571,8 +1603,8 @@ bool FrameLoader::shouldContinueForNavigationPolicy(
     if (parentFrame) {
       ContentSecurityPolicy* parentPolicy =
           parentFrame->securityContext()->contentSecurityPolicy();
-      if (!parentPolicy->allowChildFrameFromSource(request.url(),
-                                                   request.redirectStatus())) {
+      if (!parentPolicy->allowFrameFromSource(request.url(),
+                                              request.redirectStatus())) {
         // Fire a load event, as timing attacks would otherwise reveal that the
         // frame was blocked. This way, it looks like every other cross-origin
         // page load.
@@ -1592,7 +1624,7 @@ bool FrameLoader::shouldContinueForNavigationPolicy(
 
   policy = client()->decidePolicyForNavigation(request, loader, type, policy,
                                                replacesCurrentHistoryItem,
-                                               isClientRedirect);
+                                               isClientRedirect, form);
   if (policy == NavigationPolicyCurrentTab)
     return true;
   if (policy == NavigationPolicyIgnore)
@@ -1625,23 +1657,22 @@ void FrameLoader::startLoad(FrameLoadRequest& frameLoadRequest,
       Document::NoDismissal)
     return;
 
+  ResourceRequest& resourceRequest = frameLoadRequest.resourceRequest();
   NavigationType navigationType = determineNavigationType(
-      type,
-      frameLoadRequest.resourceRequest().httpBody() || frameLoadRequest.form(),
+      type, resourceRequest.httpBody() || frameLoadRequest.form(),
       frameLoadRequest.triggeringEvent());
-  frameLoadRequest.resourceRequest().setRequestContext(
+  resourceRequest.setRequestContext(
       determineRequestContextFromNavigationType(navigationType));
-  frameLoadRequest.resourceRequest().setFrameType(
-      m_frame->isMainFrame() ? WebURLRequest::FrameTypeTopLevel
-                             : WebURLRequest::FrameTypeNested);
-  ResourceRequest& request = frameLoadRequest.resourceRequest();
+  resourceRequest.setFrameType(m_frame->isMainFrame()
+                                   ? WebURLRequest::FrameTypeTopLevel
+                                   : WebURLRequest::FrameTypeNested);
 
   // Record the latest requiredCSP value that will be used when sending this
   // request.
   recordLatestRequiredCSP();
-  modifyRequestForCSP(request, nullptr);
+  modifyRequestForCSP(resourceRequest, nullptr);
   if (!shouldContinueForNavigationPolicy(
-          request, frameLoadRequest.substituteData(), nullptr,
+          resourceRequest, frameLoadRequest.substituteData(), nullptr,
           frameLoadRequest.shouldCheckMainWorldContentSecurityPolicy(),
           navigationType, navigationPolicy,
           type == FrameLoadTypeReplaceCurrentItem,
@@ -1659,9 +1690,10 @@ void FrameLoader::startLoad(FrameLoadRequest& frameLoadRequest,
     return;
 
   m_provisionalDocumentLoader = client()->createDocumentLoader(
-      m_frame, request, frameLoadRequest.substituteData().isValid()
-                            ? frameLoadRequest.substituteData()
-                            : defaultSubstituteDataForURL(request.url()),
+      m_frame, resourceRequest,
+      frameLoadRequest.substituteData().isValid()
+          ? frameLoadRequest.substituteData()
+          : defaultSubstituteDataForURL(resourceRequest.url()),
       frameLoadRequest.clientRedirect());
   m_provisionalDocumentLoader->setNavigationType(navigationType);
   m_provisionalDocumentLoader->setReplacesCurrentHistoryItem(
@@ -1677,11 +1709,7 @@ void FrameLoader::startLoad(FrameLoadRequest& frameLoadRequest,
   m_progressTracker->progressStarted();
   m_provisionalDocumentLoader->appendRedirect(
       m_provisionalDocumentLoader->request().url());
-  double triggeringEventTime =
-      frameLoadRequest.triggeringEvent()
-          ? frameLoadRequest.triggeringEvent()->platformTimeStamp()
-          : 0;
-  client()->dispatchDidStartProvisionalLoad(triggeringEventTime);
+  client()->dispatchDidStartProvisionalLoad();
   DCHECK(m_provisionalDocumentLoader);
   m_provisionalDocumentLoader->startLoadingMainResource();
 
@@ -1860,11 +1888,13 @@ void FrameLoader::modifyRequestForCSP(ResourceRequest& resourceRequest,
   // https://w3c.github.io/webappsec/specs/upgrade/#feature-detect
   if (resourceRequest.frameType() != WebURLRequest::FrameTypeNone) {
     // Early return if the request has already been upgraded.
-    if (resourceRequest.httpHeaderField("Upgrade-Insecure-Requests") ==
-        AtomicString("1"))
+    if (!resourceRequest.httpHeaderField(HTTPNames::Upgrade_Insecure_Requests)
+             .isNull()) {
       return;
+    }
 
-    resourceRequest.addHTTPHeaderField("Upgrade-Insecure-Requests", "1");
+    resourceRequest.setHTTPHeaderField(HTTPNames::Upgrade_Insecure_Requests,
+                                       "1");
   }
 
   upgradeInsecureRequest(resourceRequest, document);

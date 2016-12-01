@@ -143,14 +143,12 @@ def cpp_type(idl_type, extended_attributes=None, raw_type=False, used_as_rvalue_
             Containers can be an array, a sequence or a dictionary.
     """
     def string_mode():
+        if idl_type.is_nullable:
+            return 'TreatNullAndUndefinedAsNullString'
         if extended_attributes.get('TreatNullAs') == 'EmptyString':
             return 'TreatNullAsEmptyString'
         if extended_attributes.get('TreatNullAs') == 'NullString':
-            if extended_attributes.get('TreatUndefinedAs') == 'NullString':
-                return 'TreatNullAndUndefinedAsNullString'
             return 'TreatNullAsNullString'
-        if idl_type.is_nullable:
-            return 'TreatNullAndUndefinedAsNullString'
         return ''
 
     extended_attributes = extended_attributes or {}
@@ -424,17 +422,8 @@ def add_includes_for_interface(interface_name):
     includes.update(includes_for_interface(interface_name))
 
 
-def impl_should_use_nullable_container(idl_type):
-    return not(idl_type.cpp_type_has_null_value)
-
-IdlTypeBase.impl_should_use_nullable_container = property(
-    impl_should_use_nullable_container)
-
-
 def impl_includes_for_type(idl_type, interfaces_info):
     includes_for_type = set()
-    if idl_type.impl_should_use_nullable_container:
-        includes_for_type.add('bindings/core/v8/Nullable.h')
 
     idl_type = idl_type.preprocessed_type
     native_array_element_type = idl_type.native_array_element_type
@@ -465,6 +454,20 @@ def impl_includes_for_type_union(idl_type, interfaces_info):
 
 IdlTypeBase.impl_includes_for_type = impl_includes_for_type
 IdlUnionType.impl_includes_for_type = impl_includes_for_type_union
+
+
+def impl_forward_declaration_name(idl_type):
+    element_type = idl_type.native_array_element_type
+    if element_type:
+        return element_type.impl_forward_declaration_name
+
+    if idl_type.is_wrapper_type and not idl_type.is_typed_array:
+        return idl_type.implemented_as
+    return None
+
+
+IdlTypeBase.impl_forward_declaration_name = property(
+    impl_forward_declaration_name)
 
 
 component_dir = {}
@@ -498,7 +501,7 @@ V8_VALUE_TO_CPP_VALUE = {
     'long long': 'toInt64({isolate}, {arguments})',
     'unsigned long long': 'toUInt64({isolate}, {arguments})',
     # Interface types
-    'Dictionary': 'Dictionary({v8_value}, {isolate}, exceptionState)',
+    'Dictionary': 'Dictionary({isolate}, {v8_value}, exceptionState)',
     'EventTarget': 'toEventTarget({isolate}, {v8_value})',
     'FlexibleArrayBufferView': 'toFlexibleArrayBufferView({isolate}, {v8_value}, {variable_name}, allocateFlexibleArrayBufferViewStorage({v8_value}))',
     'NodeFilter': 'toNodeFilter({v8_value}, info.Holder(), ScriptState::current({isolate}))',

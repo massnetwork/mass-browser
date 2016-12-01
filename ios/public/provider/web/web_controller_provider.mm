@@ -4,24 +4,16 @@
 
 #include "ios/public/provider/web/web_controller_provider.h"
 
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "This file requires ARC support."
+#endif
+
 namespace ios {
-
-static WebControllerProviderFactory* g_web_controller_provider_factory;
-
-void SetWebControllerProviderFactory(
-    WebControllerProviderFactory* provider_factory) {
-  g_web_controller_provider_factory = provider_factory;
-}
-
-WebControllerProviderFactory* GetWebControllerProviderFactory() {
-  return g_web_controller_provider_factory;
-}
 
 WebControllerProvider::WebControllerProvider(web::BrowserState* browser_state) {
 }
 
-WebControllerProvider::~WebControllerProvider() {
-}
+WebControllerProvider::~WebControllerProvider() {}
 
 bool WebControllerProvider::SuppressesDialogs() const {
   return false;
@@ -36,19 +28,6 @@ void WebControllerProvider::InjectScript(
     web::JavaScriptResultBlock completion) {
   if (completion)
     completion(nil, nil);
-}
-
-WebControllerProviderFactory::WebControllerProviderFactory() {
-}
-
-WebControllerProviderFactory::~WebControllerProviderFactory() {
-}
-
-std::unique_ptr<WebControllerProvider>
-WebControllerProviderFactory::CreateWebControllerProvider(
-    web::BrowserState* browser_state) {
-  return std::unique_ptr<WebControllerProvider>(
-      new WebControllerProvider(browser_state));
 }
 
 }  // namespace ios

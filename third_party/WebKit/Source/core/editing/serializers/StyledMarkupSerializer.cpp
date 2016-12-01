@@ -378,7 +378,7 @@ Node* StyledMarkupTraverser<Strategy>::traverse(Node* startNode,
 
     // Close up the ancestors.
     while (!ancestorsToClose.isEmpty()) {
-      ContainerNode* ancestor = ancestorsToClose.last();
+      ContainerNode* ancestor = ancestorsToClose.back();
       DCHECK(ancestor);
       if (next && next != pastEnd && Strategy::isDescendantOf(*next, *ancestor))
         break;
@@ -386,7 +386,7 @@ Node* StyledMarkupTraverser<Strategy>::traverse(Node* startNode,
       // node.
       appendEndMarkup(*ancestor);
       lastClosed = ancestor;
-      ancestorsToClose.removeLast();
+      ancestorsToClose.pop_back();
     }
 
     // Surround the currently accumulated markup with markup for ancestors we

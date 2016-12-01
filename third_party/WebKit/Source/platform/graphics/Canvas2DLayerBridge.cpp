@@ -32,6 +32,7 @@
 #include "gpu/command_buffer/client/gpu_memory_buffer_manager.h"
 #include "platform/Histogram.h"
 #include "platform/RuntimeEnabledFeatures.h"
+#include "platform/WebTaskRunner.h"
 #include "platform/graphics/CanvasMetrics.h"
 #include "platform/graphics/ExpensiveCanvasHeuristicParameters.h"
 #include "platform/graphics/GraphicsLayer.h"
@@ -295,8 +296,8 @@ bool Canvas2DLayerBridge::prepareIOSurfaceMailboxFromImage(
 RefPtr<Canvas2DLayerBridge::ImageInfo>
 Canvas2DLayerBridge::createIOSurfaceBackedTexture() {
   if (!m_imageInfoCache.isEmpty()) {
-    RefPtr<Canvas2DLayerBridge::ImageInfo> info = m_imageInfoCache.last();
-    m_imageInfoCache.removeLast();
+    RefPtr<Canvas2DLayerBridge::ImageInfo> info = m_imageInfoCache.back();
+    m_imageInfoCache.pop_back();
     return info;
   }
 
@@ -310,7 +311,7 @@ Canvas2DLayerBridge::createIOSurfaceBackedTexture() {
     return nullptr;
 
   std::unique_ptr<gfx::GpuMemoryBuffer> gpuMemoryBuffer =
-      gpuMemoryBufferManager->AllocateGpuMemoryBuffer(
+      gpuMemoryBufferManager->CreateGpuMemoryBuffer(
           gfx::Size(m_size), gfx::BufferFormat::RGBA_8888,
           gfx::BufferUsage::SCANOUT, gpu::kNullSurfaceHandle);
   if (!gpuMemoryBuffer)

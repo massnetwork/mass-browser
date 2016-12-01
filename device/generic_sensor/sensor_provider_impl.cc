@@ -32,9 +32,12 @@ void NotifySensorCreated(
 }  // namespace
 
 // static
-void SensorProviderImpl::Create(mojom::SensorProviderRequest request) {
+void SensorProviderImpl::Create(
+    scoped_refptr<base::SingleThreadTaskRunner> file_task_runner,
+    mojom::SensorProviderRequest request) {
   PlatformSensorProvider* provider = PlatformSensorProvider::GetInstance();
   if (provider) {
+    provider->SetFileTaskRunner(file_task_runner);
     mojo::MakeStrongBinding(base::WrapUnique(new SensorProviderImpl(provider)),
                             std::move(request));
   }
@@ -88,6 +91,13 @@ void SensorProviderImpl::SensorCreated(
   init_params->buffer_offset = SensorReadingSharedBuffer::GetOffset(type);
   init_params->mode = sensor->GetReportingMode();
   init_params->default_configuration = sensor->GetDefaultConfiguration();
+
+  double maximum_frequency = sensor->GetMaximumSupportedFrequency();
+  DCHECK(maximum_frequency > 0);
+  if (maximum_frequency > mojom::SensorConfiguration::kMaxAllowedFrequency)
+    maximum_frequency = mojom::SensorConfiguration::kMaxAllowedFrequency;
+
+  init_params->maximum_frequency = maximum_frequency;
 
   NotifySensorCreated(std::move(init_params), sensor_impl->GetClient(),
                       callback);

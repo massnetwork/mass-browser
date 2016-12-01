@@ -39,7 +39,7 @@ function test()
 
     function getDocumentIncludingIframe()
     {
-        InspectorTest.sendCommand("DOM.getDocument", {"traverseFrames": true}, function(messageObject) {
+        InspectorTest.sendCommand("DOM.getDocument", {"pierce": true}, function(messageObject) {
             if (messageObject.hasOwnProperty("error"))
                 InspectorTest.log("Backend error: " + messageObject.error.message + " (" + messageObject.error.code + ")\n");
 
@@ -63,7 +63,7 @@ function test()
 
     function requestAllChildNodesIncludingIframe(bodyId)
     {
-        InspectorTest.sendCommand("DOM.requestChildNodes", {"nodeId": bodyId, "depth": -1, "traverseFrames": true}, function(messageObject) {
+        InspectorTest.sendCommand("DOM.requestChildNodes", {"nodeId": bodyId, "depth": -1, "pierce": true}, function(messageObject) {
             if (messageObject.hasOwnProperty("error"))
                 InspectorTest.log("Backend error: " + messageObject.error.message + " (" + messageObject.error.code + ")\n");
         });
@@ -74,8 +74,13 @@ function test()
             replacePropertyRecursive(messageObject, "frameId");
             replacePropertyRecursive(messageObject, "documentURL");
             replacePropertyRecursive(messageObject, "baseURL");
-
-            InspectorTest.log(JSON.stringify(messageObject, null, "    "));
+            function stabilize(key, value) {
+                var unstableKeys = ["backendNodeId"];
+                if (unstableKeys.indexOf(key) !== -1)
+                    return "<" + typeof(value) + ">";
+                return value;
+            }
+            InspectorTest.log(JSON.stringify(messageObject, stabilize, "    "));
             InspectorTest.completeTest();
         };
     };

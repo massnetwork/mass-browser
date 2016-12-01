@@ -195,8 +195,7 @@ class BackgroundColorHoverButton : public views::LabelButton {
     const int button_margin = switches::IsMaterialDesignUserMenu()
                                   ? kMaterialMenuEdgeMargin
                                   : views::kButtonHEdgeMarginNew;
-    SetBorder(
-        views::Border::CreateEmptyBorder(0, button_margin, 0, button_margin));
+    SetBorder(views::CreateEmptyBorder(0, button_margin, 0, button_margin));
     SetFocusForPlatform();
     set_request_focus_on_press(true);
 
@@ -264,8 +263,6 @@ class HostView : public views::View {
  public:
   HostView() {}
 
-  void Initialize(views::View* title_view, views::View* main_view);
-
  private:
   // views::View:
   void ViewHierarchyChanged(
@@ -277,12 +274,6 @@ class HostView : public views::View {
 
   DISALLOW_COPY_AND_ASSIGN(HostView);
 };
-
-void HostView::Initialize(views::View* title_view, views::View* main_view) {
-  title_view_ = title_view;
-  AddChildView(main_view);
-  SetLayoutManager(new views::FillLayout());
-}
 
 void HostView::ViewHierarchyChanged(
     const ViewHierarchyChangedDetails& details) {
@@ -363,7 +354,7 @@ class EditableProfilePhoto : public views::LabelButton {
     gfx::Image image = profiles::GetSizedAvatarIcon(
         icon, true, icon_image_side(), icon_image_side());
     SetImage(views::LabelButton::STATE_NORMAL, *image.ToImageSkia());
-    SetBorder(views::Border::NullBorder());
+    SetBorder(views::NullBorder());
     if (switches::IsMaterialDesignUserMenu()) {
       SetMinSize(gfx::Size(GetPreferredSize().width() + badge_spacing(),
                            GetPreferredSize().height() + badge_spacing() +
@@ -528,8 +519,7 @@ class EditableProfileName : public views::View,
 
     if (!is_editing_allowed) {
       views::Label* name_label = new views::Label(text);
-      name_label->SetBorder(
-          views::Border::CreateEmptyBorder(textfield_border_insets));
+      name_label->SetBorder(views::CreateEmptyBorder(textfield_border_insets));
       name_label->SetFontList(medium_font_list);
       AddChildView(name_label);
       return;
@@ -563,7 +553,7 @@ class EditableProfileName : public views::View,
     // We need to add a left padding as well as a small top/bottom padding
     // to the text to account for the textfield's border.
     const int kIconTextLabelButtonSpacing = 5;
-    button_->SetBorder(views::Border::CreateEmptyBorder(
+    button_->SetBorder(views::CreateEmptyBorder(
         textfield_border_insets +
         gfx::Insets(0, kIconSize + kIconTextLabelButtonSpacing, 0, 0)));
     AddChildView(button_);
@@ -698,14 +688,18 @@ void ProfileChooserView::ShowBubble(
     signin_metrics::AccessPoint access_point,
     views::View* anchor_view,
     Browser* browser) {
+  if (switches::IsMaterialDesignUserMenu()) {
+    // The Material Design User Menu doesn't have a fast user switcher on
+    // right-click. To ease up the transition for users, show the regular user
+    // menu when right-clicking instead of doing nothing.
+    view_mode = profiles::BUBBLE_VIEW_MODE_PROFILE_CHOOSER;
+  }
+
   // Don't start creating the view if it would be an empty fast user switcher.
   // It has to happen here to prevent the view system from creating an empty
   // container.
-  // Same for material design user menu since fast profile switcher will be
-  // migrated to the left-click menu.
   if (view_mode == profiles::BUBBLE_VIEW_MODE_FAST_PROFILE_CHOOSER &&
-      (!profiles::HasProfileSwitchTargets(browser->profile()) ||
-       switches::IsMaterialDesignUserMenu())) {
+      !profiles::HasProfileSwitchTargets(browser->profile())) {
     return;
   }
 
@@ -1560,8 +1554,8 @@ views::View* ProfileChooserView::CreateSyncErrorViewIfNeeded() {
     *button_out = views::MdTextButton::CreateSecondaryUiBlueButton(
         this, l10n_util::GetStringUTF16(button_string_id));
     vertical_view->AddChildView(*button_out);
-    view->SetBorder(views::Border::CreateEmptyBorder(
-      0, 0, views::kRelatedControlSmallVerticalSpacing, 0));
+    view->SetBorder(views::CreateEmptyBorder(
+        0, 0, views::kRelatedControlSmallVerticalSpacing, 0));
   }
 
   view->AddChildView(vertical_view);
@@ -1633,7 +1627,7 @@ views::View* ProfileChooserView::CreateCurrentProfileView(
         gfx::Insets insets =
             views::LabelButtonAssetBorder::GetDefaultInsetsForStyle(
                 views::Button::STYLE_TEXTBUTTON);
-        auth_error_email_button_->SetBorder(views::Border::CreateEmptyBorder(
+        auth_error_email_button_->SetBorder(views::CreateEmptyBorder(
             insets.top(), insets.left(), insets.bottom(), insets.right()));
         layout->AddView(auth_error_email_button_);
       } else {
@@ -1725,6 +1719,9 @@ views::View* ProfileChooserView::CreateMaterialDesignCurrentProfileView(
     return view;
   }
 
+  const base::string16 profile_name =
+      profiles::GetAvatarNameForProfile(browser_->profile()->GetPath());
+
   // The available links depend on the type of profile that is active.
   if (avatar_item.signed_in) {
     if (switches::IsEnableAccountConsistency()) {
@@ -1751,6 +1748,12 @@ views::View* ProfileChooserView::CreateMaterialDesignCurrentProfileView(
           gfx::Insets(name_container_v_spacing, 0));
       profile_name_container->AddChildView(email_label);
     }
+
+    current_profile_card_->SetAccessibleName(
+        l10n_util::GetStringFUTF16(
+            IDS_PROFILES_EDIT_SIGNED_IN_PROFILE_ACCESSIBLE_NAME,
+            profile_name,
+            avatar_item.username));
     return view;
   }
 
@@ -1778,11 +1781,14 @@ views::View* ProfileChooserView::CreateMaterialDesignCurrentProfileView(
     extra_links_view->AddChildView(signin_current_profile_button_);
     content::RecordAction(
         base::UserMetricsAction("Signin_Impression_FromAvatarBubbleSignin"));
-    extra_links_view->SetBorder(views::Border::CreateEmptyBorder(
+    extra_links_view->SetBorder(views::CreateEmptyBorder(
         0, 0, views::kRelatedControlSmallVerticalSpacing, 0));
     view->AddChildView(extra_links_view);
   }
 
+  current_profile_card_->SetAccessibleName(
+      l10n_util::GetStringFUTF16(
+          IDS_PROFILES_EDIT_PROFILE_ACCESSIBLE_NAME, profile_name));
   return view;
 }
 
@@ -2009,9 +2015,9 @@ views::View* ProfileChooserView::CreateCurrentProfileAccountsView(
 
     add_account_link_ = CreateLink(l10n_util::GetStringFUTF16(
         IDS_PROFILES_PROFILE_ADD_ACCOUNT_BUTTON, avatar_item.name), this);
-    add_account_link_->SetBorder(views::Border::CreateEmptyBorder(
-        0, views::kButtonVEdgeMarginNew,
-        views::kRelatedControlVerticalSpacing, 0));
+    add_account_link_->SetBorder(
+        views::CreateEmptyBorder(0, views::kButtonVEdgeMarginNew,
+                                 views::kRelatedControlVerticalSpacing, 0));
     layout->StartRow(1, 0);
     layout->AddView(add_account_link_);
   }

@@ -14,7 +14,6 @@
 #include "core/frame/FrameView.h"
 #include "core/html/HTMLBodyElement.h"
 #include "core/input/EventHandler.h"
-#include "core/layout/LayoutView.h"
 #include "core/paint/PaintInfo.h"
 #include "core/paint/PaintLayer.h"
 #include "core/testing/DummyPageHolder.h"
@@ -297,7 +296,7 @@ class SelectionControllerTest : public EditingTestBase {
 };
 
 TEST_F(FrameSelectionTest, SelectAllWithUnselectableRoot) {
-  Element* select = document().createElement("select", ASSERT_NO_EXCEPTION);
+  Element* select = document().createElement("select");
   document().replaceChild(select, document().documentElement());
   selection().selectAll();
   EXPECT_TRUE(selection().isNone()) << "Nothing should be selected if the "

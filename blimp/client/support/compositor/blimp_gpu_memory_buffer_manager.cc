@@ -120,7 +120,7 @@ BlimpGpuMemoryBufferManager::GetDefaultBufferToTextureTargetMap() {
 }
 
 std::unique_ptr<gfx::GpuMemoryBuffer>
-BlimpGpuMemoryBufferManager::AllocateGpuMemoryBuffer(
+BlimpGpuMemoryBufferManager::CreateGpuMemoryBuffer(
     const gfx::Size& size,
     gfx::BufferFormat format,
     gfx::BufferUsage usage,
@@ -148,12 +148,6 @@ BlimpGpuMemoryBufferManager::CreateGpuMemoryBufferFromHandle(
   return base::WrapUnique<gfx::GpuMemoryBuffer>(new GpuMemoryBufferImpl(
       size, format, base::MakeUnique<base::SharedMemory>(handle.handle, false),
       handle.offset, handle.stride));
-}
-
-gfx::GpuMemoryBuffer*
-BlimpGpuMemoryBufferManager::GpuMemoryBufferFromClientBuffer(
-    ClientBuffer buffer) {
-  return reinterpret_cast<gfx::GpuMemoryBuffer*>(buffer);
 }
 
 void BlimpGpuMemoryBufferManager::SetDestructionSyncToken(

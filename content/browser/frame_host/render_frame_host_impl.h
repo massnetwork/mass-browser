@@ -50,6 +50,7 @@ class GURL;
 struct AccessibilityHostMsg_EventParams;
 struct AccessibilityHostMsg_FindInPageResultParams;
 struct AccessibilityHostMsg_LocationChangeParams;
+struct FrameHostMsg_DidCommitProvisionalLoad_Params;
 struct FrameHostMsg_DidFailProvisionalLoadWithError_Params;
 struct FrameHostMsg_OpenURL_Params;
 struct FrameMsg_TextTrackSettings_Params;
@@ -58,7 +59,6 @@ struct FrameHostMsg_ShowPopup_Params;
 #endif
 
 namespace base {
-class FilePath;
 class ListValue;
 }
 
@@ -96,9 +96,7 @@ struct ContentSecurityPolicyHeader;
 struct ContextMenuParams;
 struct FileChooserParams;
 struct FrameOwnerProperties;
-struct GlobalRequestID;
 struct FileChooserParams;
-struct Referrer;
 struct ResourceResponse;
 
 class CONTENT_EXPORT RenderFrameHostImpl
@@ -165,9 +163,11 @@ class CONTENT_EXPORT RenderFrameHostImpl
   int GetProxyCount() override;
   void FilesSelectedInChooser(const std::vector<FileChooserFileInfo>& files,
                               FileChooserParams::Mode permissions) override;
+  bool HasSelection() override;
   void RequestTextSurroundingSelection(
       const TextSurroundingSelectionCallback& callback,
       int max_length) override;
+  void RequestFocusedFormFieldData(FormFieldDataCallback& callback) override;
 
   // mojom::FrameHost
   void GetInterfaceProvider(
@@ -266,7 +266,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // distinguished by owning a RenderWidgetHost, which manages input events
   // and painting for this frame and its contiguous local subtree in the
   // renderer process.
-  bool is_local_root() { return !!render_widget_host_; }
+  bool is_local_root() const { return !!render_widget_host_; }
 
   // Returns the RenderWidgetHostImpl attached to this frame or the nearest
   // ancestor frame, which could potentially be the root. For most input
@@ -375,15 +375,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // Navigates to an interstitial page represented by the provided data URL.
   void NavigateToInterstitialURL(const GURL& data_url);
 
-  // Treat this prospective navigation as though it originated from the frame.
-  // Used, e.g., for a navigation request that originated from a RemoteFrame.
-  // |source_site_instance| is the SiteInstance of the frame that initiated the
-  // navigation.
-  // TODO(creis): Remove this method and have RenderFrameProxyHost call
-  // RequestOpenURL with its FrameTreeNode.
-  void OpenURL(const FrameHostMsg_OpenURL_Params& params,
-               SiteInstance* source_site_instance);
-
   // Stop the load in progress.
   void Stop();
 
@@ -435,10 +426,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // Set this frame as focused in the renderer process.  This supports
   // cross-process window.focus() calls.
   void SetFocusedFrame();
-
-  // This is used to clear focus inside an inner WebContents when focus shifts
-  // to a frame in the outer WebContents or a sibling WebContents.
-  void ClearFocusedFrame();
 
   // Deletes the current selection plus the specified number of characters
   // before and after the selection or caret.
@@ -602,7 +589,8 @@ class CONTENT_EXPORT RenderFrameHostImpl
                       FrameTreeNode* frame_tree_node,
                       int32_t routing_id,
                       int32_t widget_routing_id,
-                      bool hidden);
+                      bool hidden,
+                      bool renderer_initiated_creation);
 
  private:
   friend class TestRenderFrameHost;
@@ -627,10 +615,10 @@ class CONTENT_EXPORT RenderFrameHostImpl
                            LoadEventForwardingWhilePendingDeletion);
 
   // IPC Message handlers.
-  void OnAddMessageToConsole(int32_t level,
-                             const base::string16& message,
-                             int32_t line_no,
-                             const base::string16& source_id);
+  void OnDidAddMessageToConsole(int32_t level,
+                                const base::string16& message,
+                                int32_t line_no,
+                                const base::string16& source_id);
   void OnDetach();
   void OnFrameFocused();
   void OnOpenURL(const FrameHostMsg_OpenURL_Params& params);
@@ -671,9 +659,12 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void OnTextSurroundingSelectionResponse(const base::string16& content,
                                           uint32_t start_offset,
                                           uint32_t end_offset);
+  void OnFocusedFormFieldDataResponse(int request_id,
+                                      const FormFieldData& field_data);
   void OnDidAccessInitialDocument();
   void OnDidChangeOpener(int32_t opener_routing_id);
   void OnDidChangeName(const std::string& name, const std::string& unique_name);
+  void OnDidSetFeaturePolicyHeader(const std::string& header);
   void OnDidAddContentSecurityPolicy(const ContentSecurityPolicyHeader& header);
   void OnEnforceInsecureRequestPolicy(blink::WebInsecureRequestPolicy policy);
   void OnUpdateToUniqueOrigin(bool is_potentially_trustworthy_unique_origin);
@@ -820,6 +811,11 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void OnRendererConnect(const service_manager::ServiceInfo& local_info,
                          const service_manager::ServiceInfo& remote_info);
 
+  // Returns ownership of the NavigationHandle associated with a navigation that
+  // just committed.
+  std::unique_ptr<NavigationHandleImpl> TakeNavigationHandleForCommit(
+      const FrameHostMsg_DidCommitProvisionalLoad_Params& params);
+
   // For now, RenderFrameHosts indirectly keep RenderViewHosts alive via a
   // refcount that calls Shutdown when it reaches zero.  This allows each
   // RenderFrameHostManager to just care about RenderFrameHosts, while ensuring
@@ -885,6 +881,9 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // ExecuteJavaScript and their corresponding callbacks.
   std::map<int, JavaScriptResultCallback> javascript_callbacks_;
   std::map<uint64_t, VisualStateCallback> visual_state_callbacks_;
+
+  // Callbacks for getting text input info.
+  std::map<int, FormFieldDataCallback> form_field_data_callbacks_;
 
   // RenderFrameHosts that need management of the rendering and input events
   // for their frame subtrees require RenderWidgetHosts. This typically
@@ -1041,6 +1040,9 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // called (no pending instance should be set).
   bool should_reuse_web_ui_;
 
+  // If true, then the RenderFrame has selected text.
+  bool has_selection_;
+
   // PlzNavigate: The LoFi state of the last navigation. This is used during
   // history navigation of subframes to ensure that subframes navigate with the
   // same LoFi status as the top-level frame.
@@ -1048,6 +1050,15 @@ class CONTENT_EXPORT RenderFrameHostImpl
 
   mojo::Binding<mojom::FrameHost> frame_host_binding_;
   mojom::FramePtr frame_;
+
+  // If this is true then this object was created in response to a renderer
+  // initiated request. Init() will be called, and until then navigation
+  // requests should be queued.
+  bool waiting_for_init_;
+
+  typedef std::pair<CommonNavigationParams, BeginNavigationParams>
+      PendingNavigation;
+  std::unique_ptr<PendingNavigation> pendinging_navigate_;
 
   // Callback for responding when
   // |FrameHostMsg_TextSurroundingSelectionResponse| message comes.

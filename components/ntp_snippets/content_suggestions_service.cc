@@ -23,16 +23,23 @@ namespace ntp_snippets {
 
 ContentSuggestionsService::ContentSuggestionsService(
     State state,
+    SigninManagerBase* signin_manager,
     history::HistoryService* history_service,
     PrefService* pref_service)
     : state_(state),
+      signin_observer_(this),
       history_service_observer_(this),
       ntp_snippets_service_(nullptr),
       pref_service_(pref_service),
       user_classifier_(pref_service) {
   // Can be null in tests.
-  if (history_service)
+  if (signin_manager) {
+    signin_observer_.Add(signin_manager);
+  }
+
+  if (history_service) {
     history_service_observer_.Add(history_service);
+  }
 
   RestoreDismissedCategoriesFromPrefs();
 }
@@ -46,8 +53,9 @@ void ContentSuggestionsService::Shutdown() {
   categories_.clear();
   providers_.clear();
   state_ = State::DISABLED;
-  for (Observer& observer : observers_)
+  for (Observer& observer : observers_) {
     observer.ContentSuggestionsServiceShutdown();
+  }
 }
 
 // static
@@ -63,8 +71,9 @@ CategoryStatus ContentSuggestionsService::GetCategoryStatus(
   }
 
   auto iterator = providers_by_category_.find(category);
-  if (iterator == providers_by_category_.end())
+  if (iterator == providers_by_category_.end()) {
     return CategoryStatus::NOT_PROVIDED;
+  }
 
   return iterator->second->GetCategoryStatus(category);
 }
@@ -72,16 +81,18 @@ CategoryStatus ContentSuggestionsService::GetCategoryStatus(
 base::Optional<CategoryInfo> ContentSuggestionsService::GetCategoryInfo(
     Category category) const {
   auto iterator = providers_by_category_.find(category);
-  if (iterator == providers_by_category_.end())
+  if (iterator == providers_by_category_.end()) {
     return base::Optional<CategoryInfo>();
+  }
   return iterator->second->GetCategoryInfo(category);
 }
 
 const std::vector<ContentSuggestion>&
 ContentSuggestionsService::GetSuggestionsForCategory(Category category) const {
   auto iterator = suggestions_by_category_.find(category);
-  if (iterator == suggestions_by_category_.end())
+  if (iterator == suggestions_by_category_.end()) {
     return no_suggestions_;
+  }
   return iterator->second;
 }
 
@@ -113,33 +124,37 @@ void ContentSuggestionsService::ClearAllCachedSuggestions() {
   for (const auto& category_provider_pair : providers_by_category_) {
     category_provider_pair.second->ClearCachedSuggestions(
         category_provider_pair.first);
-    for (Observer& observer : observers_)
+    for (Observer& observer : observers_) {
       observer.OnNewSuggestions(category_provider_pair.first);
+    }
   }
 }
 
 void ContentSuggestionsService::ClearCachedSuggestions(Category category) {
   suggestions_by_category_[category].clear();
   auto iterator = providers_by_category_.find(category);
-  if (iterator != providers_by_category_.end())
+  if (iterator != providers_by_category_.end()) {
     iterator->second->ClearCachedSuggestions(category);
+  }
 }
 
 void ContentSuggestionsService::GetDismissedSuggestionsForDebugging(
     Category category,
     const DismissedSuggestionsCallback& callback) {
   auto iterator = providers_by_category_.find(category);
-  if (iterator != providers_by_category_.end())
+  if (iterator != providers_by_category_.end()) {
     iterator->second->GetDismissedSuggestionsForDebugging(category, callback);
-  else
+  } else {
     callback.Run(std::vector<ContentSuggestion>());
+  }
 }
 
 void ContentSuggestionsService::ClearDismissedSuggestionsForDebugging(
     Category category) {
   auto iterator = providers_by_category_.find(category);
-  if (iterator != providers_by_category_.end())
+  if (iterator != providers_by_category_.end()) {
     iterator->second->ClearDismissedSuggestionsForDebugging(category);
+  }
 }
 
 void ContentSuggestionsService::DismissSuggestion(
@@ -161,8 +176,9 @@ void ContentSuggestionsService::DismissSuggestion(
 
 void ContentSuggestionsService::DismissCategory(Category category) {
   auto providers_it = providers_by_category_.find(category);
-  if (providers_it == providers_by_category_.end())
+  if (providers_it == providers_by_category_.end()) {
     return;
+  }
 
   ContentSuggestionsProvider* provider = providers_it->second;
   UnregisterCategory(category, provider);
@@ -196,6 +212,18 @@ void ContentSuggestionsService::RegisterProvider(
   providers_.push_back(std::move(provider));
 }
 
+void ContentSuggestionsService::Fetch(
+    const Category& category,
+    const std::set<std::string>& known_suggestion_ids,
+    const FetchDoneCallback& callback) {
+  auto providers_it = providers_by_category_.find(category);
+  if (providers_it == providers_by_category_.end()) {
+    return;
+  }
+
+  providers_it->second->Fetch(category, known_suggestion_ids, callback);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Private methods
 
@@ -212,8 +240,9 @@ void ContentSuggestionsService::OnNewSuggestions(
   } else if (IsCategoryDismissed(category)) {
     // The category has been registered as a dismissed one. We need to
     // check if the dismissal can be cleared now that we received new data.
-    if (suggestions.empty())
+    if (suggestions.empty()) {
       return;
+    }
 
     RestoreDismissedCategory(category);
     StoreDismissedCategoriesToPrefs();
@@ -229,8 +258,9 @@ void ContentSuggestionsService::OnNewSuggestions(
 
   suggestions_by_category_[category] = std::move(suggestions);
 
-  for (Observer& observer : observers_)
+  for (Observer& observer : observers_) {
     observer.OnNewSuggestions(category);
+  }
 }
 
 void ContentSuggestionsService::OnCategoryStatusChanged(
@@ -240,22 +270,38 @@ void ContentSuggestionsService::OnCategoryStatusChanged(
   if (new_status == CategoryStatus::NOT_PROVIDED) {
     UnregisterCategory(category, provider);
   } else {
-    if (!IsCategoryStatusAvailable(new_status))
+    if (!IsCategoryStatusAvailable(new_status)) {
       suggestions_by_category_.erase(category);
+    }
     TryRegisterProviderForCategory(provider, category);
     DCHECK_EQ(new_status, provider->GetCategoryStatus(category));
   }
 
-  if (!IsCategoryDismissed(category))
+  if (!IsCategoryDismissed(category)) {
     NotifyCategoryStatusChanged(category);
+  }
 }
 
 void ContentSuggestionsService::OnSuggestionInvalidated(
     ContentSuggestionsProvider* provider,
     const ContentSuggestion::ID& suggestion_id) {
   RemoveSuggestionByID(suggestion_id);
-  for (Observer& observer : observers_)
+  for (Observer& observer : observers_) {
     observer.OnSuggestionInvalidated(suggestion_id);
+  }
+}
+
+// SigninManagerBase::Observer implementation
+void ContentSuggestionsService::GoogleSigninSucceeded(
+    const std::string& account_id,
+    const std::string& username,
+    const std::string& password) {
+  OnSignInStateChanged();
+}
+
+void ContentSuggestionsService::GoogleSignedOut(const std::string& account_id,
+                                                const std::string& username) {
+  OnSignInStateChanged();
 }
 
 // history::HistoryServiceObserver implementation.
@@ -266,8 +312,9 @@ void ContentSuggestionsService::OnURLsDeleted(
     const history::URLRows& deleted_rows,
     const std::set<GURL>& favicon_urls) {
   // We don't care about expired entries.
-  if (expired)
+  if (expired) {
     return;
+  }
 
   // Redirect to ClearHistory().
   if (all_history) {
@@ -277,17 +324,20 @@ void ContentSuggestionsService::OnURLsDeleted(
         base::Bind([](const GURL& url) { return true; });
     ClearHistory(begin, end, filter);
   } else {
-    if (deleted_rows.empty())
+    if (deleted_rows.empty()) {
       return;
+    }
 
     base::Time begin = deleted_rows[0].last_visit();
     base::Time end = deleted_rows[0].last_visit();
     std::set<GURL> deleted_urls;
     for (const history::URLRow& row : deleted_rows) {
-      if (row.last_visit() < begin)
+      if (row.last_visit() < begin) {
         begin = row.last_visit();
-      if (row.last_visit() > end)
+      }
+      if (row.last_visit() > end) {
         end = row.last_visit();
+      }
       deleted_urls.insert(row.url());
     }
     base::Callback<bool(const GURL& url)> filter = base::Bind(
@@ -370,16 +420,31 @@ bool ContentSuggestionsService::RemoveSuggestionByID(
                    [&suggestion_id](const ContentSuggestion& suggestion) {
                      return suggestion_id == suggestion.id();
                    });
-  if (position == suggestions->end())
+  if (position == suggestions->end()) {
     return false;
+  }
   suggestions->erase(position);
 
   return true;
 }
 
 void ContentSuggestionsService::NotifyCategoryStatusChanged(Category category) {
-  for (Observer& observer : observers_)
+  for (Observer& observer : observers_) {
     observer.OnCategoryStatusChanged(category, GetCategoryStatus(category));
+  }
+}
+
+void ContentSuggestionsService::OnSignInStateChanged() {
+  // First notify the providers, so they can make the required changes.
+  for (const auto& provider : providers_) {
+    provider->OnSignInStateChanged();
+  }
+
+  // Finally notify the observers so they refresh only after the backend is
+  // ready.
+  for (Observer& observer : observers_) {
+    observer.OnFullRefreshRequired();
+  }
 }
 
 void ContentSuggestionsService::SortCategories() {
@@ -402,8 +467,9 @@ void ContentSuggestionsService::RestoreDismissedCategory(Category category) {
   ContentSuggestionsProvider* provider = dismissed_it->second;
   dismissed_providers_by_category_.erase(dismissed_it);
 
-  if (provider)
+  if (provider) {
     RegisterCategory(category, provider);
+  }
 }
 
 void ContentSuggestionsService::RestoreDismissedCategoriesFromPrefs() {

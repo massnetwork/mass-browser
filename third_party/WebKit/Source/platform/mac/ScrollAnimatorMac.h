@@ -27,13 +27,12 @@
 #define ScrollAnimatorMac_h
 
 #include "platform/Timer.h"
+#include "platform/WebTaskRunner.h"
 #include "platform/geometry/FloatPoint.h"
 #include "platform/geometry/FloatSize.h"
 #include "platform/geometry/IntRect.h"
 #include "platform/heap/Handle.h"
-#include "platform/scheduler/CancellableTaskFactory.h"
 #include "platform/scroll/ScrollAnimatorBase.h"
-#include "public/platform/WebTaskRunner.h"
 #include "wtf/RetainPtr.h"
 #include <memory>
 
@@ -82,10 +81,10 @@ class PLATFORM_EXPORT ScrollAnimatorMac : public ScrollAnimatorBase {
   RetainPtr<BlinkScrollbarPainterDelegate> m_verticalScrollbarPainterDelegate;
 
   void initialScrollbarPaintTask();
-  std::unique_ptr<CancellableTaskFactory> m_initialScrollbarPaintTaskFactory;
+  TaskHandle m_initialScrollbarPaintTaskHandle;
 
   void sendContentAreaScrolledTask();
-  std::unique_ptr<CancellableTaskFactory> m_sendContentAreaScrolledTaskFactory;
+  TaskHandle m_sendContentAreaScrolledTaskHandle;
   std::unique_ptr<WebTaskRunner> m_taskRunner;
   ScrollOffset m_contentAreaScrolledTimerScrollDelta;
 
@@ -116,8 +115,6 @@ class PLATFORM_EXPORT ScrollAnimatorMac : public ScrollAnimatorBase {
   void willRemoveVerticalScrollbar(Scrollbar&) override;
   void didAddHorizontalScrollbar(Scrollbar&) override;
   void willRemoveHorizontalScrollbar(Scrollbar&) override;
-
-  bool shouldScrollbarParticipateInHitTesting(Scrollbar&) override;
 
   void notifyContentAreaScrolled(const ScrollOffset& delta) override;
 

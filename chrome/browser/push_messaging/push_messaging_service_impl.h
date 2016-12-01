@@ -48,10 +48,6 @@ namespace instance_id {
 class InstanceIDDriver;
 }
 
-namespace user_prefs {
-class PrefRegistrySyncable;
-}
-
 class PushMessagingServiceImpl : public content::PushMessagingService,
                                  public gcm::GCMAppHandler,
                                  public content_settings::Observer,
@@ -66,6 +62,7 @@ class PushMessagingServiceImpl : public content::PushMessagingService,
 
   // gcm::GCMAppHandler implementation.
   void ShutdownHandler() override;
+  void OnStoreReset() override;
   void OnMessage(const std::string& app_id,
                  const gcm::IncomingMessage& message) override;
   void OnMessagesDeleted(const std::string& app_id) override;

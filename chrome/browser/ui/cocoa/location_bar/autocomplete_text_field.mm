@@ -196,6 +196,12 @@ const CGFloat kAnimationDuration = 0.2;
   [editor mouseDown:theEvent];
 }
 
+- (void)mouseUp:(NSEvent*)theEvent {
+  const NSRect bounds([self bounds]);
+  AutocompleteTextFieldCell* cell = [self cell];
+  [cell mouseUp:theEvent inRect:bounds ofView:self];
+}
+
 - (void)rightMouseDown:(NSEvent*)event {
   if (observer_)
     observer_->OnMouseDown([event buttonNumber]);
@@ -277,21 +283,6 @@ const CGFloat kAnimationDuration = 0.2;
   [self addToolTipRect:aRect owner:tooltip userData:nil];
 }
 
-- (void)setGrayTextAutocompletion:(NSString*)suggestText
-                        textColor:(NSColor*)suggestColor {
-  [self setNeedsDisplay:YES];
-  suggestText_.reset([suggestText retain]);
-  suggestColor_.reset([suggestColor retain]);
-}
-
-- (NSString*)suggestText {
-  return suggestText_;
-}
-
-- (NSColor*)suggestColor {
-  return suggestColor_;
-}
-
 - (NSPoint)bubblePointForDecoration:(LocationBarDecoration*)decoration {
   const NSRect frame =
       [[self cell] frameForDecoration:decoration inFrame:[self bounds]];
@@ -316,7 +307,7 @@ const CGFloat kAnimationDuration = 0.2;
 
   // Reload the decoration tooltips.
   [currentToolTips_ removeAllObjects];
-  [[self cell] updateToolTipsInRect:[self bounds] ofView:self];
+  [[self cell] updateMouseTrackingAndToolTipsInRect:[self bounds] ofView:self];
 }
 
 // NOTE(shess): http://crbug.com/19116 describes a weird bug which
@@ -487,16 +478,6 @@ const CGFloat kAnimationDuration = 0.2;
   return doResign;
 }
 
-- (void)drawRect:(NSRect)rect {
-  [super drawRect:rect];
-  autocomplete_text_field::DrawGrayTextAutocompletion(
-      [self attributedStringValue],
-      suggestText_,
-      suggestColor_,
-      self,
-      [[self cell] drawingRectForBounds:[self bounds]]);
-}
-
 // (URLDropTarget protocol)
 - (id<URLDropTargetController>)urlDropController {
   BrowserWindowController* windowController =
@@ -557,42 +538,3 @@ const CGFloat kAnimationDuration = 0.2;
 }
 
 @end
-
-namespace autocomplete_text_field {
-
-void DrawGrayTextAutocompletion(NSAttributedString* mainText,
-                                NSString* suggestText,
-                                NSColor* suggestColor,
-                                NSView* controlView,
-                                NSRect frame) {
-  if (![suggestText length])
-    return;
-
-  base::scoped_nsobject<NSTextFieldCell> cell(
-      [[NSTextFieldCell alloc] initTextCell:@""]);
-  [cell setBordered:NO];
-  [cell setDrawsBackground:NO];
-  [cell setEditable:NO];
-
-  base::scoped_nsobject<NSMutableAttributedString> combinedText(
-      [[NSMutableAttributedString alloc] initWithAttributedString:mainText]);
-  NSRange range = NSMakeRange([combinedText length], 0);
-  [combinedText replaceCharactersInRange:range withString:suggestText];
-  [combinedText addAttribute:NSForegroundColorAttributeName
-                       value:suggestColor
-                       range:NSMakeRange(range.location, [suggestText length])];
-  [cell setAttributedStringValue:combinedText];
-
-  CGFloat mainTextWidth = [mainText size].width;
-  CGFloat suggestWidth = NSWidth(frame) - mainTextWidth;
-  NSRect suggestRect = NSMakeRect(NSMinX(frame) + mainTextWidth,
-                                  NSMinY(frame),
-                                  suggestWidth,
-                                  NSHeight(frame));
-
-  gfx::ScopedNSGraphicsContextSaveGState saveGState;
-  NSRectClip(suggestRect);
-  [cell drawInteriorWithFrame:frame inView:controlView];
-}
-
-}  // namespace autocomplete_text_field

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "ui/views/mus/native_widget_mus.h"
 
 #include "base/callback.h"
 #include "base/macros.h"
@@ -25,6 +24,7 @@
 #include "ui/gfx/path.h"
 #include "ui/gfx/skia_util.h"
 #include "ui/views/controls/native/native_view_host.h"
+#include "ui/views/mus/native_widget_mus.h"
 #include "ui/views/mus/window_manager_connection.h"
 #include "ui/views/test/focus_manager_test.h"
 #include "ui/views/test/views_test_base.h"
@@ -103,23 +103,31 @@ class WidgetActivationObserver : public WidgetObserver {
   DISALLOW_COPY_AND_ASSIGN(WidgetActivationObserver);
 };
 
-// A WidgetDelegate that supplies an app icon.
+// A WidgetDelegate that supplies app and window icons.
 class TestWidgetDelegate : public WidgetDelegateView {
  public:
-  explicit TestWidgetDelegate(const SkBitmap& icon)
-      : app_icon_(gfx::ImageSkia::CreateFrom1xBitmap(icon)) {}
+  explicit TestWidgetDelegate(const SkBitmap& app_icon,
+                              const SkBitmap& window_icon)
+      : app_icon_(gfx::ImageSkia::CreateFrom1xBitmap(app_icon)),
+        window_icon_(gfx::ImageSkia::CreateFrom1xBitmap(window_icon)) {}
 
   ~TestWidgetDelegate() override {}
 
-  void SetIcon(const SkBitmap& icon) {
+  void SetAppIcon(const SkBitmap& icon) {
     app_icon_ = gfx::ImageSkia::CreateFrom1xBitmap(icon);
+  }
+
+  void SetWindowIcon(const SkBitmap& icon) {
+    window_icon_ = gfx::ImageSkia::CreateFrom1xBitmap(icon);
   }
 
   // views::WidgetDelegate:
   gfx::ImageSkia GetWindowAppIcon() override { return app_icon_; }
+  gfx::ImageSkia GetWindowIcon() override { return window_icon_; }
 
  private:
   gfx::ImageSkia app_icon_;
+  gfx::ImageSkia window_icon_;
 
   DISALLOW_COPY_AND_ASSIGN(TestWidgetDelegate);
 };
@@ -248,57 +256,67 @@ TEST_F(NativeWidgetMusTest, ShowNonActivatableWidget) {
   EXPECT_EQ(0u, activation_observer.changes().size());
 }
 
-// Tests that a window with an icon sets the ui::Window icon property.
-TEST_F(NativeWidgetMusTest, AppIcon) {
-  // Create a Widget with a bitmap as the icon.
-  SkBitmap source_bitmap = MakeBitmap(SK_ColorRED);
+// Tests that a window with app/window icons sets ui::Window icon properties.
+TEST_F(NativeWidgetMusTest, AppAndWindowIcons) {
+  // Create a Widget with app and window icons.
+  SkBitmap app_icon_input = MakeBitmap(SK_ColorRED);
+  SkBitmap window_icon_input = MakeBitmap(SK_ColorGREEN);
   std::unique_ptr<Widget> widget(
-      CreateWidget(new TestWidgetDelegate(source_bitmap)));
+      CreateWidget(new TestWidgetDelegate(app_icon_input, window_icon_input)));
 
-  // The ui::Window has the icon property.
+  // The ui::Window has the expected icon properties.
   ui::Window* window =
       static_cast<NativeWidgetMus*>(widget->native_widget_private())->window();
+  EXPECT_TRUE(
+      window->HasSharedProperty(ui::mojom::WindowManager::kAppIcon_Property));
   EXPECT_TRUE(window->HasSharedProperty(
-      ui::mojom::WindowManager::kWindowAppIcon_Property));
-
-  // The icon is the expected icon.
-  SkBitmap icon = window->GetSharedProperty<SkBitmap>(
-      ui::mojom::WindowManager::kWindowAppIcon_Property);
-  EXPECT_TRUE(gfx::BitmapsAreEqual(source_bitmap, icon));
+      ui::mojom::WindowManager::kWindowIcon_Property));
+  SkBitmap app_icon = window->GetSharedProperty<SkBitmap>(
+      ui::mojom::WindowManager::kAppIcon_Property);
+  EXPECT_TRUE(gfx::BitmapsAreEqual(app_icon_input, app_icon));
+  SkBitmap window_icon = window->GetSharedProperty<SkBitmap>(
+      ui::mojom::WindowManager::kWindowIcon_Property);
+  EXPECT_TRUE(gfx::BitmapsAreEqual(window_icon_input, window_icon));
 }
 
-// Tests that a window without an icon does not set the ui::Window icon
-// property.
-TEST_F(NativeWidgetMusTest, NoAppIcon) {
-  // Create a Widget without a special icon.
+// Tests that a window without icons does not set ui::Window icon properties.
+TEST_F(NativeWidgetMusTest, NoAppNorWindowIcon) {
+  // Create a Widget without app or window icons, by supplying a null delegate.
   std::unique_ptr<Widget> widget(CreateWidget(nullptr));
 
-  // The ui::Window does not have an icon property.
+  // The ui::Window does not have either icon property.
   ui::Window* window =
       static_cast<NativeWidgetMus*>(widget->native_widget_private())->window();
+  EXPECT_FALSE(
+      window->HasSharedProperty(ui::mojom::WindowManager::kAppIcon_Property));
   EXPECT_FALSE(window->HasSharedProperty(
-      ui::mojom::WindowManager::kWindowAppIcon_Property));
+      ui::mojom::WindowManager::kWindowIcon_Property));
 }
 
-// Tests that changing the icon on a Widget updates the ui::Window icon
-// property.
-TEST_F(NativeWidgetMusTest, ChangeAppIcon) {
-  // Create a Widget with an icon.
+// Tests that changing icons on a Widget updates ui::Window icon properties.
+TEST_F(NativeWidgetMusTest, ChangeAppAndWindowIcons) {
+  // Create a Widget with app and window icons.
   SkBitmap bitmap1 = MakeBitmap(SK_ColorRED);
-  TestWidgetDelegate* delegate = new TestWidgetDelegate(bitmap1);
+  TestWidgetDelegate* delegate = new TestWidgetDelegate(bitmap1, bitmap1);
   std::unique_ptr<Widget> widget(CreateWidget(delegate));
-
-  // Update the icon to a new image.
-  SkBitmap bitmap2 = MakeBitmap(SK_ColorGREEN);
-  delegate->SetIcon(bitmap2);
-  widget->UpdateWindowIcon();
-
-  // The window has the updated icon.
   ui::Window* window =
       static_cast<NativeWidgetMus*>(widget->native_widget_private())->window();
-  SkBitmap icon = window->GetSharedProperty<SkBitmap>(
-      ui::mojom::WindowManager::kWindowAppIcon_Property);
-  EXPECT_TRUE(gfx::BitmapsAreEqual(bitmap2, icon));
+
+  // Update the app icon image; verify the window has the updated icon.
+  SkBitmap bitmap2 = MakeBitmap(SK_ColorGREEN);
+  delegate->SetAppIcon(bitmap2);
+  widget->UpdateWindowIcon();
+  SkBitmap app_icon = window->GetSharedProperty<SkBitmap>(
+      ui::mojom::WindowManager::kAppIcon_Property);
+  EXPECT_TRUE(gfx::BitmapsAreEqual(bitmap2, app_icon));
+
+  // Update the window icon image; verify the window has the updated icon.
+  SkBitmap bitmap3 = MakeBitmap(SK_ColorBLUE);
+  delegate->SetWindowIcon(bitmap3);
+  widget->UpdateWindowIcon();
+  SkBitmap window_icon = window->GetSharedProperty<SkBitmap>(
+      ui::mojom::WindowManager::kWindowIcon_Property);
+  EXPECT_TRUE(gfx::BitmapsAreEqual(bitmap3, window_icon));
 }
 
 TEST_F(NativeWidgetMusTest, ValidLayerTree) {
@@ -607,6 +625,56 @@ TEST_F(NativeWidgetMusTest, IsMaximized) {
       ui::mojom::WindowManager::kShowState_Property,
       static_cast<uint32_t>(ui::mojom::ShowState::MAXIMIZED));
   EXPECT_TRUE(widget->IsMaximized());
+}
+
+// This test is to ensure that when initializing a widget with InitParams.parent
+// set to another widget's aura::Window, the ui::Window of the former widget is
+// added as a child to the ui::Window of the latter widget.
+TEST_F(NativeWidgetMusTest, InitNativeWidgetParentsUIWindow) {
+  ASSERT_TRUE(WindowManagerConnection::Exists());
+
+  ui::Window* parent_window = WindowManagerConnection::Get()->NewTopLevelWindow(
+      std::map<std::string, std::vector<uint8_t>>());
+  std::unique_ptr<Widget> parent_widget(new Widget());
+  Widget::InitParams parent_params =
+      CreateParams(Widget::InitParams::TYPE_WINDOW);
+  parent_params.name = "Parent Widget";
+  parent_params.ownership = Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
+  parent_params.shadow_type = Widget::InitParams::SHADOW_TYPE_NONE;
+  parent_params.opacity = Widget::InitParams::OPAQUE_WINDOW;
+  parent_params.parent = nullptr;
+  parent_params.bounds = initial_bounds();
+  parent_params.native_widget =
+      new NativeWidgetMus(parent_widget.get(), parent_window,
+                          ui::mojom::CompositorFrameSinkType::DEFAULT);
+  parent_widget->Init(parent_params);
+
+  std::unique_ptr<Widget> child_widget(new Widget());
+  ui::Window* child_window = parent_window->window_tree()->NewWindow();
+  Widget::InitParams child_params = CreateParams(Widget::InitParams::TYPE_MENU);
+  child_params.parent = parent_widget->GetNativeView();
+  child_params.ownership = views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
+  child_params.name = "Child Widget";
+  child_params.native_widget =
+      new NativeWidgetMus(child_widget.get(), child_window,
+                          ui::mojom::CompositorFrameSinkType::DEFAULT);
+  child_widget->Init(child_params);
+
+  EXPECT_EQ(child_window->parent(), parent_window);
+
+  std::unique_ptr<Widget> not_child_widget(new Widget());
+  ui::Window* not_child_window = parent_window->window_tree()->NewWindow();
+  Widget::InitParams not_child_params =
+      CreateParams(Widget::InitParams::TYPE_MENU);
+  not_child_params.ownership =
+      views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
+  not_child_params.name = "Not Child Widget";
+  not_child_params.native_widget =
+      new NativeWidgetMus(not_child_widget.get(), not_child_window,
+                          ui::mojom::CompositorFrameSinkType::DEFAULT);
+  not_child_widget->Init(not_child_params);
+
+  EXPECT_NE(not_child_window->parent(), parent_window);
 }
 
 }  // namespace views

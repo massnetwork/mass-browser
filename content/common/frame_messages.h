@@ -31,6 +31,7 @@
 #include "content/public/common/context_menu_params.h"
 #include "content/public/common/file_chooser_file_info.h"
 #include "content/public/common/file_chooser_params.h"
+#include "content/public/common/form_field_data.h"
 #include "content/public/common/frame_navigate_params.h"
 #include "content/public/common/javascript_message_type.h"
 #include "content/public/common/page_importance_signals.h"
@@ -41,6 +42,7 @@
 #include "content/public/common/transition_element.h"
 #include "ipc/ipc_message_macros.h"
 #include "ipc/ipc_platform_file.h"
+#include "ppapi/features/features.h"
 #include "third_party/WebKit/public/platform/WebFocusType.h"
 #include "third_party/WebKit/public/platform/WebInsecureRequestPolicy.h"
 #include "third_party/WebKit/public/web/WebFindOptions.h"
@@ -55,7 +57,7 @@
 #include "url/gurl.h"
 #include "url/origin.h"
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 #include "content/common/pepper_renderer_instance_data.h"
 #endif
 
@@ -212,8 +214,6 @@ IPC_STRUCT_TRAITS_BEGIN(content::FrameNavigateParams)
   IPC_STRUCT_TRAITS_MEMBER(transition)
   IPC_STRUCT_TRAITS_MEMBER(redirects)
   IPC_STRUCT_TRAITS_MEMBER(should_update_history)
-  IPC_STRUCT_TRAITS_MEMBER(searchable_form_url)
-  IPC_STRUCT_TRAITS_MEMBER(searchable_form_encoding)
   IPC_STRUCT_TRAITS_MEMBER(contents_mime_type)
   IPC_STRUCT_TRAITS_MEMBER(socket_address)
 IPC_STRUCT_TRAITS_END()
@@ -300,6 +300,12 @@ IPC_STRUCT_BEGIN_WITH_PARENT(FrameHostMsg_DidCommitProvisionalLoad_Params,
 
   // True if the navigation originated as an srcdoc attribute.
   IPC_STRUCT_MEMBER(bool, is_srcdoc)
+
+  // See WebSearchableFormData for a description of these.
+  // Not used by PlzNavigate: in that case these fields are sent to the browser
+  // in BeginNavigationParams.
+  IPC_STRUCT_MEMBER(GURL, searchable_form_url)
+  IPC_STRUCT_MEMBER(std::string, searchable_form_encoding)
 IPC_STRUCT_END()
 
 IPC_STRUCT_BEGIN(FrameMsg_PostMessage_Params)
@@ -350,6 +356,8 @@ IPC_STRUCT_TRAITS_BEGIN(content::BeginNavigationParams)
   IPC_STRUCT_TRAITS_MEMBER(has_user_gesture)
   IPC_STRUCT_TRAITS_MEMBER(skip_service_worker)
   IPC_STRUCT_TRAITS_MEMBER(request_context_type)
+  IPC_STRUCT_TRAITS_MEMBER(searchable_form_url)
+  IPC_STRUCT_TRAITS_MEMBER(searchable_form_encoding)
 IPC_STRUCT_TRAITS_END()
 
 IPC_STRUCT_TRAITS_BEGIN(content::StartNavigationParams)
@@ -369,7 +377,6 @@ IPC_STRUCT_TRAITS_BEGIN(content::RequestNavigationParams)
   IPC_STRUCT_TRAITS_MEMBER(redirects)
   IPC_STRUCT_TRAITS_MEMBER(redirect_response)
   IPC_STRUCT_TRAITS_MEMBER(can_load_local_resources)
-  IPC_STRUCT_TRAITS_MEMBER(request_time)
   IPC_STRUCT_TRAITS_MEMBER(page_state)
   IPC_STRUCT_TRAITS_MEMBER(nav_entry_id)
   IPC_STRUCT_TRAITS_MEMBER(is_same_document_history_load)
@@ -396,6 +403,7 @@ IPC_STRUCT_TRAITS_BEGIN(content::FrameReplicationState)
   IPC_STRUCT_TRAITS_MEMBER(sandbox_flags)
   IPC_STRUCT_TRAITS_MEMBER(name)
   IPC_STRUCT_TRAITS_MEMBER(unique_name)
+  IPC_STRUCT_TRAITS_MEMBER(feature_policy_header)
   IPC_STRUCT_TRAITS_MEMBER(accumulated_csp_headers)
   IPC_STRUCT_TRAITS_MEMBER(scope)
   IPC_STRUCT_TRAITS_MEMBER(insecure_request_policy)
@@ -515,6 +523,12 @@ IPC_STRUCT_TRAITS_BEGIN(content::ContentSecurityPolicyHeader)
   IPC_STRUCT_TRAITS_MEMBER(source)
 IPC_STRUCT_TRAITS_END()
 
+IPC_STRUCT_TRAITS_BEGIN(content::FormFieldData)
+  IPC_STRUCT_TRAITS_MEMBER(text)
+  IPC_STRUCT_TRAITS_MEMBER(placeholder)
+  IPC_STRUCT_TRAITS_MEMBER(text_input_type)
+IPC_STRUCT_TRAITS_END()
+
 IPC_STRUCT_TRAITS_BEGIN(content::FileChooserFileInfo)
   IPC_STRUCT_TRAITS_MEMBER(file_path)
   IPC_STRUCT_TRAITS_MEMBER(display_name)
@@ -563,7 +577,7 @@ IPC_STRUCT_BEGIN(FrameHostMsg_ShowPopup_Params)
 IPC_STRUCT_END()
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 IPC_STRUCT_TRAITS_BEGIN(content::PepperRendererInstanceData)
   IPC_STRUCT_TRAITS_MEMBER(render_process_id)
   IPC_STRUCT_TRAITS_MEMBER(render_frame_id)
@@ -719,6 +733,10 @@ IPC_MESSAGE_ROUTED0(FrameMsg_DeleteProxy)
 IPC_MESSAGE_ROUTED1(FrameMsg_TextSurroundingSelectionRequest,
                     uint32_t /* max_length */)
 
+// Requests information about currently focused text input element from the
+// renderer.
+IPC_MESSAGE_ROUTED1(FrameMsg_FocusedFormFieldDataRequest, int /* request_id */)
+
 // Tells the renderer to insert a link to the specified stylesheet. This is
 // needed to support navigation transitions.
 IPC_MESSAGE_ROUTED1(FrameMsg_AddStyleSheetByURL, std::string)
@@ -760,10 +778,6 @@ IPC_MESSAGE_ROUTED2(FrameMsg_DidUpdateOrigin,
 // Notifies this frame or proxy that it is now focused.  This is used to
 // support cross-process focused frame changes.
 IPC_MESSAGE_ROUTED0(FrameMsg_SetFocusedFrame)
-
-// Notifies this frame or proxy that it is no longer focused. This is used when
-// a frame in the embedder that the guest cannot see (<webview>) gains focus.
-IPC_MESSAGE_ROUTED0(FrameMsg_ClearFocusedFrame)
 
 // Sent to a frame proxy when its real frame is preparing to enter fullscreen
 // in another process.  Actually entering fullscreen will be done separately as
@@ -896,7 +910,7 @@ IPC_MESSAGE_ROUTED2(FrameMsg_SaveImageAt,
                     int /* x */,
                     int /* y */)
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // Notifies the renderer of updates to the Plugin Power Saver origin whitelist.
 IPC_MESSAGE_ROUTED1(FrameMsg_UpdatePluginContentOriginWhitelist,
                     std::set<url::Origin> /* origin_whitelist */)
@@ -906,7 +920,7 @@ IPC_MESSAGE_ROUTED1(FrameMsg_UpdatePluginContentOriginWhitelist,
 IPC_MESSAGE_ROUTED2(FrameMsg_SetPepperVolume,
                     int32_t /* pp_instance */,
                     double /* volume */)
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 // Used to instruct the RenderFrame to go into "view source" mode. This should
 // only be sent to the main frame.
@@ -928,7 +942,7 @@ IPC_MESSAGE_ROUTED1(FrameMsg_RunFileChooserResponse,
 
 // Blink and JavaScript error messages to log to the console
 // or debugger UI.
-IPC_MESSAGE_ROUTED4(FrameHostMsg_AddMessageToConsole,
+IPC_MESSAGE_ROUTED4(FrameHostMsg_DidAddMessageToConsole,
                     int32_t,        /* log level */
                     base::string16, /* msg */
                     int32_t,        /* line number */
@@ -995,6 +1009,10 @@ IPC_MESSAGE_ROUTED1(FrameHostMsg_UpdateState, content::PageState /* state */)
 IPC_MESSAGE_ROUTED2(FrameHostMsg_DidChangeName,
                     std::string /* name */,
                     std::string /* unique_name */)
+
+// Notifies the browser process that a non-empty Feature-Policy HTTP header was
+// delivered with the document being loaded into the frame.
+IPC_MESSAGE_ROUTED1(FrameHostMsg_DidSetFeaturePolicyHeader, std::string)
 
 // Notifies the browser process about a new Content Security Policy that needs
 // to be applies to the frame.  This message is sent when a frame commits
@@ -1117,7 +1135,7 @@ IPC_SYNC_MESSAGE_CONTROL3_1(FrameHostMsg_Are3DAPIsBlocked,
                             content::ThreeDAPIType /* requester */,
                             bool /* blocked */)
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // Notification sent from a renderer to the browser that a Pepper plugin
 // instance is created in the DOM.
 IPC_MESSAGE_ROUTED1(FrameHostMsg_PepperInstanceCreated,
@@ -1253,7 +1271,7 @@ IPC_MESSAGE_CONTROL3(FrameHostMsg_PluginInstanceThrottleStateChange,
                      int /* plugin_child_id */,
                      int32_t /* pp_instance */,
                      bool /* is_throttled */)
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 // Satisfies a Surface destruction dependency associated with |sequence|.
 IPC_MESSAGE_ROUTED1(FrameHostMsg_SatisfySequence,
@@ -1358,6 +1376,12 @@ IPC_MESSAGE_ROUTED3(FrameHostMsg_TextSurroundingSelectionResponse,
                     base::string16,  /* content */
                     uint32_t, /* startOffset */
                     uint32_t/* endOffset */)
+
+// Response for FrameMsg_FocusedFormFieldDataRequest. Sends info about the
+// currently focused form field.
+IPC_MESSAGE_ROUTED2(FrameHostMsg_FocusedFormFieldDataResponse,
+                    int, /* request_id */
+                    content::FormFieldData /* form field info */)
 
 // Register a new handler for URL requests with the given scheme.
 IPC_MESSAGE_ROUTED4(FrameHostMsg_RegisterProtocolHandler,

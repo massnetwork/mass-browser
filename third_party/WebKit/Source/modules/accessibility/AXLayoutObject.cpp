@@ -43,8 +43,10 @@
 #include "core/editing/iterators/TextIterator.h"
 #include "core/frame/FrameOwner.h"
 #include "core/frame/FrameView.h"
+#include "core/frame/ImageBitmap.h"
 #include "core/frame/LocalFrame.h"
 #include "core/frame/Settings.h"
+#include "core/html/HTMLCanvasElement.h"
 #include "core/html/HTMLFrameOwnerElement.h"
 #include "core/html/HTMLImageElement.h"
 #include "core/html/HTMLInputElement.h"
@@ -52,8 +54,11 @@
 #include "core/html/HTMLOptionElement.h"
 #include "core/html/HTMLSelectElement.h"
 #include "core/html/HTMLTextAreaElement.h"
+#include "core/html/HTMLVideoElement.h"
+#include "core/html/ImageData.h"
 #include "core/html/LabelsNodeList.h"
 #include "core/html/shadow/ShadowElementNames.h"
+#include "core/imagebitmap/ImageBitmapOptions.h"
 #include "core/layout/HitTestResult.h"
 #include "core/layout/LayoutFileUploadControl.h"
 #include "core/layout/LayoutHTMLCanvas.h"
@@ -62,6 +67,7 @@
 #include "core/layout/LayoutListMarker.h"
 #include "core/layout/LayoutMenuList.h"
 #include "core/layout/LayoutTextControl.h"
+#include "core/layout/LayoutTextFragment.h"
 #include "core/layout/LayoutView.h"
 #include "core/layout/api/LayoutAPIShim.h"
 #include "core/layout/api/LayoutViewItem.h"
@@ -120,6 +126,13 @@ static inline bool isInlineWithContinuation(LayoutObject* object) {
 static inline LayoutObject* firstChildConsideringContinuation(
     LayoutObject* layoutObject) {
   LayoutObject* firstChild = layoutObject->slowFirstChild();
+
+  // CSS first-letter pseudo element is handled as continuation. Returning it
+  // will result in duplicated elements.
+  if (firstChild && firstChild->isText() &&
+      toLayoutText(firstChild)->isTextFragment() &&
+      toLayoutTextFragment(firstChild)->firstLetterPseudoElement())
+    return nullptr;
 
   if (!firstChild && isInlineWithContinuation(layoutObject))
     firstChild = firstChildInContinuation(toLayoutInline(*layoutObject));
@@ -697,52 +710,8 @@ bool AXLayoutObject::computeAccessibilityIsIgnored(
     return true;
   }
 
-  // ignore images seemingly used as spacers
-  if (isImage()) {
-    // If the image can take focus, it should not be ignored, lest the user not
-    // be able to interact with something important.
-    if (canSetFocusAttribute())
-      return false;
-
-    if (node && node->isElementNode()) {
-      Element* elt = toElement(node);
-      const AtomicString& alt = elt->getAttribute(altAttr);
-      // don't ignore an image that has an alt tag
-      if (!alt.getString().containsOnlyWhitespace())
-        return false;
-      // informal standard is to ignore images with zero-length alt strings
-      if (!alt.isNull()) {
-        if (ignoredReasons)
-          ignoredReasons->append(IgnoredReason(AXEmptyAlt));
-        return true;
-      }
-    }
-
-    if (isNativeImage() && m_layoutObject->isImage()) {
-      // check for one-dimensional image
-      LayoutImage* image = toLayoutImage(m_layoutObject);
-      if (image->size().height() <= 1 || image->size().width() <= 1) {
-        if (ignoredReasons)
-          ignoredReasons->append(IgnoredReason(AXProbablyPresentational));
-        return true;
-      }
-
-      // Check whether laid out image was stretched from one-dimensional file
-      // image.
-      if (image->cachedImage()) {
-        LayoutSize imageSize = image->cachedImage()->imageSize(
-            LayoutObject::shouldRespectImageOrientation(m_layoutObject),
-            image->view()->zoomFactor());
-        if (imageSize.height() <= 1 || imageSize.width() <= 1) {
-          if (ignoredReasons)
-            ignoredReasons->append(IgnoredReason(AXProbablyPresentational));
-          return true;
-        }
-        return false;
-      }
-    }
+  if (isImage())
     return false;
-  }
 
   if (isCanvas()) {
     if (canvasHasFallbackContent())
@@ -776,9 +745,6 @@ bool AXLayoutObject::computeAccessibilityIsIgnored(
   // Don't ignore generic focusable elements like <div tabindex=0>
   // unless they're completely empty, with no children.
   if (isGenericFocusableElement() && node->hasChildren())
-    return false;
-
-  if (!ariaAccessibilityDescription().isEmpty())
     return false;
 
   if (isScrollableContainer())
@@ -899,6 +865,70 @@ float AXLayoutObject::fontSize() const {
     return AXNodeObject::fontSize();
 
   return style->computedFontSize();
+}
+
+String AXLayoutObject::imageDataUrl(const IntSize& maxSize) const {
+  Node* node = getNode();
+  if (!node)
+    return String();
+
+  ImageBitmapOptions options;
+  ImageBitmap* imageBitmap = nullptr;
+  Document* document = &node->document();
+  if (isHTMLImageElement(node)) {
+    imageBitmap = ImageBitmap::create(toHTMLImageElement(node),
+                                      Optional<IntRect>(), document, options);
+  } else if (isHTMLCanvasElement(node)) {
+    imageBitmap = ImageBitmap::create(toHTMLCanvasElement(node),
+                                      Optional<IntRect>(), options);
+  } else if (isHTMLVideoElement(node)) {
+    imageBitmap = ImageBitmap::create(toHTMLVideoElement(node),
+                                      Optional<IntRect>(), document, options);
+  }
+  if (!imageBitmap)
+    return String();
+
+  sk_sp<SkImage> image = imageBitmap->bitmapImage()->imageForCurrentFrame();
+  if (!image || image->width() <= 0 || image->height() <= 0)
+    return String();
+
+  // Determine the width and height of the output image, using a proportional
+  // scale factor such that it's no larger than |maxSize|, if |maxSize| is not
+  // empty. It only resizes the image to be smaller (if necessary), not
+  // larger.
+  float xScale = maxSize.width() ? maxSize.width() * 1.0 / image->width() : 1.0;
+  float yScale =
+      maxSize.height() ? maxSize.height() * 1.0 / image->height() : 1.0;
+  float scale = std::min(xScale, yScale);
+  if (scale >= 1.0)
+    scale = 1.0;
+  int width = std::round(image->width() * scale);
+  int height = std::round(image->height() * scale);
+
+  // Draw the scaled image into a bitmap in native format.
+  SkBitmap bitmap;
+  bitmap.allocPixels(SkImageInfo::MakeN32(width, height, kPremul_SkAlphaType));
+  SkCanvas canvas(bitmap);
+  canvas.clear(SK_ColorTRANSPARENT);
+  canvas.drawImageRect(image, SkRect::MakeIWH(width, height), nullptr);
+
+  // Copy the bits into a buffer in RGBA_8888 unpremultiplied format
+  // for encoding.
+  SkImageInfo info = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType,
+                                       kUnpremul_SkAlphaType);
+  size_t rowBytes = info.minRowBytes();
+  Vector<char> pixelStorage(info.getSafeSize(rowBytes));
+  SkPixmap pixmap(info, pixelStorage.data(), rowBytes);
+  if (!SkImage::MakeFromBitmap(bitmap)->readPixels(pixmap, 0, 0))
+    return String();
+
+  // Encode as a PNG and return as a data url.
+  String dataUrl =
+      ImageDataBuffer(
+          IntSize(width, height),
+          reinterpret_cast<const unsigned char*>(pixelStorage.data()))
+          .toDataURL("image/png", 1.0);
+  return dataUrl;
 }
 
 String AXLayoutObject::text() const {
@@ -1182,8 +1212,8 @@ String AXLayoutObject::textAlternative(bool recursive,
       nameFrom = AXNameFromContents;
       if (nameSources) {
         nameSources->append(NameSource(false));
-        nameSources->last().type = nameFrom;
-        nameSources->last().text = textAlternative;
+        nameSources->back().type = nameFrom;
+        nameSources->back().text = textAlternative;
       }
       return textAlternative;
     }
@@ -1793,8 +1823,8 @@ AXObject::AXRange AXLayoutObject::textControlSelection() const {
     return AXRange();
 
   VisibleSelection selection = layout->frame()->selection().selection();
-  HTMLTextFormControlElement* textControl =
-      toLayoutTextControl(layout)->textFormControlElement();
+  TextControlElement* textControl =
+      toLayoutTextControl(layout)->textControlElement();
   ASSERT(textControl);
   int start = textControl->selectionStart();
   int end = textControl->selectionEnd();
@@ -1806,8 +1836,8 @@ AXObject::AXRange AXLayoutObject::textControlSelection() const {
 int AXLayoutObject::indexForVisiblePosition(
     const VisiblePosition& position) const {
   if (getLayoutObject() && getLayoutObject()->isTextControl()) {
-    HTMLTextFormControlElement* textControl =
-        toLayoutTextControl(getLayoutObject())->textFormControlElement();
+    TextControlElement* textControl =
+        toLayoutTextControl(getLayoutObject())->textControlElement();
     return textControl->indexForVisiblePosition(position);
   }
 
@@ -1917,9 +1947,9 @@ void AXLayoutObject::setSelection(const AXRange& selection) {
   // The selection offsets are offsets into the accessible value.
   if (anchorObject == focusObject &&
       anchorObject->getLayoutObject()->isTextControl()) {
-    HTMLTextFormControlElement* textControl =
+    TextControlElement* textControl =
         toLayoutTextControl(anchorObject->getLayoutObject())
-            ->textFormControlElement();
+            ->textControlElement();
     if (selection.anchorOffset <= selection.focusOffset) {
       textControl->setSelectionRange(selection.anchorOffset,
                                      selection.focusOffset,
@@ -2077,7 +2107,7 @@ VisiblePosition AXLayoutObject::visiblePositionForIndex(int index) const {
 
   if (m_layoutObject->isTextControl())
     return toLayoutTextControl(m_layoutObject)
-        ->textFormControlElement()
+        ->textControlElement()
         ->visiblePositionForIndex(index);
 
   Node* node = m_layoutObject->node();
@@ -2350,7 +2380,7 @@ void AXLayoutObject::addHiddenChildren() {
       if (AXObject* childObject = axObjectCache().get(child.layoutObject())) {
         if (childObject->accessibilityIsIgnored()) {
           const auto& children = childObject->children();
-          childObject = children.size() ? children.last().get() : 0;
+          childObject = children.size() ? children.back().get() : 0;
         }
         if (childObject)
           insertionIndex = m_children.find(childObject) + 1;

@@ -37,7 +37,6 @@
 #include "ui/events/event_handler.h"
 
 class AccountId;
-class EasyUnlockService;
 
 namespace base {
 class DictionaryValue;
@@ -46,7 +45,6 @@ class ListValue;
 
 namespace chromeos {
 
-class CaptivePortalWindowProxy;
 class CoreOobeActor;
 class ErrorScreensHistogramHelper;
 class GaiaScreenHandler;
@@ -139,6 +137,9 @@ class SigninScreenHandlerDelegate {
   // --------------- Shared with login display methods.
   // Notify the delegate when the sign-in UI is finished loading.
   virtual void OnSigninScreenReady() = 0;
+
+  // Notify the delegate when the GAIA UI is finished loading.
+  virtual void OnGaiaScreenReady() = 0;
 
   // Shows Enterprise Enrollment screen.
   virtual void ShowEnterpriseEnrollmentScreen() = 0;
@@ -355,6 +356,7 @@ class SigninScreenHandler
   void HandleRemoveUser(const AccountId& account_id);
   void HandleShowAddUser(const base::ListValue* args);
   void HandleToggleEnrollmentScreen();
+  void HandleToggleEnrollmentAd();
   void HandleToggleEnableDebuggingScreen();
   void HandleToggleKioskEnableScreen();
   void HandleToggleResetScreen();
@@ -377,6 +379,7 @@ class SigninScreenHandler
   void HandleHardlockPod(const std::string& user_id);
   void HandleLaunchKioskApp(const AccountId& app_account_id,
                             bool diagnostic_mode);
+  void HandleLaunchArcKioskApp(const AccountId& app_account_id);
   void HandleGetPublicSessionKeyboardLayouts(const AccountId& account_id,
                                              const std::string& locale);
   void HandleGetTouchViewState();

@@ -120,7 +120,7 @@ void* ContiguousContainerBase::allocate(size_t objectSize,
   if (!bufferForAlloc) {
     size_t newBufferSize = m_buffers.isEmpty()
                                ? kDefaultInitialBufferSize * m_maxObjectSize
-                               : 2 * m_buffers.last()->capacity();
+                               : 2 * m_buffers.back()->capacity();
     bufferForAlloc =
         allocateNewBufferForNextAllocation(newBufferSize, typeName);
   }
@@ -131,8 +131,8 @@ void* ContiguousContainerBase::allocate(size_t objectSize,
 }
 
 void ContiguousContainerBase::removeLast() {
-  void* object = m_elements.last();
-  m_elements.removeLast();
+  void* object = m_elements.back();
+  m_elements.pop_back();
 
   Buffer* endBuffer = m_buffers[m_endIndex].get();
   endBuffer->deallocateLastObject(object);
@@ -141,7 +141,7 @@ void ContiguousContainerBase::removeLast() {
     if (m_endIndex > 0)
       m_endIndex--;
     if (m_endIndex + 2 < m_buffers.size())
-      m_buffers.removeLast();
+      m_buffers.pop_back();
   }
 }
 
@@ -160,8 +160,8 @@ void ContiguousContainerBase::swap(ContiguousContainerBase& other) {
 
 void ContiguousContainerBase::shrinkToFit() {
   while (m_endIndex < m_buffers.size() - 1) {
-    DCHECK(m_buffers.last()->isEmpty());
-    m_buffers.removeLast();
+    DCHECK(m_buffers.back()->isEmpty());
+    m_buffers.pop_back();
   }
 }
 
@@ -170,8 +170,7 @@ ContiguousContainerBase::allocateNewBufferForNextAllocation(
     size_t bufferSize,
     const char* typeName) {
   ASSERT(m_buffers.isEmpty() || m_endIndex == m_buffers.size() - 1);
-  std::unique_ptr<Buffer> newBuffer =
-      wrapUnique(new Buffer(bufferSize, typeName));
+  std::unique_ptr<Buffer> newBuffer = makeUnique<Buffer>(bufferSize, typeName);
   Buffer* bufferToReturn = newBuffer.get();
   m_buffers.append(std::move(newBuffer));
   m_endIndex = m_buffers.size() - 1;

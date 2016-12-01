@@ -73,12 +73,6 @@ class MostVisitedSitesSupervisor {
 };
 
 // Tracks the list of most visited sites and their thumbnails.
-//
-// Do not use, except from MostVisitedSitesBridge. The interface is in flux
-// while we are extracting the functionality of the Java class to make available
-// in C++.
-//
-// TODO(sfiera): finalize interface.
 class MostVisitedSites : public history::TopSitesObserver,
                          public MostVisitedSitesSupervisor::Observer {
  public:
@@ -88,8 +82,7 @@ class MostVisitedSites : public history::TopSitesObserver,
   class Observer {
    public:
     virtual void OnMostVisitedURLsAvailable(const NTPTilesVector& tiles) = 0;
-    // TODO(sfiera): make this method required after iOS implements it:
-    virtual void OnIconMadeAvailable(const GURL& site_url) {}
+    virtual void OnIconMadeAvailable(const GURL& site_url) = 0;
 
    protected:
     virtual ~Observer() {}
@@ -184,18 +177,6 @@ class MostVisitedSites : public history::TopSitesObserver,
 
   // The maximum number of most visited sites to return.
   int num_sites_;
-
-  // True if we are still waiting for an initial set of most visited sites (from
-  // either TopSites or the SuggestionsService).
-  bool waiting_for_most_visited_sites_;
-
-  // True if we are still waiting for the set of popular sites. Immediately set
-  // to false if popular sites are disabled, or are not required.
-  bool waiting_for_popular_sites_;
-
-  // True if we have recorded impression metrics. They are recorded once both
-  // the previous flags are false.
-  bool recorded_impressions_;
 
   std::unique_ptr<
       suggestions::SuggestionsService::ResponseCallbackList::Subscription>

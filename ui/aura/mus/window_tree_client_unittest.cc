@@ -8,7 +8,10 @@
 
 #include "base/logging.h"
 #include "base/macros.h"
+#include "base/strings/utf_string_conversions.h"
 #include "mojo/common/common_type_converters.h"
+#include "services/ui/public/cpp/property_type_converters.h"
+#include "services/ui/public/interfaces/window_manager.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/aura/client/aura_constants.h"
 #include "ui/aura/client/capture_client.h"
@@ -32,14 +35,17 @@
 #include "ui/events/event_utils.h"
 #include "ui/gfx/geometry/rect.h"
 
-DECLARE_WINDOW_PROPERTY_TYPE(uint8_t)
-
 namespace aura {
 
 namespace {
 
 DEFINE_WINDOW_PROPERTY_KEY(uint8_t, kTestPropertyKey1, 0);
-DEFINE_WINDOW_PROPERTY_KEY(uint8_t, kTestPropertyKey2, 0);
+DEFINE_WINDOW_PROPERTY_KEY(uint16_t, kTestPropertyKey2, 0);
+DEFINE_WINDOW_PROPERTY_KEY(bool, kTestPropertyKey3, false);
+
+const char kTestPropertyServerKey1[] = "test-property-server1";
+const char kTestPropertyServerKey2[] = "test-property-server2";
+const char kTestPropertyServerKey3[] = "test-property-server3";
 
 Id server_id(Window* window) {
   return WindowMus::Get(window)->server_id();
@@ -52,88 +58,24 @@ void SetWindowVisibility(Window* window, bool visible) {
     window->Hide();
 }
 
-Window* GetFirstRoot(WindowTreeClient* client) {
-  return client->GetRoots().empty() ? nullptr : *client->GetRoots().begin();
-}
-
 bool IsWindowHostVisible(Window* window) {
   return window->GetRootWindow()->GetHost()->compositor()->IsVisible();
 }
 
-const char kAlwaysOnTopServerKey[] = "always-on-top-server";
-const char kTestPropertyServerKey1[] = "test-property-server1";
-const char kTestPropertyServerKey2[] = "test-property-server2";
+// Register some test window properties for aura/mus conversion.
+void RegisterTestProperties(PropertyConverter* converter) {
+  converter->RegisterProperty(kTestPropertyKey1, kTestPropertyServerKey1);
+  converter->RegisterProperty(kTestPropertyKey2, kTestPropertyServerKey2);
+  converter->RegisterProperty(kTestPropertyKey3, kTestPropertyServerKey3);
+}
 
-class TestPropertyConverter : public PropertyConverter {
- public:
-  TestPropertyConverter() {}
-  ~TestPropertyConverter() override {}
-
-  // PropertyConverter:
-  bool ConvertPropertyForTransport(
-      Window* window,
-      const void* key,
-      std::string* server_property_name,
-      std::unique_ptr<std::vector<uint8_t>>* server_property_value) override {
-    if (key == client::kAlwaysOnTopKey) {
-      *server_property_name = kAlwaysOnTopServerKey;
-      *server_property_value = base::MakeUnique<std::vector<uint8_t>>(1);
-      (*server_property_value->get())[0] =
-          window->GetProperty(client::kAlwaysOnTopKey);
-      return true;
-    }
-    if (key == kTestPropertyKey1) {
-      *server_property_name = kTestPropertyServerKey1;
-      *server_property_value = base::MakeUnique<std::vector<uint8_t>>(1);
-      (*server_property_value->get())[0] =
-          window->GetProperty(kTestPropertyKey1);
-      return true;
-    }
-    if (key == kTestPropertyKey2) {
-      *server_property_name = kTestPropertyServerKey2;
-      *server_property_value = base::MakeUnique<std::vector<uint8_t>>(1);
-      (*server_property_value->get())[0] =
-          window->GetProperty(kTestPropertyKey2);
-      return true;
-    }
-    return false;
-  }
-
-  std::string GetTransportNameForPropertyKey(const void* key) override {
-    if (key == client::kAlwaysOnTopKey)
-      return kAlwaysOnTopServerKey;
-    if (key == kTestPropertyKey1)
-      return kTestPropertyServerKey1;
-    if (key == kTestPropertyKey2)
-      return kTestPropertyServerKey2;
-    return std::string();
-  }
-
-  void SetPropertyFromTransportValue(
-      Window* window,
-      const std::string& server_property_name,
-      const std::vector<uint8_t>* data) override {
-    if (server_property_name == kAlwaysOnTopServerKey) {
-      window->SetProperty(client::kAlwaysOnTopKey,
-                          static_cast<bool>((*data)[0]));
-    } else if (server_property_name == kTestPropertyServerKey1) {
-      window->SetProperty(kTestPropertyKey1, (*data)[0]);
-    } else if (server_property_name == kTestPropertyServerKey2) {
-      window->SetProperty(kTestPropertyKey2, (*data)[0]);
-    }
-  }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(TestPropertyConverter);
-};
+// Convert a primitive aura property value to a mus transport value.
+// Note that this implicitly casts arguments to the aura storage type, int64_t.
+std::vector<uint8_t> ConvertToPropertyTransportValue(int64_t value) {
+  return mojo::ConvertTo<std::vector<uint8_t>>(value);
+}
 
 }  // namespace
-
-mojo::Array<uint8_t> Uint8ToPropertyTransportValue(uint8_t value) {
-  mojo::Array<uint8_t> transport_value(1);
-  transport_value[0] = value;
-  return transport_value;
-}
 
 using WindowTreeClientWmTest = test::AuraMusWmTestBase;
 using WindowTreeClientClientTest = test::AuraMusClientTestBase;
@@ -161,7 +103,7 @@ TEST_F(WindowTreeClientWmTest, AddFromServerDoesntAddAgain) {
   data->window_id = child_window_id;
   data->bounds = gfx::Rect(1, 2, 3, 4);
   data->visible = false;
-  mojo::Array<ui::mojom::WindowDataPtr> data_array(1);
+  std::vector<ui::mojom::WindowDataPtr> data_array(1);
   data_array[0] = std::move(data);
   ASSERT_TRUE(root_window()->children().empty());
   window_tree_client()->OnWindowHierarchyChanged(
@@ -183,9 +125,9 @@ TEST_F(WindowTreeClientWmTest, ReparentFromServerDoesntAddAgain) {
 
   window_tree()->AckAllChanges();
   // Simulate moving |window1| to be a child of |window2| from the server.
-  window_tree_client()->OnWindowHierarchyChanged(server_id(&window1),
-                                                 server_id(root_window()),
-                                                 server_id(&window2), nullptr);
+  window_tree_client()->OnWindowHierarchyChanged(
+      server_id(&window1), server_id(root_window()), server_id(&window2),
+      std::vector<ui::mojom::WindowDataPtr>());
   ASSERT_FALSE(window_tree()->has_change());
   EXPECT_EQ(&window2, window1.parent());
   EXPECT_EQ(root_window(), window2.parent());
@@ -195,18 +137,21 @@ TEST_F(WindowTreeClientWmTest, ReparentFromServerDoesntAddAgain) {
 // Verifies properties passed in OnWindowHierarchyChanged() make there way to
 // the new window.
 TEST_F(WindowTreeClientWmTest, OnWindowHierarchyChangedWithProperties) {
-  SetPropertyConverter(base::MakeUnique<TestPropertyConverter>());
+  RegisterTestProperties(GetPropertyConverter());
   window_tree()->AckAllChanges();
   const Id child_window_id = server_id(root_window()) + 11;
   ui::mojom::WindowDataPtr data = ui::mojom::WindowData::New();
   const uint8_t server_test_property1_value = 91;
   data->properties[kTestPropertyServerKey1] =
-      Uint8ToPropertyTransportValue(server_test_property1_value);
+      ConvertToPropertyTransportValue(server_test_property1_value);
+  data->properties[ui::mojom::WindowManager::kWindowType_Property] =
+      mojo::ConvertTo<std::vector<uint8_t>>(
+          static_cast<int32_t>(ui::mojom::WindowType::BUBBLE));
   data->parent_id = server_id(root_window());
   data->window_id = child_window_id;
   data->bounds = gfx::Rect(1, 2, 3, 4);
   data->visible = false;
-  mojo::Array<ui::mojom::WindowDataPtr> data_array(1);
+  std::vector<ui::mojom::WindowDataPtr> data_array(1);
   data_array[0] = std::move(data);
   ASSERT_TRUE(root_window()->children().empty());
   window_tree_client()->OnWindowHierarchyChanged(
@@ -216,6 +161,9 @@ TEST_F(WindowTreeClientWmTest, OnWindowHierarchyChangedWithProperties) {
   Window* child = root_window()->children()[0];
   EXPECT_FALSE(child->TargetVisibility());
   EXPECT_EQ(server_test_property1_value, child->GetProperty(kTestPropertyKey1));
+  EXPECT_EQ(child->type(), ui::wm::WINDOW_TYPE_POPUP);
+  EXPECT_EQ(ui::mojom::WindowType::BUBBLE,
+            child->GetProperty(client::kWindowTypeKey));
 }
 
 // Verifies a move from the server doesn't attempt signal the server.
@@ -307,17 +255,34 @@ TEST_F(WindowTreeClientWmTest, TwoInFlightBoundsChangesBothCanceled) {
   EXPECT_EQ(original_bounds, root_window()->bounds());
 }
 
-// Verifies properties are reverted if the server replied that the change
-// failed.
-TEST_F(WindowTreeClientWmTest, SetPropertyFailed) {
-  SetPropertyConverter(base::MakeUnique<TestPropertyConverter>());
+// Verifies properties are set if the server replied that the change succeeded.
+TEST_F(WindowTreeClientWmTest, SetPropertySucceeded) {
   ASSERT_FALSE(root_window()->GetProperty(client::kAlwaysOnTopKey));
   root_window()->SetProperty(client::kAlwaysOnTopKey, true);
   EXPECT_TRUE(root_window()->GetProperty(client::kAlwaysOnTopKey));
-  mojo::Array<uint8_t> transport_value = window_tree()->GetLastPropertyValue();
-  ASSERT_FALSE(transport_value.is_null());
-  ASSERT_EQ(1u, transport_value.size());
-  EXPECT_EQ(1, transport_value[0]);
+  base::Optional<std::vector<uint8_t>> value =
+      window_tree()->GetLastPropertyValue();
+  ASSERT_TRUE(value.has_value());
+  // PropertyConverter uses int64_t values, even for smaller types, like bool.
+  ASSERT_EQ(8u, value->size());
+  EXPECT_EQ(1, mojo::ConvertTo<int64_t>(*value));
+  ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::PROPERTY, true));
+  EXPECT_TRUE(root_window()->GetProperty(client::kAlwaysOnTopKey));
+}
+
+// Verifies properties are reverted if the server replied that the change
+// failed.
+TEST_F(WindowTreeClientWmTest, SetPropertyFailed) {
+  ASSERT_FALSE(root_window()->GetProperty(client::kAlwaysOnTopKey));
+  root_window()->SetProperty(client::kAlwaysOnTopKey, true);
+  EXPECT_TRUE(root_window()->GetProperty(client::kAlwaysOnTopKey));
+  base::Optional<std::vector<uint8_t>> value =
+      window_tree()->GetLastPropertyValue();
+  ASSERT_TRUE(value.has_value());
+  // PropertyConverter uses int64_t values, even for smaller types, like bool.
+  ASSERT_EQ(8u, value->size());
+  EXPECT_EQ(1, mojo::ConvertTo<int64_t>(*value));
   ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
       WindowTreeChangeType::PROPERTY, false));
   EXPECT_FALSE(root_window()->GetProperty(client::kAlwaysOnTopKey));
@@ -326,7 +291,7 @@ TEST_F(WindowTreeClientWmTest, SetPropertyFailed) {
 // Simulates a property change, and while the property change is in flight the
 // server replies with a new property and the original property change fails.
 TEST_F(WindowTreeClientWmTest, SetPropertyFailedWithPendingChange) {
-  SetPropertyConverter(base::MakeUnique<TestPropertyConverter>());
+  RegisterTestProperties(GetPropertyConverter());
   const uint8_t value1 = 11;
   root_window()->SetProperty(kTestPropertyKey1, value1);
   EXPECT_EQ(value1, root_window()->GetProperty(kTestPropertyKey1));
@@ -335,7 +300,7 @@ TEST_F(WindowTreeClientWmTest, SetPropertyFailedWithPendingChange) {
   const uint8_t server_value = 12;
   window_tree_client()->OnWindowSharedPropertyChanged(
       server_id(root_window()), kTestPropertyServerKey1,
-      Uint8ToPropertyTransportValue(server_value));
+      ConvertToPropertyTransportValue(server_value));
 
   // This shouldn't trigger the property changing yet.
   EXPECT_EQ(value1, root_window()->GetProperty(kTestPropertyKey1));
@@ -349,8 +314,89 @@ TEST_F(WindowTreeClientWmTest, SetPropertyFailedWithPendingChange) {
   // Simulate server changing back to value1. Should take immediately.
   window_tree_client()->OnWindowSharedPropertyChanged(
       server_id(root_window()), kTestPropertyServerKey1,
-      Uint8ToPropertyTransportValue(value1));
+      ConvertToPropertyTransportValue(value1));
   EXPECT_EQ(value1, root_window()->GetProperty(kTestPropertyKey1));
+}
+
+// Verifies property setting behavior with failures for primitive properties.
+TEST_F(WindowTreeClientWmTest, SetPrimitiveProperties) {
+  PropertyConverter* property_converter = GetPropertyConverter();
+  RegisterTestProperties(property_converter);
+
+  const uint8_t value1_local = UINT8_MAX / 2;
+  const uint8_t value1_server = UINT8_MAX / 3;
+  root_window()->SetProperty(kTestPropertyKey1, value1_local);
+  EXPECT_EQ(value1_local, root_window()->GetProperty(kTestPropertyKey1));
+  window_tree_client()->OnWindowSharedPropertyChanged(
+      server_id(root_window()), kTestPropertyServerKey1,
+      ConvertToPropertyTransportValue(value1_server));
+  ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::PROPERTY, false));
+  EXPECT_EQ(value1_server, root_window()->GetProperty(kTestPropertyKey1));
+
+  const uint16_t value2_local = UINT16_MAX / 3;
+  const uint16_t value2_server = UINT16_MAX / 4;
+  root_window()->SetProperty(kTestPropertyKey2, value2_local);
+  EXPECT_EQ(value2_local, root_window()->GetProperty(kTestPropertyKey2));
+  window_tree_client()->OnWindowSharedPropertyChanged(
+      server_id(root_window()), kTestPropertyServerKey2,
+      ConvertToPropertyTransportValue(value2_server));
+  ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::PROPERTY, false));
+  EXPECT_EQ(value2_server, root_window()->GetProperty(kTestPropertyKey2));
+
+  EXPECT_FALSE(root_window()->GetProperty(kTestPropertyKey3));
+  root_window()->SetProperty(kTestPropertyKey3, true);
+  EXPECT_TRUE(root_window()->GetProperty(kTestPropertyKey3));
+  window_tree_client()->OnWindowSharedPropertyChanged(
+      server_id(root_window()), kTestPropertyServerKey3,
+      ConvertToPropertyTransportValue(false));
+  ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::PROPERTY, false));
+  EXPECT_FALSE(root_window()->GetProperty(kTestPropertyKey3));
+}
+
+// Verifies property setting behavior for a gfx::Rect* property.
+TEST_F(WindowTreeClientWmTest, SetRectProperty) {
+  gfx::Rect example(1, 2, 3, 4);
+  ASSERT_EQ(nullptr, root_window()->GetProperty(client::kRestoreBoundsKey));
+  root_window()->SetProperty(client::kRestoreBoundsKey, new gfx::Rect(example));
+  EXPECT_TRUE(root_window()->GetProperty(client::kRestoreBoundsKey));
+  base::Optional<std::vector<uint8_t>> value =
+      window_tree()->GetLastPropertyValue();
+  ASSERT_TRUE(value.has_value());
+  EXPECT_EQ(example, mojo::ConvertTo<gfx::Rect>(*value));
+  ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::PROPERTY, true));
+  EXPECT_EQ(example, *root_window()->GetProperty(client::kRestoreBoundsKey));
+
+  root_window()->SetProperty(client::kRestoreBoundsKey, new gfx::Rect());
+  EXPECT_EQ(gfx::Rect(),
+            *root_window()->GetProperty(client::kRestoreBoundsKey));
+  ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::PROPERTY, false));
+  EXPECT_EQ(example, *root_window()->GetProperty(client::kRestoreBoundsKey));
+}
+
+// Verifies property setting behavior for a std::string* property.
+TEST_F(WindowTreeClientWmTest, SetStringProperty) {
+  std::string example = "123";
+  ASSERT_EQ(nullptr, root_window()->GetProperty(client::kAppIdKey));
+  root_window()->SetProperty(client::kAppIdKey, new std::string(example));
+  EXPECT_TRUE(root_window()->GetProperty(client::kAppIdKey));
+  base::Optional<std::vector<uint8_t>> value =
+      window_tree()->GetLastPropertyValue();
+  ASSERT_TRUE(value.has_value());
+  EXPECT_EQ(example, mojo::ConvertTo<std::string>(*value));
+  ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::PROPERTY, true));
+  EXPECT_EQ(example, *root_window()->GetProperty(client::kAppIdKey));
+
+  root_window()->SetProperty(client::kAppIdKey, new std::string());
+  EXPECT_EQ(std::string(), *root_window()->GetProperty(client::kAppIdKey));
+  ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::PROPERTY, false));
+  EXPECT_EQ(example, *root_window()->GetProperty(client::kAppIdKey));
 }
 
 // Verifies visible is reverted if the server replied that the change failed.
@@ -390,22 +436,6 @@ TEST_F(WindowTreeClientWmTest, SetVisibleFailedWithPendingChange) {
                                                   original_visible);
   EXPECT_EQ(original_visible, root_window()->TargetVisibility());
 }
-
-/*
-// Verifies |is_modal| is reverted if the server replied that the change failed.
-TEST_F(WindowTreeClientWmTest, SetModalFailed) {
-  WindowTreeSetup setup;
-  Window* root = GetFirstRoot();
-  ASSERT_TRUE(root);
-  EXPECT_FALSE(root->is_modal());
-  root->SetModal();
-  uint32_t change_id;
-  ASSERT_TRUE(window_tree()->GetAndClearChangeId(&change_id));
-  EXPECT_TRUE(root->is_modal());
-  window_tree_client()->OnChangeCompleted(change_id, false);
-  EXPECT_FALSE(root->is_modal());
-}
-*/
 
 namespace {
 
@@ -743,7 +773,7 @@ TEST_F(WindowTreeClientClientTest, NewTopLevelWindowGetsPropertiesFromData) {
 }
 
 TEST_F(WindowTreeClientClientTest, NewWindowGetsAllChangesInFlight) {
-  SetPropertyConverter(base::MakeUnique<TestPropertyConverter>());
+  RegisterTestProperties(GetPropertyConverter());
 
   WindowTreeHostMus window_tree_host(window_tree_client_impl());
   Window* top_level = window_tree_host.window();
@@ -770,10 +800,10 @@ TEST_F(WindowTreeClientClientTest, NewWindowGetsAllChangesInFlight) {
   data->visible = true;
   const uint8_t server_test_property1_value = 3;
   data->properties[kTestPropertyServerKey1] =
-      Uint8ToPropertyTransportValue(server_test_property1_value);
+      ConvertToPropertyTransportValue(server_test_property1_value);
   const uint8_t server_test_property2_value = 4;
   data->properties[kTestPropertyServerKey2] =
-      Uint8ToPropertyTransportValue(server_test_property2_value);
+      ConvertToPropertyTransportValue(server_test_property2_value);
   const int64_t display_id = 1;
   // Get the id of the in flight change for creating the new top_level.
   uint32_t new_window_in_flight_change_id;
@@ -806,8 +836,7 @@ TEST_F(WindowTreeClientClientTest, NewWindowGetsAllChangesInFlight) {
   // But the bounds of the WindowTreeHost is display relative.
   EXPECT_EQ(bounds_from_server,
             top_level->GetRootWindow()->GetHost()->GetBounds());
-  ASSERT_TRUE(window_tree()->AckSingleChangeOfType(
-      WindowTreeChangeType::PROPERTY, false));
+  window_tree()->AckAllChangesOfType(WindowTreeChangeType::PROPERTY, false);
   EXPECT_EQ(server_test_property1_value,
             top_level->GetProperty(kTestPropertyKey1));
   EXPECT_EQ(server_test_property2_value,
@@ -815,20 +844,21 @@ TEST_F(WindowTreeClientClientTest, NewWindowGetsAllChangesInFlight) {
 }
 
 TEST_F(WindowTreeClientClientTest, NewWindowGetsProperties) {
-  SetPropertyConverter(base::MakeUnique<TestPropertyConverter>());
+  RegisterTestProperties(GetPropertyConverter());
   Window window(nullptr);
   const uint8_t explicitly_set_test_property1_value = 29;
   window.SetProperty(kTestPropertyKey1, explicitly_set_test_property1_value);
   window.Init(ui::LAYER_NOT_DRAWN);
-  mojo::Map<mojo::String, mojo::Array<uint8_t>> transport_properties =
-      window_tree()->GetLastNewWindowProperties();
-  ASSERT_FALSE(transport_properties.is_null());
+  base::Optional<std::unordered_map<std::string, std::vector<uint8_t>>>
+      transport_properties = window_tree()->GetLastNewWindowProperties();
+  ASSERT_TRUE(transport_properties.has_value());
   std::map<std::string, std::vector<uint8_t>> properties =
-      transport_properties.To<std::map<std::string, std::vector<uint8_t>>>();
+      mojo::UnorderedMapToMap(*transport_properties);
   ASSERT_EQ(1u, properties.count(kTestPropertyServerKey1));
-  ASSERT_EQ(1u, properties[kTestPropertyServerKey1].size());
-  EXPECT_EQ(explicitly_set_test_property1_value,
-            properties[kTestPropertyServerKey1][0]);
+  // PropertyConverter uses int64_t values, even for smaller types like uint8_t.
+  ASSERT_EQ(8u, properties[kTestPropertyServerKey1].size());
+  EXPECT_EQ(static_cast<int64_t>(explicitly_set_test_property1_value),
+            mojo::ConvertTo<int64_t>(properties[kTestPropertyServerKey1]));
   ASSERT_EQ(0u, properties.count(kTestPropertyServerKey2));
 }
 
@@ -867,6 +897,117 @@ TEST_F(WindowTreeClientClientTest, Transients) {
   EXPECT_EQ(server_id(&transient), window_tree()->transient_data().child_id);
 }
 
+// Verifies adding/removing a transient child doesn't notify the server of the
+// restack when the change originates from the server.
+TEST_F(WindowTreeClientClientTest,
+       TransientChildServerMutateDoesntNotifyOfRestack) {
+  Window* w1 = new Window(nullptr);
+  w1->Init(ui::LAYER_NOT_DRAWN);
+  root_window()->AddChild(w1);
+  Window* w2 = new Window(nullptr);
+  w2->Init(ui::LAYER_NOT_DRAWN);
+  root_window()->AddChild(w2);
+  Window* w3 = new Window(nullptr);
+  w3->Init(ui::LAYER_NOT_DRAWN);
+  root_window()->AddChild(w3);
+  // Three children of root: |w1|, |w2| and |w3| (in that order). Make |w1| a
+  // transient child of |w2|. Should trigger moving |w1| on top of |w2|, but not
+  // notify the server of the reorder.
+  window_tree()->AckAllChanges();
+  window_tree_client()->OnTransientWindowAdded(server_id(w2), server_id(w1));
+  EXPECT_EQ(w2, root_window()->children()[0]);
+  EXPECT_EQ(w1, root_window()->children()[1]);
+  EXPECT_EQ(w3, root_window()->children()[2]);
+  // No changes should be scheduled.
+  EXPECT_EQ(0u, window_tree()->number_of_changes());
+
+  // Make |w3| also a transient child of |w2|. Order shouldn't change.
+  window_tree_client()->OnTransientWindowAdded(server_id(w2), server_id(w3));
+  EXPECT_EQ(w2, root_window()->children()[0]);
+  EXPECT_EQ(w1, root_window()->children()[1]);
+  EXPECT_EQ(w3, root_window()->children()[2]);
+  EXPECT_EQ(0u, window_tree()->number_of_changes());
+
+  // Remove |w1| as a transient child, this should move |w3| on top of |w2|.
+  window_tree_client()->OnTransientWindowRemoved(server_id(w2), server_id(w1));
+  EXPECT_EQ(w2, root_window()->children()[0]);
+  EXPECT_EQ(w3, root_window()->children()[1]);
+  EXPECT_EQ(w1, root_window()->children()[2]);
+  EXPECT_EQ(0u, window_tree()->number_of_changes());
+}
+
+// Verifies adding/removing a transient child doesn't notify the server of the
+// restack when the change originates from the client.
+TEST_F(WindowTreeClientClientTest,
+       TransientChildClientMutateDoesntNotifyOfRestack) {
+  client::TransientWindowClient* transient_client =
+      client::GetTransientWindowClient();
+  Window* w1 = new Window(nullptr);
+  w1->Init(ui::LAYER_NOT_DRAWN);
+  root_window()->AddChild(w1);
+  Window* w2 = new Window(nullptr);
+  w2->Init(ui::LAYER_NOT_DRAWN);
+  root_window()->AddChild(w2);
+  Window* w3 = new Window(nullptr);
+  w3->Init(ui::LAYER_NOT_DRAWN);
+  root_window()->AddChild(w3);
+  // Three children of root: |w1|, |w2| and |w3| (in that order). Make |w1| a
+  // transient child of |w2|. Should trigger moving |w1| on top of |w2|, but not
+  // notify the server of the reorder.
+  window_tree()->AckAllChanges();
+  transient_client->AddTransientChild(w2, w1);
+  EXPECT_EQ(w2, root_window()->children()[0]);
+  EXPECT_EQ(w1, root_window()->children()[1]);
+  EXPECT_EQ(w3, root_window()->children()[2]);
+  // Only a single add transient change should be added.
+  EXPECT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::ADD_TRANSIENT, true));
+  EXPECT_EQ(0u, window_tree()->number_of_changes());
+
+  // Make |w3| also a transient child of |w2|. Order shouldn't change.
+  transient_client->AddTransientChild(w2, w3);
+  EXPECT_EQ(w2, root_window()->children()[0]);
+  EXPECT_EQ(w1, root_window()->children()[1]);
+  EXPECT_EQ(w3, root_window()->children()[2]);
+  EXPECT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::ADD_TRANSIENT, true));
+  EXPECT_EQ(0u, window_tree()->number_of_changes());
+
+  // Remove |w1| as a transient child, this should move |w3| on top of |w2|.
+  transient_client->RemoveTransientChild(w2, w1);
+  EXPECT_EQ(w2, root_window()->children()[0]);
+  EXPECT_EQ(w3, root_window()->children()[1]);
+  EXPECT_EQ(w1, root_window()->children()[2]);
+  EXPECT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::REMOVE_TRANSIENT, true));
+  EXPECT_EQ(0u, window_tree()->number_of_changes());
+
+  // Make |w1| the first child and ensure a REORDER was scheduled.
+  root_window()->StackChildAtBottom(w1);
+  EXPECT_EQ(w1, root_window()->children()[0]);
+  EXPECT_EQ(w2, root_window()->children()[1]);
+  EXPECT_EQ(w3, root_window()->children()[2]);
+  EXPECT_TRUE(window_tree()->AckSingleChangeOfType(
+      WindowTreeChangeType::REORDER, true));
+  EXPECT_EQ(0u, window_tree()->number_of_changes());
+
+  // Try stacking |w2| above |w3|. This should be disallowed as that would
+  // result in placing |w2| above its transient child.
+  root_window()->StackChildAbove(w2, w3);
+  EXPECT_EQ(w1, root_window()->children()[0]);
+  EXPECT_EQ(w2, root_window()->children()[1]);
+  EXPECT_EQ(w3, root_window()->children()[2]);
+  // NOTE: even though the order didn't change, internally the order was
+  // changed and then changed back. That is the StackChildAbove() call really
+  // succeeded, but then TransientWindowManager reordered the windows back to
+  // a valid configuration. We expect only one REORDER here as the second
+  // results from TransientWindowManager and we assume the server applied it as
+  // well.
+  EXPECT_EQ(1u, window_tree()->number_of_changes());
+  window_tree()->AckAllChangesOfType(WindowTreeChangeType::REORDER, true);
+  EXPECT_EQ(0u, window_tree()->number_of_changes());
+}
+
 TEST_F(WindowTreeClientClientTest,
        TopLevelWindowDestroyedBeforeCreateComplete) {
   const size_t initial_root_count =
@@ -893,6 +1034,37 @@ TEST_F(WindowTreeClientClientTest,
   window_tree_client()->OnTopLevelCreated(change_id, std::move(data),
                                           display_id, true);
   EXPECT_EQ(initial_root_count, window_tree_client_impl()->GetRoots().size());
+}
+
+TEST_F(WindowTreeClientClientTest, NewTopLevelWindowGetsProperties) {
+  RegisterTestProperties(GetPropertyConverter());
+  const uint8_t property_value = 11;
+  std::map<std::string, std::vector<uint8_t>> properties;
+  properties[kTestPropertyServerKey1] =
+      ConvertToPropertyTransportValue(property_value);
+  std::unique_ptr<WindowTreeHostMus> window_tree_host =
+      base::MakeUnique<WindowTreeHostMus>(window_tree_client_impl(),
+                                          &properties);
+  // Verify the property made it to the window.
+  EXPECT_EQ(property_value,
+            window_tree_host->window()->GetProperty(kTestPropertyKey1));
+
+  // Get the id of the in flight change for creating the new top level window.
+  uint32_t change_id;
+  ASSERT_TRUE(window_tree()->GetAndRemoveFirstChangeOfType(
+      WindowTreeChangeType::NEW_TOP_LEVEL, &change_id));
+
+  // Verify the property was sent to the server.
+  base::Optional<std::unordered_map<std::string, std::vector<uint8_t>>>
+      transport_properties = window_tree()->GetLastNewWindowProperties();
+  ASSERT_TRUE(transport_properties.has_value());
+  std::map<std::string, std::vector<uint8_t>> properties2 =
+      mojo::UnorderedMapToMap(*transport_properties);
+  ASSERT_EQ(1u, properties2.count(kTestPropertyServerKey1));
+  // PropertyConverter uses int64_t values, even for smaller types like uint8_t.
+  ASSERT_EQ(8u, properties2[kTestPropertyServerKey1].size());
+  EXPECT_EQ(static_cast<int64_t>(property_value),
+            mojo::ConvertTo<int64_t>(properties2[kTestPropertyServerKey1]));
 }
 
 // Tests both SetCapture and ReleaseCapture, to ensure that Window is properly
@@ -1117,6 +1289,56 @@ TEST_F(WindowTreeClientClientTest, ModalSuccess) {
   // There should be no more modal changes.
   EXPECT_FALSE(
       window_tree()->AckSingleChangeOfType(WindowTreeChangeType::MODAL, false));
+}
+
+// Verifies OnWindowHierarchyChanged() deals correctly with identifying existing
+// windows.
+TEST_F(WindowTreeClientWmTest, OnWindowHierarchyChangedWithExistingWindow) {
+  Window* window1 = new Window(nullptr);
+  window1->Init(ui::LAYER_NOT_DRAWN);
+  Window* window2 = new Window(nullptr);
+  window2->Init(ui::LAYER_NOT_DRAWN);
+  window_tree()->AckAllChanges();
+  const Id server_window_id = server_id(root_window()) + 11;
+  ui::mojom::WindowDataPtr data1 = ui::mojom::WindowData::New();
+  ui::mojom::WindowDataPtr data2 = ui::mojom::WindowData::New();
+  ui::mojom::WindowDataPtr data3 = ui::mojom::WindowData::New();
+  data1->parent_id = server_id(root_window());
+  data1->window_id = server_window_id;
+  data1->bounds = gfx::Rect(1, 2, 3, 4);
+  data2->parent_id = server_window_id;
+  data2->window_id = WindowMus::Get(window1)->server_id();
+  data2->bounds = gfx::Rect(1, 2, 3, 4);
+  data3->parent_id = server_window_id;
+  data3->window_id = WindowMus::Get(window2)->server_id();
+  data3->bounds = gfx::Rect(1, 2, 3, 4);
+  std::vector<ui::mojom::WindowDataPtr> data_array(3);
+  data_array[0] = std::move(data1);
+  data_array[1] = std::move(data2);
+  data_array[2] = std::move(data3);
+  window_tree_client()->OnWindowHierarchyChanged(
+      server_window_id, 0, server_id(root_window()), std::move(data_array));
+  ASSERT_FALSE(window_tree()->has_change());
+  ASSERT_EQ(1u, root_window()->children().size());
+  Window* server_window = root_window()->children()[0];
+  EXPECT_EQ(window1->parent(), server_window);
+  EXPECT_EQ(window2->parent(), server_window);
+  ASSERT_EQ(2u, server_window->children().size());
+  EXPECT_EQ(window1, server_window->children()[0]);
+  EXPECT_EQ(window2, server_window->children()[1]);
+}
+
+// Ensures when WindowTreeClient::OnWindowDeleted() is called nothing is
+// scheduled on the server side.
+TEST_F(WindowTreeClientClientTest, OnWindowDeletedDoesntNotifyServer) {
+  Window window1(nullptr);
+  window1.Init(ui::LAYER_NOT_DRAWN);
+  Window* window2 = new Window(nullptr);
+  window2->Init(ui::LAYER_NOT_DRAWN);
+  window1.AddChild(window2);
+  window_tree()->AckAllChanges();
+  window_tree_client()->OnWindowDeleted(server_id(window2));
+  EXPECT_FALSE(window_tree()->has_change());
 }
 
 }  // namespace aura

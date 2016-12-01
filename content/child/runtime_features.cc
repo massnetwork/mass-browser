@@ -41,6 +41,7 @@ static void SetRuntimeFeatureDefaultsForPlatform() {
   WebRuntimeFeatures::enableNotificationConstructor(false);
   // Android does not yet support switching of audio output devices
   WebRuntimeFeatures::enableAudioOutputDevices(false);
+  WebRuntimeFeatures::enableAutoplayMutedVideos(true);
 #else
   WebRuntimeFeatures::enableNavigatorContentUtils(true);
 #endif  // defined(OS_ANDROID)
@@ -88,6 +89,9 @@ void SetRuntimeFeaturesDefaultsAndUpdateFromArgs(
     // Chrome's Push Messaging implementation relies on Web Notifications.
     WebRuntimeFeatures::enablePushMessaging(false);
   }
+
+  if (!base::FeatureList::IsEnabled(features::kNotificationContentImage))
+    WebRuntimeFeatures::enableNotificationContentImage(false);
 
   // For the time being, enable wasm serialization when wasm is enabled,
   // since the whole wasm space is experimental. We have the flexibility
@@ -248,6 +252,9 @@ void SetRuntimeFeaturesDefaultsAndUpdateFromArgs(
   if (base::FeatureList::IsEnabled(features::kDocumentWriteEvaluator))
     WebRuntimeFeatures::enableDocumentWriteEvaluator(true);
 
+  if (base::FeatureList::IsEnabled(features::kLazyParseCSS))
+    WebRuntimeFeatures::enableLazyParseCSS(true);
+
   WebRuntimeFeatures::enableMediaDocumentDownloadButton(
       base::FeatureList::IsEnabled(features::kMediaDocumentDownloadButton));
 
@@ -257,8 +264,8 @@ void SetRuntimeFeaturesDefaultsAndUpdateFromArgs(
   if (base::FeatureList::IsEnabled(features::kPointerEventV1SpecCapturing))
     WebRuntimeFeatures::enablePointerEventV1SpecCapturing(true);
 
-  if (base::FeatureList::IsEnabled(features::kPassiveDocumentEventListeners))
-    WebRuntimeFeatures::enablePassiveDocumentEventListeners(true);
+  WebRuntimeFeatures::enablePassiveDocumentEventListeners(
+      base::FeatureList::IsEnabled(features::kPassiveDocumentEventListeners));
 
   if (base::FeatureList::IsEnabled(features::kPassiveEventListenersDueToFling))
     WebRuntimeFeatures::enablePassiveEventListenersDueToFling(true);
@@ -306,12 +313,22 @@ void SetRuntimeFeaturesDefaultsAndUpdateFromArgs(
   if (base::FeatureList::IsEnabled(features::kGamepadExtensions))
     WebRuntimeFeatures::enableGamepadExtensions(true);
 
+  if (!base::FeatureList::IsEnabled(features::kCompositeOpaqueFixedPosition))
+    WebRuntimeFeatures::enableFeatureFromString("CompositeOpaqueFixedPosition",
+        false);
+
   if (!base::FeatureList::IsEnabled(features::kCompositeOpaqueScrollers))
     WebRuntimeFeatures::enableFeatureFromString("CompositeOpaqueScrollers",
         false);
 
   if (base::FeatureList::IsEnabled(features::kGenericSensor))
     WebRuntimeFeatures::enableGenericSensor(true);
+
+  // Enable features which VrShell depends on.
+  if (base::FeatureList::IsEnabled(features::kVrShell)) {
+    WebRuntimeFeatures::enableGamepadExtensions(true);
+    WebRuntimeFeatures::enableWebVR(true);
+  }
 
   // Enable explicitly enabled features, and then disable explicitly disabled
   // ones.

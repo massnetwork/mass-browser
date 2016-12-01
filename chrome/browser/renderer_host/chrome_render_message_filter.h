@@ -12,6 +12,8 @@
 #include "base/macros.h"
 #include "base/sequenced_task_runner_helpers.h"
 #include "content/public/browser/browser_message_filter.h"
+#include "extensions/features/features.h"
+#include "ppapi/features/features.h"
 
 class GURL;
 class Profile;
@@ -34,10 +36,6 @@ class CookieSettings;
 
 namespace network_hints {
 struct LookupRequest;
-}
-
-namespace extensions {
-class InfoMap;
 }
 
 // This class filters out incoming Chrome-specific IPC messages for the renderer
@@ -84,7 +82,7 @@ class ChromeRenderMessageFilter : public content::BrowserMessageFilter {
                                      const GURL& origin_url,
                                      const GURL& top_origin_url,
                                      IPC::Message* message);
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   static void FileSystemAccessedSyncOnUIThread(
       int render_process_id,
       int render_frame_id,
@@ -105,7 +103,7 @@ class ChromeRenderMessageFilter : public content::BrowserMessageFilter {
                                  const GURL& origin_url,
                                  const GURL& top_origin_url,
                                  base::Callback<void(bool)> callback);
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   static void FileSystemAccessedOnUIThread(int render_process_id,
                                            int render_frame_id,
                                            const GURL& url,
@@ -122,7 +120,7 @@ class ChromeRenderMessageFilter : public content::BrowserMessageFilter {
                         const GURL& top_origin_url,
                         const base::string16& name,
                         bool* allowed);
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   void OnIsCrashReportingEnabled(bool* enabled);
 #endif
 

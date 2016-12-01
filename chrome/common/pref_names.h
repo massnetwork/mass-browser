@@ -11,6 +11,9 @@
 
 #include "build/build_config.h"
 #include "chrome/common/features.h"
+#include "extensions/features/features.h"
+#include "media/media_features.h"
+#include "ppapi/features/features.h"
 
 namespace prefs {
 
@@ -19,6 +22,8 @@ namespace prefs {
 extern const char kArcApps[];
 extern const char kArcBackupRestoreEnabled[];
 extern const char kArcEnabled[];
+extern const char kArcPolicyCompliant[];
+extern const char kArcTermsAccepted[];
 extern const char kArcLocationServiceEnabled[];
 extern const char kArcPackages[];
 extern const char kArcSetNotificationsEnabledDeferred[];
@@ -304,6 +309,8 @@ extern const char kQuickUnlockPinSecret[];
 extern const char kEolStatus[];
 extern const char kEolNotificationDismissed[];
 extern const char kQuickUnlockFeatureNotificationShown[];
+extern const char kQuickUnlockModeWhitelist[];
+extern const char kQuickUnlockTimeout[];
 #endif  // defined(OS_CHROMEOS)
 extern const char kShowHomeButton[];
 extern const char kSpeechRecognitionFilterProfanities[];
@@ -334,7 +341,7 @@ extern const char kPluginsDisabledPlugins[];
 extern const char kPluginsDisabledPluginsExceptions[];
 extern const char kPluginsEnabledPlugins[];
 extern const char kPluginsAlwaysOpenPdfExternally[];
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 extern const char kPluginsShowDetails[];
 #endif
 extern const char kPluginsAllowOutdated[];
@@ -353,7 +360,7 @@ extern const char kShowUpdatePromotionInfoBar[];
 extern const char kUseCustomChromeFrame[];
 #endif
 extern const char kBackShortcutBubbleShownCount[];
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 extern const char kContentSettingsPluginWhitelist[];
 #endif
 extern const char kPartitionDefaultZoomLevel[];
@@ -430,17 +437,21 @@ extern const char kEasyUnlockEnabled[];
 extern const char kEasyUnlockPairing[];
 extern const char kEasyUnlockProximityRequired[];
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 extern const char kToolbarIconSurfacingBubbleAcknowledged[];
 extern const char kToolbarIconSurfacingBubbleLastShowTime[];
 extern const char kToolbarMigratedComponentActionStatus[];
 #endif
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 extern const char kWebRTCMultipleRoutesEnabled[];
 extern const char kWebRTCNonProxiedUdpEnabled[];
 extern const char kWebRTCIPHandlingPolicy[];
 extern const char kWebRTCUDPPortRange[];
+#endif
+
+#if !defined(OS_ANDROID)
+extern const char kHasSeenWelcomePage[];
 #endif
 
 extern const char kGLVendorString[];
@@ -652,6 +663,7 @@ extern const char kLogoutStartedLast[];
 extern const char kConsumerManagementStage[];
 extern const char kIsBootstrappingSlave[];
 extern const char kReportArcStatusEnabled[];
+extern const char kNetworkThrottlingEnabled[];
 #endif  // defined(OS_CHROMEOS)
 
 extern const char kClearPluginLSODataEnabled[];
@@ -768,6 +780,7 @@ extern const char kAppListAppLaunchCount[];
 extern const char kAppLauncherHasBeenEnabled[];
 extern const char kAppListEnableMethod[];
 extern const char kAppListEnableTime[];
+extern const char kAppListLocalState[];
 #if defined(OS_MACOSX)
 extern const char kAppLauncherShortcutVersion[];
 #endif
@@ -812,7 +825,7 @@ extern const char kRegisteredSupervisedUserWhitelists[];
 extern const char kRestartInBackground[];
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 extern const char kAnimationPolicy[];
 #endif
 
@@ -835,6 +848,12 @@ extern const char kOriginTrialPublicKey[];
 extern const char kOriginTrialDisabledFeatures[];
 
 extern const char kComponentUpdatesEnabled[];
+
+#if defined(OS_ANDROID)
+extern const char kSearchGeolocationDisclosureDismissed[];
+extern const char kSearchGeolocationDisclosureShownCount[];
+extern const char kSearchGeolocationDisclosureLastShowDate[];
+#endif
 
 }  // namespace prefs
 

@@ -73,7 +73,7 @@
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/common/feature_switch.h"
-#include "ui/accessibility/ax_view_state.h"
+#include "ui/accessibility/ax_node_data.h"
 #include "ui/base/dragdrop/drag_drop_types.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/theme_provider.h"
@@ -129,7 +129,6 @@ LocationBarView::LocationBarView(Browser* browser,
       location_icon_view_(nullptr),
       ime_inline_autocomplete_view_(nullptr),
       selected_keyword_view_(nullptr),
-      suggested_text_view_(nullptr),
       keyword_hint_view_(nullptr),
       zoom_view_(nullptr),
       open_pdf_in_reader_view_(nullptr),
@@ -268,14 +267,6 @@ void LocationBarView::Init() {
   selected_keyword_view_ = new SelectedKeywordView(font_list, profile());
   AddChildView(selected_keyword_view_);
 
-  suggested_text_view_ = new views::Label(base::string16(), font_list);
-  suggested_text_view_->SetHorizontalAlignment(gfx::ALIGN_LEFT);
-  suggested_text_view_->SetAutoColorReadabilityEnabled(false);
-  suggested_text_view_->SetEnabledColor(
-      GetColor(LocationBarView::DEEMPHASIZED_TEXT));
-  suggested_text_view_->SetVisible(false);
-  AddChildView(suggested_text_view_);
-
   gfx::FontList bubble_font_list =
       font_list.DeriveWithHeightUpperBound(bubble_height);
   keyword_hint_view_ = new KeywordHintView(
@@ -355,19 +346,17 @@ SkColor LocationBarView::GetColor(
 }
 
 SkColor LocationBarView::GetSecureTextColor(
-    security_state::SecurityStateModel::SecurityLevel security_level) const {
-  if (security_level ==
-      security_state::SecurityStateModel::SECURE_WITH_POLICY_INSTALLED_CERT) {
+    security_state::SecurityLevel security_level) const {
+  if (security_level == security_state::SECURE_WITH_POLICY_INSTALLED_CERT) {
     return GetColor(DEEMPHASIZED_TEXT);
   }
 
   SkColor text_color = GetColor(TEXT);
   if (!color_utils::IsDark(GetColor(BACKGROUND))) {
-    if ((security_level == security_state::SecurityStateModel::EV_SECURE) ||
-        (security_level == security_state::SecurityStateModel::SECURE)) {
+    if ((security_level == security_state::EV_SECURE) ||
+        (security_level == security_state::SECURE)) {
       text_color = gfx::kGoogleGreen700;
-    } else if (security_level ==
-               security_state::SecurityStateModel::DANGEROUS) {
+    } else if (security_level == security_state::DANGEROUS) {
       text_color = gfx::kGoogleRed700;
     }
   }
@@ -434,20 +423,6 @@ void LocationBarView::SetImeInlineAutocompletion(const base::string16& text) {
   ime_inline_autocomplete_view_->SetVisible(!text.empty());
 }
 
-void LocationBarView::SetGrayTextAutocompletion(const base::string16& text) {
-  if (suggested_text_view_->text() != text) {
-    suggested_text_view_->SetText(text);
-    suggested_text_view_->SetVisible(!text.empty());
-    Layout();
-    SchedulePaint();
-  }
-}
-
-base::string16 LocationBarView::GetGrayTextAutocompletion() const {
-  return HasValidSuggestText() ?
-      suggested_text_view_->text() : base::string16();
-}
-
 void LocationBarView::SetShowFocusRect(bool show) {
   show_focus_rect_ = show;
   SchedulePaint();
@@ -503,8 +478,8 @@ bool LocationBarView::HasFocus() const {
   return omnibox_view_->model()->has_focus();
 }
 
-void LocationBarView::GetAccessibleState(ui::AXViewState* state) {
-  state->role = ui::AX_ROLE_GROUP;
+void LocationBarView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
+  node_data->role = ui::AX_ROLE_GROUP;
 }
 
 gfx::Size LocationBarView::GetPreferredSize() const {
@@ -677,64 +652,6 @@ void LocationBarView::Layout() {
   leading_decorations.LayoutPass3(&location_bounds, &available_width);
   trailing_decorations.LayoutPass3(&location_bounds, &available_width);
 
-  // Lay out the suggested text view right-aligned to the location entry. Only
-  // show the suggested text if we can fit the text from one character before
-  // the end of the selection to the end of the text and the suggested text. If
-  // we can't it means either the suggested text is too big, or the user has
-  // scrolled.
-
-  // TODO(sky): We could potentially adjust this to take into account suggested
-  // text to force using minimum size if necessary, but currently the chance of
-  // showing keyword hints and suggested text is minimal and we're not confident
-  // this is the right approach for suggested text.
-
-  int omnibox_view_margin = 0;
-  if (suggested_text_view_->visible()) {
-    // We do not display the suggested text when it contains a mix of RTL and
-    // LTR characters since this could mean the suggestion should be displayed
-    // in the middle of the string.
-    base::i18n::TextDirection text_direction =
-        base::i18n::GetStringDirection(omnibox_view_->GetText());
-    if (text_direction !=
-        base::i18n::GetStringDirection(suggested_text_view_->text()))
-      text_direction = base::i18n::UNKNOWN_DIRECTION;
-
-    // TODO(sky): need to layout when the user changes caret position.
-    gfx::Size suggested_text_size(suggested_text_view_->GetPreferredSize());
-    if (suggested_text_size.width() > available_width ||
-        text_direction == base::i18n::UNKNOWN_DIRECTION) {
-      // Hide the suggested text if the user has scrolled or we can't fit all
-      // the suggested text, or we have a mix of RTL and LTR characters.
-      suggested_text_view_->SetBounds(0, 0, 0, 0);
-    } else {
-      location_needed_width =
-          std::min(location_needed_width,
-                   location_bounds.width() - suggested_text_size.width());
-      gfx::Rect suggested_text_bounds(location_bounds.x(), location_bounds.y(),
-                                      suggested_text_size.width(),
-                                      location_bounds.height());
-      // TODO(sky): figure out why this needs the -1.
-      suggested_text_bounds.Offset(location_needed_width - 1, 0);
-
-      // We reverse the order of the location entry and suggested text if:
-      // - Chrome is RTL but the text is fully LTR, or
-      // - Chrome is LTR but the text is fully RTL.
-      // This ensures the suggested text is correctly displayed to the right
-      // (or left) of the user text.
-      if (text_direction == (base::i18n::IsRTL() ?
-          base::i18n::LEFT_TO_RIGHT : base::i18n::RIGHT_TO_LEFT)) {
-        // TODO(sky): Figure out why we need the +1.
-        suggested_text_bounds.set_x(location_bounds.x() + 1);
-        // Use a margin to prevent omnibox text from overlapping suggest text.
-        omnibox_view_margin = suggested_text_bounds.width();
-      }
-      suggested_text_view_->SetBoundsRect(suggested_text_bounds);
-    }
-  }
-
-  omnibox_view_->SetBorder(
-      views::Border::CreateEmptyBorder(0, 0, 0, omnibox_view_margin));
-
   // Layout |ime_inline_autocomplete_view_| next to the user input.
   if (ime_inline_autocomplete_view_->visible()) {
     int width =
@@ -832,13 +749,12 @@ void LocationBarView::RefreshLocationIcon() {
   if (!omnibox_view_)
     return;
 
-  security_state::SecurityStateModel::SecurityLevel security_level =
+  security_state::SecurityLevel security_level =
       GetToolbarModel()->GetSecurityLevel(false);
-  SkColor icon_color =
-      (security_level == security_state::SecurityStateModel::NONE ||
-       security_level == security_state::SecurityStateModel::HTTP_SHOW_WARNING)
-          ? color_utils::DeriveDefaultIconColor(GetColor(TEXT))
-          : GetSecureTextColor(security_level);
+  SkColor icon_color = (security_level == security_state::NONE ||
+                        security_level == security_state::HTTP_SHOW_WARNING)
+                           ? color_utils::DeriveDefaultIconColor(GetColor(TEXT))
+                           : GetSecureTextColor(security_level);
   location_icon_view_->SetImage(gfx::CreateVectorIcon(
       omnibox_view_->GetVectorIcon(), kIconWidth, icon_color));
 }
@@ -1001,14 +917,9 @@ void LocationBarView::ShowFirstRunBubbleInternal() {
 #endif
 }
 
-bool LocationBarView::HasValidSuggestText() const {
-  return suggested_text_view_->visible() &&
-      !suggested_text_view_->size().IsEmpty();
-}
-
 base::string16 LocationBarView::GetSecurityText() const {
-  bool has_ev_cert = (GetToolbarModel()->GetSecurityLevel(false) ==
-                      security_state::SecurityStateModel::EV_SECURE);
+  bool has_ev_cert =
+      (GetToolbarModel()->GetSecurityLevel(false) == security_state::EV_SECURE);
   return has_ev_cert ? GetToolbarModel()->GetEVCertName()
                      : GetToolbarModel()->GetSecureVerboseText();
 }
@@ -1019,7 +930,7 @@ bool LocationBarView::ShouldShowKeywordBubble() const {
 }
 
 bool LocationBarView::ShouldShowSecurityChip() const {
-  using SecurityLevel = security_state::SecurityStateModel::SecurityLevel;
+  using SecurityLevel = security_state::SecurityLevel;
   const SecurityLevel level = GetToolbarModel()->GetSecurityLevel(false);
   if (level == SecurityLevel::EV_SECURE) {
     return true;
@@ -1033,7 +944,7 @@ bool LocationBarView::ShouldShowSecurityChip() const {
 }
 
 bool LocationBarView::ShouldAnimateSecurityChip() const {
-  using SecurityLevel = security_state::SecurityStateModel::SecurityLevel;
+  using SecurityLevel = security_state::SecurityLevel;
   SecurityLevel level = GetToolbarModel()->GetSecurityLevel(false);
   if (!ShouldShowSecurityChip())
     return false;

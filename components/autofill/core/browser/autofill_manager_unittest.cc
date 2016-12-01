@@ -49,6 +49,7 @@
 #include "components/autofill/core/common/form_field_data.h"
 #include "components/prefs/pref_service.h"
 #include "components/rappor/test_rappor_service.h"
+#include "components/security_state/core/switches.h"
 #include "components/variations/variations_associated_data.h"
 #include "grit/components_strings.h"
 #include "net/url_request/url_request_test_util.h"
@@ -1010,6 +1011,13 @@ class AutofillManagerTest : public testing::Test {
         autofill_manager_->full_card_request_.get());
   }
 
+  void SetHttpWarningEnabled() {
+    base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+        security_state::switches::kMarkHttpAs,
+        security_state::switches::
+            kMarkHttpWithPasswordsOrCcWithChipAndFormWarning);
+  }
+
  protected:
   base::MessageLoop message_loop_;
   MockAutofillClient autofill_client_;
@@ -1601,6 +1609,65 @@ TEST_F(AutofillManagerTest, GetCreditCardSuggestions_NonSecureContext) {
   EXPECT_FALSE(external_delegate_->on_suggestions_returned_seen());
 }
 
+// Test that we return an extra "Payment not secure" warning when the page and
+// the form target URL are not secure.
+TEST_F(AutofillManagerTest,
+       GetCreditCardSuggestions_NonSecureContextWithHttpBadSwitchOn) {
+  SetHttpWarningEnabled();
+
+  // Set up our form data.
+  FormData form;
+  CreateTestCreditCardFormData(&form, /* is_https */ false, false);
+  std::vector<FormData> forms(1, form);
+  FormsSeen(forms);
+
+  const FormFieldData& field = form.fields[0];
+  GetAutofillSuggestions(form, field);
+
+  // Test that we sent the right values to the external delegate.
+  external_delegate_->CheckSuggestions(
+      kDefaultPageID,
+      Suggestion(l10n_util::GetStringUTF8(
+                     IDS_AUTOFILL_CREDIT_CARD_HTTP_WARNING_MESSAGE),
+                 "", "", POPUP_ITEM_ID_HTTP_NOT_SECURE_WARNING_MESSAGE),
+      Suggestion(
+          l10n_util::GetStringUTF8(IDS_AUTOFILL_WARNING_INSECURE_CONNECTION),
+          "", "", POPUP_ITEM_ID_INSECURE_CONTEXT_PAYMENT_DISABLED_MESSAGE));
+
+  // Clear the test credit cards and try again -- we shouldn't return a warning.
+  personal_data_.ClearCreditCards();
+  GetAutofillSuggestions(form, field);
+  // Autocomplete suggestions are queried, but not Autofill.
+  EXPECT_FALSE(external_delegate_->on_suggestions_returned_seen());
+}
+
+// Test that we don't show the extra "Payment not secure" warning when the page
+// and the form target URL are secure, even when the switch is on.
+TEST_F(AutofillManagerTest,
+       GetCreditCardSuggestions_SecureContextWithHttpBadSwitchOn) {
+  SetHttpWarningEnabled();
+
+  // Set up our form data.
+  FormData form;
+  CreateTestCreditCardFormData(&form, /* is_https */ true, false);
+  std::vector<FormData> forms(1, form);
+  FormsSeen(forms);
+
+  FormFieldData field = form.fields[1];
+  GetAutofillSuggestions(form, field);
+
+  // Test that we sent the right values to the external delegate.
+  external_delegate_->CheckSuggestions(
+      kDefaultPageID, Suggestion("Visa\xC2\xA0\xE2\x8B\xAF"
+                                 "3456",
+                                 "04/99", kVisaCard,
+                                 autofill_manager_->GetPackedCreditCardID(4)),
+      Suggestion("MasterCard\xC2\xA0\xE2\x8B\xAF"
+                 "8765",
+                 "10/98", kMasterCard,
+                 autofill_manager_->GetPackedCreditCardID(5)));
+}
+
 // Test that we will eventually return the credit card signin promo when there
 // are no credit card suggestions and the promo is active. See the tests in
 // AutofillExternalDelegateTest that test whether the promo is added.
@@ -1950,10 +2017,10 @@ TEST_F(AutofillManagerTest, GetProfileSuggestions_ForPhonePrefixOrSuffix) {
                      {"Phone Extension", "ext", 5, "tel-extension"}};
 
   FormFieldData field;
-  for (size_t i = 0; i < arraysize(test_fields); ++i) {
+  for (const auto& test_field : test_fields) {
     test::CreateTestFormField(
-        test_fields[i].label, test_fields[i].name, "", "text", &field);
-    field.max_length = test_fields[i].max_length;
+        test_field.label, test_field.name, "", "text", &field);
+    field.max_length = test_field.max_length;
     field.autocomplete_attribute = std::string();
     form.fields.push_back(field);
   }
@@ -2930,15 +2997,15 @@ TEST_F(AutofillManagerTest, FillPhoneNumber) {
 
   FormFieldData field;
   const size_t default_max_length = field.max_length;
-  for (size_t i = 0; i < arraysize(test_fields); ++i) {
+  for (const auto& test_field : test_fields) {
     test::CreateTestFormField(
-        test_fields[i].label, test_fields[i].name, "", "text", &field);
-    field.max_length = test_fields[i].max_length;
+        test_field.label, test_field.name, "", "text", &field);
+    field.max_length = test_field.max_length;
     field.autocomplete_attribute = std::string();
     form_with_us_number_max_length.fields.push_back(field);
 
     field.max_length = default_max_length;
-    field.autocomplete_attribute = test_fields[i].autocomplete_attribute;
+    field.autocomplete_attribute = test_field.autocomplete_attribute;
     form_with_autocompletetype.fields.push_back(field);
   }
 
@@ -3600,12 +3667,25 @@ TEST_F(AutofillManagerTest, FormSubmittedWithDefaultValues) {
 }
 
 // Tests that credit card data are saved for forms on https
-TEST_F(AutofillManagerTest, ImportFormDataCreditCardHTTPS) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_ImportFormDataCreditCardHTTPS \
+  DISABLED_ImportFormDataCreditCardHTTPS
+#else
+#define MAYBE_ImportFormDataCreditCardHTTPS ImportFormDataCreditCardHTTPS
+#endif
+TEST_F(AutofillManagerTest, MAYBE_ImportFormDataCreditCardHTTPS) {
   TestSaveCreditCards(true);
 }
 
 // Tests that credit card data are saved for forms on http
-TEST_F(AutofillManagerTest, ImportFormDataCreditCardHTTP) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_ImportFormDataCreditCardHTTP DISABLED_ImportFormDataCreditCardHTTP
+#else
+#define MAYBE_ImportFormDataCreditCardHTTP ImportFormDataCreditCardHTTP
+#endif
+TEST_F(AutofillManagerTest, MAYBE_ImportFormDataCreditCardHTTP) {
   TestSaveCreditCards(false);
 }
 
@@ -4332,16 +4412,16 @@ TEST_F(AutofillManagerTest, DontSaveCvcInAutocompleteHistory) {
     const char* name;
     const char* value;
     ServerFieldType expected_field_type;
-  } fields[] = {
+  } test_fields[] = {
       {"Card number", "1", "4234-5678-9012-3456", CREDIT_CARD_NUMBER},
       {"Card verification code", "2", "123", CREDIT_CARD_VERIFICATION_CODE},
       {"expiration date", "3", "04/2020", CREDIT_CARD_EXP_4_DIGIT_YEAR},
   };
 
-  for (size_t i = 0; i < arraysize(fields); ++i) {
+  for (const auto& test_field : test_fields) {
     FormFieldData field;
-    test::CreateTestFormField(fields[i].label, fields[i].name, fields[i].value,
-                              "text", &field);
+    test::CreateTestFormField(test_field.label, test_field.name,
+                              test_field.value, "text", &field);
     form.fields.push_back(field);
   }
 
@@ -4350,10 +4430,11 @@ TEST_F(AutofillManagerTest, DontSaveCvcInAutocompleteHistory) {
   FormSubmitted(form);
 
   EXPECT_EQ(form.fields.size(), form_seen_by_ahm.fields.size());
-  ASSERT_EQ(arraysize(fields), form_seen_by_ahm.fields.size());
-  for (size_t i = 0; i < arraysize(fields); ++i) {
-    EXPECT_EQ(form_seen_by_ahm.fields[i].should_autocomplete,
-              fields[i].expected_field_type != CREDIT_CARD_VERIFICATION_CODE);
+  ASSERT_EQ(arraysize(test_fields), form_seen_by_ahm.fields.size());
+  for (size_t i = 0; i < arraysize(test_fields); ++i) {
+    EXPECT_EQ(
+        form_seen_by_ahm.fields[i].should_autocomplete,
+        test_fields[i].expected_field_type != CREDIT_CARD_VERIFICATION_CODE);
   }
 }
 
@@ -4432,7 +4513,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard) {
                                       AutofillMetrics::UPLOAD_OFFERED, 1);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_FeatureNotEnabled) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_FeatureNotEnabled DISABLED_UploadCreditCard_FeatureNotEnabled
+#else
+#define MAYBE_UploadCreditCard_FeatureNotEnabled UploadCreditCard_FeatureNotEnabled
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_FeatureNotEnabled) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(false);
 
@@ -4467,7 +4554,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_FeatureNotEnabled) {
   histogram_tester.ExpectTotalCount("Autofill.CardUploadDecisionExpanded", 0);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_CvcUnavailable) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_CvcUnavailable DISABLED_UploadCreditCard_CvcUnavailable
+#else
+#define MAYBE_UploadCreditCard_CvcUnavailable UploadCreditCard_CvcUnavailable
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_CvcUnavailable) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(true);
 
@@ -4514,7 +4607,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_CvcUnavailable) {
   EXPECT_EQ(rappor::ETLD_PLUS_ONE_RAPPOR_TYPE, type);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_MultipleCvcFields) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_MultipleCvcFields DISABLED_UploadCreditCard_MultipleCvcFields
+#else
+#define MAYBE_UploadCreditCard_MultipleCvcFields UploadCreditCard_MultipleCvcFields
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_MultipleCvcFields) {
   autofill_manager_->set_credit_card_upload_enabled(true);
 
   // Remove the profiles that were created in the TestPersonalDataManager
@@ -4573,7 +4672,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_MultipleCvcFields) {
       AutofillMetrics::UPLOAD_OFFERED, 1);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_NoProfileAvailable) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_NoProfileAvailable DISABLED_UploadCreditCard_NoProfileAvailable
+#else
+#define MAYBE_UploadCreditCard_NoProfileAvailable UploadCreditCard_NoProfileAvailable
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_NoProfileAvailable) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(true);
 
@@ -4614,7 +4719,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_NoProfileAvailable) {
   EXPECT_EQ(rappor::ETLD_PLUS_ONE_RAPPOR_TYPE, type);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_NoNameAvailable) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_NoNameAvailable DISABLED_UploadCreditCard_NoNameAvailable
+#else
+#define MAYBE_UploadCreditCard_NoNameAvailable UploadCreditCard_NoNameAvailable
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_NoNameAvailable) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(true);
 
@@ -4661,7 +4772,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_NoNameAvailable) {
   EXPECT_EQ(rappor::ETLD_PLUS_ONE_RAPPOR_TYPE, type);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_ZipCodesConflict) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_ZipCodesConflict DISABLED_UploadCreditCard_ZipCodesConflict
+#else
+#define MAYBE_UploadCreditCard_ZipCodesConflict UploadCreditCard_ZipCodesConflict
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_ZipCodesConflict) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(true);
 
@@ -4706,7 +4823,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_ZipCodesConflict) {
       AutofillMetrics::UPLOAD_NOT_OFFERED_CONFLICTING_ZIPS, 1);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_ZipCodesHavePrefixMatch) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_ZipCodesHavePrefixMatch DISABLED_UploadCreditCard_ZipCodesHavePrefixMatch
+#else
+#define MAYBE_UploadCreditCard_ZipCodesHavePrefixMatch UploadCreditCard_ZipCodesHavePrefixMatch
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_ZipCodesHavePrefixMatch) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(true);
 
@@ -4751,7 +4874,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_ZipCodesHavePrefixMatch) {
       AutofillMetrics::UPLOAD_OFFERED, 1);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_NoZipCodeAvailable) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_NoZipCodeAvailable DISABLED_UploadCreditCard_NoZipCodeAvailable
+#else
+#define MAYBE_UploadCreditCard_NoZipCodeAvailable UploadCreditCard_NoZipCodeAvailable
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_NoZipCodeAvailable) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(true);
 
@@ -4795,7 +4924,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_NoZipCodeAvailable) {
       AutofillMetrics::UPLOAD_NOT_OFFERED_NO_ZIP_CODE, 1);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_NamesMatchLoosely) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_NamesMatchLoosely DISABLED_UploadCreditCard_NamesMatchLoosely
+#else
+#define MAYBE_UploadCreditCard_NamesMatchLoosely UploadCreditCard_NamesMatchLoosely
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_NamesMatchLoosely) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(true);
 
@@ -4843,7 +4978,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_NamesMatchLoosely) {
       AutofillMetrics::UPLOAD_OFFERED, 1);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_NamesHaveToMatch) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_NamesHaveToMatch DISABLED_UploadCreditCard_NamesHaveToMatch
+#else
+#define MAYBE_UploadCreditCard_NamesHaveToMatch UploadCreditCard_NamesHaveToMatch
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_NamesHaveToMatch) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(true);
 
@@ -4898,7 +5039,13 @@ TEST_F(AutofillManagerTest, UploadCreditCard_NamesHaveToMatch) {
   EXPECT_EQ(rappor::ETLD_PLUS_ONE_RAPPOR_TYPE, type);
 }
 
-TEST_F(AutofillManagerTest, UploadCreditCard_UploadDetailsFails) {
+// TODO(crbug.com/666704): Flaky on android_n5x_swarming_rel bot.
+#if defined(OS_ANDROID)
+#define MAYBE_UploadCreditCard_UploadDetailsFails DISABLED_UploadCreditCard_UploadDetailsFails
+#else
+#define MAYBE_UploadCreditCard_UploadDetailsFails UploadCreditCard_UploadDetailsFails
+#endif
+TEST_F(AutofillManagerTest, MAYBE_UploadCreditCard_UploadDetailsFails) {
   personal_data_.ClearAutofillProfiles();
   autofill_manager_->set_credit_card_upload_enabled(true);
 

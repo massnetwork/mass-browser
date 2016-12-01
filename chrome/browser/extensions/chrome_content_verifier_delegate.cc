@@ -125,9 +125,10 @@ ContentVerifierDelegate::Mode ChromeContentVerifierDelegate::ShouldBeVerified(
     // It's possible that the webstore update url was overridden for testing
     // so also consider extensions with the default (production) update url
     // to be from the store as well.
-    GURL default_webstore_url = extension_urls::GetDefaultWebstoreUpdateUrl();
-    if (ManifestURL::GetUpdateURL(&extension) != default_webstore_url)
+    if (ManifestURL::GetUpdateURL(&extension) !=
+        extension_urls::GetDefaultWebstoreUpdateUrl()) {
       return ContentVerifierDelegate::NONE;
+    }
   }
 
   return default_mode_;
@@ -175,7 +176,7 @@ void ChromeContentVerifierDelegate::VerifyFailed(
   ExtensionService* service = system->extension_service();
   Mode mode = ShouldBeVerified(*extension);
   if (mode >= ContentVerifierDelegate::ENFORCE) {
-    if (!system->management_policy()->UserMayModifySettings(extension, NULL)) {
+    if (system->management_policy()->MustRemainEnabled(extension, NULL)) {
       PendingExtensionManager* pending_manager =
           service->pending_extension_manager();
       if (pending_manager->IsPolicyReinstallForCorruptionExpected(extension_id))

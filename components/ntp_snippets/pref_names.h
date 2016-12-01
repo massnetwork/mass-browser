@@ -12,9 +12,6 @@ namespace prefs {
 // an enterprise policy.
 extern const char kEnableSnippets[];
 
-// TODO(treib): Remove this after M56.
-extern const char kSnippetHosts[];
-
 // The pref name under which remote suggestion categories (including their ID
 // and title) are stored.
 extern const char kRemoteSuggestionCategories[];
@@ -48,9 +45,6 @@ extern const char kDismissedRecentOfflineTabSuggestions[];
 extern const char kDismissedOfflinePageDownloadSuggestions[];
 extern const char kDismissedForeignSessionsSuggestions[];
 extern const char kDismissedCategories[];
-
-// The pref name for the time when M54 was first started on the device.
-extern const char kBookmarksFirstM54Start[];
 
 // The pref name for the discounted average number of browsing sessions per hour
 // that involve opening a new NTP.

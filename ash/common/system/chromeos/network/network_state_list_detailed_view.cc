@@ -30,6 +30,7 @@
 #include "ash/common/system/tray/tray_details_view.h"
 #include "ash/common/system/tray/tray_popup_header_button.h"
 #include "ash/common/system/tray/tray_popup_label_button.h"
+#include "ash/common/system/tray/tri_view.h"
 #include "ash/common/wm_lookup.h"
 #include "ash/common/wm_root_window_controller.h"
 #include "ash/common/wm_shell.h"
@@ -50,7 +51,7 @@
 #include "grit/ash_resources.h"
 #include "grit/ash_strings.h"
 #include "third_party/cros_system_api/dbus/service_constants.h"
-#include "ui/accessibility/ax_view_state.h"
+#include "ui/accessibility/ax_node_data.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/compositor/layer.h"
@@ -120,6 +121,30 @@ bool PolicyProhibitsUnmanaged() {
   return policy_prohibites_unmanaged;
 }
 
+// TODO(varkha): Consolidate with a similar method in tray_bluetooth.cc.
+void SetupConnectedItemMd(HoverHighlightView* container,
+                          const base::string16& text,
+                          const gfx::ImageSkia& image) {
+  container->AddIconAndLabels(
+      image, text,
+      l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_NETWORK_STATUS_CONNECTED));
+  TrayPopupItemStyle style(TrayPopupItemStyle::FontStyle::CAPTION);
+  style.set_color_style(TrayPopupItemStyle::ColorStyle::CONNECTED);
+  style.SetupLabel(container->sub_text_label());
+}
+
+// TODO(varkha): Consolidate with a similar method in tray_bluetooth.cc.
+void SetupConnectingItemMd(HoverHighlightView* container,
+                           const base::string16& text,
+                           const gfx::ImageSkia& image) {
+  container->AddIconAndLabels(
+      image, text,
+      l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_NETWORK_STATUS_CONNECTING));
+  ThrobberView* throbber = new ThrobberView;
+  throbber->Start();
+  container->AddRightView(throbber);
+}
+
 }  // namespace
 
 //------------------------------------------------------------------------------
@@ -187,9 +212,9 @@ class ScanningThrobber : public ThrobberView {
     layer()->SetOpacity(visible ? 1.0 : 0.0);
   }
 
-  void GetAccessibleState(ui::AXViewState* state) override {
-    state->name = accessible_name_;
-    state->role = ui::AX_ROLE_BUSY_INDICATOR;
+  void GetAccessibleNodeData(ui::AXNodeData* node_data) override {
+    node_data->SetName(accessible_name_);
+    node_data->role = ui::AX_ROLE_BUSY_INDICATOR;
   }
 
  private:
@@ -225,7 +250,7 @@ class InfoIcon : public views::ImageButton {
 
   // views::View
   gfx::Size GetPreferredSize() const override {
-    int size = GetTrayConstant(TRAY_POPUP_ITEM_HEIGHT);
+    int size = GetTrayConstant(TRAY_POPUP_ITEM_MIN_HEIGHT);
     return gfx::Size(size, size);
   }
 
@@ -373,7 +398,9 @@ void NetworkStateListDetailedView::Init() {
   CreateScrollableList();
   if (!UseMd())
     CreateNetworkExtra();
-  CreateTitleRow(IDS_ASH_STATUS_TRAY_NETWORK);
+  CreateTitleRow(list_type_ == ListType::LIST_TYPE_NETWORK
+                     ? IDS_ASH_STATUS_TRAY_NETWORK
+                     : IDS_ASH_STATUS_TRAY_VPN);
 
   network_list_view_->set_container(scroll_content());
   Update();
@@ -478,14 +505,18 @@ void NetworkStateListDetailedView::CreateExtraTitleRowButtons() {
     if (login_ == LoginStatus::LOCKED)
       return;
 
+    DCHECK(!info_button_md_);
+    tri_view()->SetContainerVisible(TriView::Container::END, true);
+
     info_button_md_ = new SystemMenuButton(
-        this, SystemMenuButton::InkDropStyle::SQUARE, kSystemMenuInfoIcon,
+        this, TrayPopupInkDropStyle::HOST_CENTERED, kSystemMenuInfoIcon,
         IDS_ASH_STATUS_TRAY_NETWORK_INFO);
-    title_row()->AddViewToTitleRow(info_button_md_);
+    tri_view()->AddView(TriView::Container::END, info_button_md_);
 
     if (login_ != LoginStatus::NOT_LOGGED_IN) {
+      DCHECK(!settings_button_md_);
       settings_button_md_ = new SystemMenuButton(
-          this, SystemMenuButton::InkDropStyle::SQUARE, kSystemMenuSettingsIcon,
+          this, TrayPopupInkDropStyle::HOST_CENTERED, kSystemMenuSettingsIcon,
           IDS_ASH_STATUS_TRAY_NETWORK_SETTINGS);
 
       // Allow the user to access settings only if user is logged in
@@ -493,14 +524,14 @@ void NetworkStateListDetailedView::CreateExtraTitleRowButtons() {
       // creation flow) when session is started but UI flow continues within
       // login UI, i.e., no browser window is yet avaialable.
       if (!WmShell::Get()->system_tray_delegate()->ShouldShowSettings())
-        settings_button_md_->SetState(views::Button::STATE_DISABLED);
+        settings_button_md_->SetEnabled(false);
 
-      title_row()->AddViewToTitleRow(settings_button_md_);
+      tri_view()->AddView(TriView::Container::END, settings_button_md_);
     } else {
       proxy_settings_button_md_ = new SystemMenuButton(
-          this, SystemMenuButton::InkDropStyle::SQUARE, kSystemMenuSettingsIcon,
+          this, TrayPopupInkDropStyle::HOST_CENTERED, kSystemMenuSettingsIcon,
           IDS_ASH_STATUS_TRAY_NETWORK_PROXY_SETTINGS);
-      title_row()->AddViewToTitleRow(proxy_settings_button_md_);
+      tri_view()->AddView(TriView::Container::END, proxy_settings_button_md_);
     }
 
     return;
@@ -520,7 +551,7 @@ void NetworkStateListDetailedView::CreateExtraTitleRowButtons() {
     title_row()->AddViewToRowNonMd(button_wifi_, true);
     if (network_state_handler->IsTechnologyProhibited(
             NetworkTypePattern::WiFi())) {
-      button_wifi_->SetState(views::Button::STATE_DISABLED);
+      button_wifi_->SetEnabled(false);
       button_wifi_->SetToggledTooltipText(l10n_util::GetStringUTF16(
           IDS_ASH_STATUS_TRAY_NETWORK_TECHNOLOGY_ENFORCED_BY_POLICY));
     }
@@ -537,7 +568,7 @@ void NetworkStateListDetailedView::CreateExtraTitleRowButtons() {
         l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_ENABLE_MOBILE));
     if (network_state_handler->IsTechnologyProhibited(
             NetworkTypePattern::Cellular())) {
-      button_mobile_->SetState(views::Button::STATE_DISABLED);
+      button_mobile_->SetEnabled(false);
       button_mobile_->SetToggledTooltipText(l10n_util::GetStringUTF16(
           IDS_ASH_STATUS_TRAY_NETWORK_TECHNOLOGY_ENFORCED_BY_POLICY));
     }
@@ -599,7 +630,7 @@ void NetworkStateListDetailedView::CreateNetworkExtra() {
         this, rb.GetLocalizedString(IDS_ASH_STATUS_TRAY_TURN_ON_WIFI));
     if (NetworkHandler::Get()->network_state_handler()->IsTechnologyProhibited(
             NetworkTypePattern::WiFi())) {
-      turn_on_wifi_->SetState(views::Button::STATE_DISABLED);
+      turn_on_wifi_->SetEnabled(false);
       turn_on_wifi_->SetTooltipText(l10n_util::GetStringUTF16(
           IDS_ASH_STATUS_TRAY_NETWORK_TECHNOLOGY_ENFORCED_BY_POLICY));
     }
@@ -661,7 +692,8 @@ void NetworkStateListDetailedView::UpdateHeaderButtons() {
     }
   }
 
-  static_cast<views::View*>(title_row())->Layout();
+  if (!UseMd())
+    static_cast<views::View*>(title_row())->Layout();
 }
 
 void NetworkStateListDetailedView::SetScanningStateForThrobberView(
@@ -848,7 +880,7 @@ views::View* NetworkStateListDetailedView::CreateNetworkInfoView() {
   views::View* container = new views::View;
   container->SetLayoutManager(
       new views::BoxLayout(views::BoxLayout::kVertical, 0, 0, 1));
-  container->SetBorder(views::Border::CreateEmptyBorder(0, 5, 0, 5));
+  container->SetBorder(views::CreateEmptyBorder(0, 5, 0, 5));
 
   std::string ethernet_address, wifi_address, vpn_address;
   if (list_type_ != LIST_TYPE_VPN) {
@@ -949,15 +981,22 @@ void NetworkStateListDetailedView::ToggleMobile() {
 
 views::View* NetworkStateListDetailedView::CreateViewForNetwork(
     const NetworkInfo& info) {
-  HoverHighlightView* view = new HoverHighlightView(this);
-  view->AddIconAndLabel(info.image, info.label, info.highlight);
-  view->SetBorder(
-      views::Border::CreateEmptyBorder(0, kTrayPopupPaddingHorizontal, 0, 0));
+  HoverHighlightView* container = new HoverHighlightView(this);
+  if (info.connected)
+    SetupConnectedItemMd(container, info.label, info.image);
+  else if (info.connecting)
+    SetupConnectingItemMd(container, info.label, info.image);
+  else
+    container->AddIconAndLabel(info.image, info.label, info.highlight);
+  container->set_tooltip(info.tooltip);
+  if (!UseMd()) {
+    container->SetBorder(
+        views::CreateEmptyBorder(0, kTrayPopupPaddingHorizontal, 0, 0));
+  }
   views::View* controlled_icon = CreateControlledByExtensionView(info);
-  view->set_tooltip(info.tooltip);
   if (controlled_icon)
-    view->AddChildView(controlled_icon);
-  return view;
+    container->AddChildView(controlled_icon);
+  return container;
 }
 
 bool NetworkStateListDetailedView::IsViewHovered(views::View* view) {
@@ -972,19 +1011,25 @@ NetworkTypePattern NetworkStateListDetailedView::GetNetworkTypePattern() const {
 void NetworkStateListDetailedView::UpdateViewForNetwork(
     views::View* view,
     const NetworkInfo& info) {
-  HoverHighlightView* highlight = static_cast<HoverHighlightView*>(view);
-  highlight->AddIconAndLabel(info.image, info.label, info.highlight);
+  HoverHighlightView* container = static_cast<HoverHighlightView*>(view);
+  DCHECK(!container->has_children());
+  if (info.connected)
+    SetupConnectedItemMd(container, info.label, info.image);
+  else if (info.connecting)
+    SetupConnectingItemMd(container, info.label, info.image);
+  else
+    container->AddIconAndLabel(info.image, info.label, info.highlight);
   views::View* controlled_icon = CreateControlledByExtensionView(info);
-  highlight->set_tooltip(info.tooltip);
+  container->set_tooltip(info.tooltip);
   if (controlled_icon)
     view->AddChildView(controlled_icon);
 }
 
 views::Label* NetworkStateListDetailedView::CreateInfoLabel() {
   views::Label* label = new views::Label();
-  label->SetBorder(views::Border::CreateEmptyBorder(
-      kTrayPopupPaddingBetweenItems, kTrayPopupPaddingHorizontal,
-      kTrayPopupPaddingBetweenItems, 0));
+  label->SetBorder(views::CreateEmptyBorder(kTrayPopupPaddingBetweenItems,
+                                            kTrayPopupPaddingHorizontal,
+                                            kTrayPopupPaddingBetweenItems, 0));
   label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
   label->SetEnabledColor(SkColorSetARGB(192, 0, 0, 0));
   return label;

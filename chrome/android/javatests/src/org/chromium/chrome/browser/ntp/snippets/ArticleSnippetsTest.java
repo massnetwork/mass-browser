@@ -7,7 +7,6 @@ package org.chromium.chrome.browser.ntp.snippets;
 import android.graphics.BitmapFactory;
 import android.test.suitebuilder.annotation.MediumTest;
 import android.util.TypedValue;
-import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -21,6 +20,7 @@ import org.chromium.chrome.browser.ChromeActivity;
 import org.chromium.chrome.browser.favicon.FaviconHelper.FaviconImageCallback;
 import org.chromium.chrome.browser.favicon.FaviconHelper.IconAvailabilityCallback;
 import org.chromium.chrome.browser.favicon.LargeIconBridge.LargeIconCallback;
+import org.chromium.chrome.browser.ntp.ContextMenuManager;
 import org.chromium.chrome.browser.ntp.LogoBridge.LogoObserver;
 import org.chromium.chrome.browser.ntp.MostVisitedItem;
 import org.chromium.chrome.browser.ntp.NewTabPage.DestructionObserver;
@@ -89,7 +89,11 @@ public class ArticleSnippetsTest extends ChromeActivityTestCaseBase<ChromeActivi
         int first = mAdapter.getFirstCardPosition();
         mViewRenderer.renderAndCompare(mRecyclerView.getChildAt(first), "short_snippet");
         mViewRenderer.renderAndCompare(mRecyclerView.getChildAt(first + 1), "long_snippet");
-        mViewRenderer.renderAndCompare(mRecyclerView.getChildAt(first + 2), "minimal_snippet");
+
+        int firstOfSecondCategory = first + 1 /* card 2 */ + 1 /* header */ + 1 /* card 3*/;
+
+        mViewRenderer.renderAndCompare(
+                mRecyclerView.getChildAt(firstOfSecondCategory), "minimal_snippet");
         mViewRenderer.renderAndCompare(mRecyclerView, "snippets");
 
         // See how everything looks in narrow layout.
@@ -112,16 +116,20 @@ public class ArticleSnippetsTest extends ChromeActivityTestCaseBase<ChromeActivi
 
         mViewRenderer.renderAndCompare(mRecyclerView.getChildAt(first), "short_snippet_narrow");
         mViewRenderer.renderAndCompare(mRecyclerView.getChildAt(first + 1), "long_snippet_narrow");
-        mViewRenderer.renderAndCompare(mRecyclerView.getChildAt(first + 2),
+        mViewRenderer.renderAndCompare(mRecyclerView.getChildAt(firstOfSecondCategory),
                 "long_minimal_snippet_narrow");
-        mViewRenderer.renderAndCompare(mRecyclerView.getChildAt(first + 3),
+        mViewRenderer.renderAndCompare(mRecyclerView.getChildAt(firstOfSecondCategory + 1),
                 "short_minimal_snippet_narrow");
         mViewRenderer.renderAndCompare(mRecyclerView, "snippets_narrow");
     }
 
     private void setupTestData() {
+        @CategoryInt
+        int fullCategory = 0;
+        @CategoryInt
+        int minimalCategory = 1;
         SnippetArticle shortSnippet = new SnippetArticle(
-                0,  // Category
+                fullCategory,
                 "id1",
                 "Snippet",
                 "Publisher",
@@ -130,13 +138,12 @@ public class ArticleSnippetsTest extends ChromeActivityTestCaseBase<ChromeActivi
                 "",  // AMP URL
                 1466614774,  // Timestamp
                 10f,  // Score
-                0,  // Position
-                ContentSuggestionsCardLayout.FULL_CARD);
+                0);  // Position
         shortSnippet.setThumbnailBitmap(BitmapFactory.decodeResource(getActivity().getResources(),
                 R.drawable.signin_promo_illustration));
 
         SnippetArticle longSnippet = new SnippetArticle(
-                0,  // Category
+                fullCategory,
                 "id2",
                 new String(new char[20]).replace("\0", "Snippet "),
                 new String(new char[20]).replace("\0", "Publisher "),
@@ -145,11 +152,10 @@ public class ArticleSnippetsTest extends ChromeActivityTestCaseBase<ChromeActivi
                 "",  // AMP URL
                 1466614074,  // Timestamp
                 20f,  // Score
-                1,  // Position
-                ContentSuggestionsCardLayout.FULL_CARD);
+                1);  // Position
 
         SnippetArticle minimalSnippet = new SnippetArticle(
-                0,  // Category
+                minimalCategory,
                 "id3",
                 new String(new char[20]).replace("\0", "Bookmark "),
                 "Publisher",
@@ -158,11 +164,10 @@ public class ArticleSnippetsTest extends ChromeActivityTestCaseBase<ChromeActivi
                 "",  // AMP URL
                 1466614774,  // Timestamp
                 10f,  // Score
-                0,  // Position
-                ContentSuggestionsCardLayout.MINIMAL_CARD);
+                0);  // Position
 
         SnippetArticle minimalSnippet2 = new SnippetArticle(
-                0,  // Category
+                minimalCategory,
                 "id4",
                 "Bookmark",
                 "Publisher",
@@ -171,16 +176,23 @@ public class ArticleSnippetsTest extends ChromeActivityTestCaseBase<ChromeActivi
                 "",  // AMP URL
                 1466614774,  // Timestamp
                 10f,  // Score
-                0,  // Position
-                ContentSuggestionsCardLayout.MINIMAL_CARD);
+                0);  // Position
 
-        mSnippetsSource.setInfoForCategory(KnownCategories.ARTICLES,
-                new SuggestionsCategoryInfo(KnownCategories.ARTICLES, "Section Title",
-                        ContentSuggestionsCardLayout.FULL_CARD, false, true, "No suggestions"));
-        mSnippetsSource.setStatusForCategory(KnownCategories.ARTICLES,
-                CategoryStatus.AVAILABLE);
-        mSnippetsSource.setSuggestionsForCategory(KnownCategories.ARTICLES,
-                Arrays.asList(shortSnippet, longSnippet, minimalSnippet, minimalSnippet2));
+        mSnippetsSource.setInfoForCategory(
+                fullCategory, new SuggestionsCategoryInfo(fullCategory, "Section Title",
+                                      ContentSuggestionsCardLayout.FULL_CARD, false, false, false,
+                                      true, "No suggestions"));
+        mSnippetsSource.setStatusForCategory(fullCategory, CategoryStatus.AVAILABLE);
+        mSnippetsSource.setSuggestionsForCategory(
+                fullCategory, Arrays.asList(shortSnippet, longSnippet));
+
+        mSnippetsSource.setInfoForCategory(
+                minimalCategory, new SuggestionsCategoryInfo(minimalCategory, "Section Title",
+                                         ContentSuggestionsCardLayout.MINIMAL_CARD, false, false,
+                                         false, true, "No suggestions"));
+        mSnippetsSource.setStatusForCategory(minimalCategory, CategoryStatus.AVAILABLE);
+        mSnippetsSource.setSuggestionsForCategory(
+                minimalCategory, Arrays.asList(minimalSnippet, minimalSnippet2));
     }
 
     @Override
@@ -201,6 +213,10 @@ public class ArticleSnippetsTest extends ChromeActivityTestCaseBase<ChromeActivi
      * A NewTabPageManager to initialize our Adapter.
      */
     private class MockNewTabPageManager implements NewTabPageManager {
+        // TODO(dgn): provide a RecyclerView if we need to test the context menu.
+        private ContextMenuManager mContextMenuManager =
+                new ContextMenuManager(this, getActivity(), null);
+
         @Override
         public void getLocalFaviconImageForURL(
                 final String url, int size, final FaviconImageCallback faviconCallback) {
@@ -329,16 +345,6 @@ public class ArticleSnippetsTest extends ChromeActivityTestCaseBase<ChromeActivi
         }
 
         @Override
-        public void addContextMenuCloseCallback(Callback<Menu> callback) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void removeContextMenuCloseCallback(Callback<Menu> callback) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
         public void onLearnMoreClicked() {
             throw new UnsupportedOperationException();
         }
@@ -352,13 +358,13 @@ public class ArticleSnippetsTest extends ChromeActivityTestCaseBase<ChromeActivi
         public void addDestructionObserver(DestructionObserver destructionObserver) {}
 
         @Override
-        public void closeContextMenu() {
-            throw new UnsupportedOperationException();
+        public boolean isCurrentPage() {
+            return true;
         }
 
         @Override
-        public boolean isCurrentPage() {
-            return true;
+        public ContextMenuManager getContextMenuManager() {
+            return mContextMenuManager;
         }
     }
 }

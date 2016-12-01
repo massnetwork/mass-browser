@@ -458,7 +458,7 @@ class ShelfViewTest : public AshTestBase {
                                  ui::EventTimeForNow(), 0, 0);
     test_api_->ButtonPressed(
         button, release_event,
-        views::test::InkDropHostViewTestApi(button).ink_drop());
+        views::test::InkDropHostViewTestApi(button).GetInkDrop());
     shelf_view_->PointerReleasedOnButton(button, ShelfView::MOUSE, false);
   }
 
@@ -471,7 +471,7 @@ class ShelfViewTest : public AshTestBase {
                                  0);
     test_api_->ButtonPressed(
         button, release_event,
-        views::test::InkDropHostViewTestApi(button).ink_drop());
+        views::test::InkDropHostViewTestApi(button).GetInkDrop());
     shelf_view_->PointerReleasedOnButton(button, ShelfView::MOUSE, false);
   }
 
@@ -1908,21 +1908,17 @@ TEST_F(ShelfViewTest,
 class ShelfViewVisibleBoundsTest : public ShelfViewTest,
                                    public testing::WithParamInterface<bool> {
  public:
-  ShelfViewVisibleBoundsTest() : text_direction_change_(GetParam()) {
-    // TODO(jamescook): This test fails unless the system update icon is
-    // showing, which used to be the default. However, it only fails on the
-    // trybots, and only in the case where the overflow button is showing.
-    // See http://crbug.com/619344
-    TestSystemTrayDelegate::SetSystemUpdateRequired(true);
-  }
+  ShelfViewVisibleBoundsTest() : text_direction_change_(GetParam()) {}
 
   void CheckAllItemsAreInBounds() {
     gfx::Rect visible_bounds = shelf_view_->GetVisibleItemsBoundsInScreen();
     gfx::Rect shelf_bounds = shelf_view_->GetBoundsInScreen();
     EXPECT_TRUE(shelf_bounds.Contains(visible_bounds));
     for (int i = 0; i < test_api_->GetButtonCount(); ++i)
-      if (ShelfButton* button = test_api_->GetButton(i))
-        EXPECT_TRUE(visible_bounds.Contains(button->GetBoundsInScreen()));
+      if (ShelfButton* button = test_api_->GetButton(i)) {
+        if (button->visible())
+          EXPECT_TRUE(visible_bounds.Contains(button->GetBoundsInScreen()));
+      }
     CheckAppListButtonIsInBounds();
   }
 
@@ -1956,14 +1952,7 @@ TEST_P(ShelfViewVisibleBoundsTest, ItemsAreInBounds) {
 }
 
 INSTANTIATE_TEST_CASE_P(LtrRtl, ShelfViewTextDirectionTest, testing::Bool());
-
-// This test seems to be flaky with material design shelf (see
-// https://crbug.com/625671) and even in non-material mode (see
-// https://crbug.com/619344 which is fixed using a hack). Disabling for now.
-// TODO(mohsen): Hopefully, the fix for https://crbug.com/634128 that fixes
-// issues with shelf spacing, will fix this flake, too. Re-enable when that
-// issue is fixed.
-INSTANTIATE_TEST_CASE_P(DISABLED_VisibleBounds,
+INSTANTIATE_TEST_CASE_P(VisibleBounds,
                         ShelfViewVisibleBoundsTest,
                         testing::Bool());
 
@@ -1986,6 +1975,9 @@ class InkDropSpy : public views::InkDrop {
   }
 
   // views::InkDrop:
+  void HostSizeChanged(const gfx::Size& new_size) override {
+    ink_drop_->HostSizeChanged(new_size);
+  }
   views::InkDropState GetTargetInkDropState() const override {
     return ink_drop_->GetTargetInkDropState();
   }
@@ -2140,8 +2132,9 @@ class ShelfViewInkDropTest : public ShelfViewTest {
   void InitAppListButtonInkDrop() {
     app_list_button_ = shelf_view_->GetAppListButton();
 
-    auto app_list_button_ink_drop = base::MakeUnique<InkDropSpy>(
-        base::MakeUnique<views::InkDropImpl>(app_list_button_));
+    auto app_list_button_ink_drop =
+        base::MakeUnique<InkDropSpy>(base::MakeUnique<views::InkDropImpl>(
+            app_list_button_, app_list_button_->size()));
     app_list_button_ink_drop_ = app_list_button_ink_drop.get();
     views::test::InkDropHostViewTestApi(app_list_button_)
         .SetInkDrop(std::move(app_list_button_ink_drop), false);
@@ -2150,8 +2143,9 @@ class ShelfViewInkDropTest : public ShelfViewTest {
   void InitBrowserButtonInkDrop() {
     browser_button_ = test_api_->GetButton(browser_index_);
 
-    auto browser_button_ink_drop = base::MakeUnique<InkDropSpy>(
-        base::MakeUnique<views::InkDropImpl>(browser_button_));
+    auto browser_button_ink_drop =
+        base::MakeUnique<InkDropSpy>(base::MakeUnique<views::InkDropImpl>(
+            browser_button_, browser_button_->size()));
     browser_button_ink_drop_ = browser_button_ink_drop.get();
     views::test::InkDropHostViewTestApi(browser_button_)
         .SetInkDrop(std::move(browser_button_ink_drop));
@@ -2652,8 +2646,9 @@ class OverflowButtonInkDropTest : public ShelfViewInkDropTest {
 
     overflow_button_ = test_api_->overflow_button();
 
-    auto overflow_button_ink_drop = base::MakeUnique<InkDropSpy>(
-        base::MakeUnique<views::InkDropImpl>(overflow_button_));
+    auto overflow_button_ink_drop =
+        base::MakeUnique<InkDropSpy>(base::MakeUnique<views::InkDropImpl>(
+            overflow_button_, overflow_button_->size()));
     overflow_button_ink_drop_ = overflow_button_ink_drop.get();
     views::test::InkDropHostViewTestApi(overflow_button_)
         .SetInkDrop(std::move(overflow_button_ink_drop));

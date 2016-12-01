@@ -10,9 +10,9 @@
 #include "base/base_switches.h"
 #include "base/build_time.h"
 #include "base/command_line.h"
+#include "base/debug/alias.h"
 #include "base/feature_list.h"
 #include "base/logging.h"
-#include "base/metrics/histogram_macros.h"
 #include "base/pickle.h"
 #include "base/process/memory.h"
 #include "base/rand_util.h"
@@ -42,16 +42,30 @@ const bool kUseSharedMemoryForFieldTrials = true;
 
 // Constants for the field trial allocator.
 const char kAllocatorName[] = "FieldTrialAllocator";
-const uint32_t kFieldTrialType = 0xABA17E13 + 1;  // SHA1(FieldTrialEntry) v1
+const uint32_t kFieldTrialType = 0xABA17E13 + 2;  // SHA1(FieldTrialEntry) v2
+
+// We allocate 128 KiB to hold all the field trial data. This should be enough,
+// as most people use 3 - 25 KiB for field trials (as of 11/25/2016).
+// This also doesn't allocate all 128 KiB at once -- the pages only get mapped
+// to physical memory when they are touched. If the size of the allocated field
+// trials does get larger than 128 KiB, then we will drop some field trials in
+// child processes, leading to an inconsistent view between browser and child
+// processes and possibly causing crashes (see crbug.com/661617).
 #if !defined(OS_NACL)
-const size_t kFieldTrialAllocationSize = 4 << 10;  // 4 KiB = one page
+const size_t kFieldTrialAllocationSize = 128 << 10;  // 128 KiB
 #endif
 
 // We create one FieldTrialEntry per field trial in shared memory, via
 // AddToAllocatorWhileLocked. The FieldTrialEntry is followed by a base::Pickle
-// object that we unpickle and read from.
+// object that we unpickle and read from. Any changes to this structure requires
+// a bump in kFieldTrialType id defined above.
 struct FieldTrialEntry {
-  bool activated;
+  // Expected size for 32/64-bit check.
+  static constexpr size_t kExpectedInstanceSize = 8;
+
+  // Whether or not this field trial is activated. This is really just a boolean
+  // but marked as a uint32_t for portability reasons.
+  uint32_t activated;
 
   // Size of the pickled structure, NOT the total size of this entry.
   uint32_t size;
@@ -155,7 +169,7 @@ bool ParseFieldTrialsString(const std::string& trials_string,
         trials_string_piece.substr(name_end + 1, group_name_end - name_end - 1);
     next_item = group_name_end + 1;
 
-    entries->push_back(entry);
+    entries->push_back(std::move(entry));
   }
   return true;
 }
@@ -169,8 +183,50 @@ void AddForceFieldTrialsFlag(CommandLine* cmd_line) {
   }
 }
 
+// In order to debug the crash where two field trials with the same name but
+// different groups get added to the allocator, let's try to get the stack
+// frame where the second duplicate gets added here as well as the trial/group
+// names by going through the allocator and checking if a trial with the same
+// name already exists.
+void CheckAllocatorForTrial(FieldTrialList::FieldTrialAllocator* allocator,
+                            const std::string& trial_name,
+                            const std::string& group_name) {
+  FieldTrialList::FieldTrialAllocator::Iterator iter(allocator);
+  FieldTrial::FieldTrialRef ref;
+  while ((ref = iter.GetNextOfType(kFieldTrialType)) !=
+         FieldTrialList::FieldTrialAllocator::kReferenceNull) {
+    const FieldTrialEntry* entry =
+        allocator->GetAsObject<const FieldTrialEntry>(ref, kFieldTrialType);
+
+    StringPiece trial_name_to_check;
+    StringPiece group_name_to_check;
+    if (!entry->GetTrialAndGroupName(&trial_name_to_check,
+                                     &group_name_to_check)) {
+      CHECK(false);
+    }
+
+    if (trial_name_to_check.as_string() == trial_name) {
+      constexpr size_t buf_size = 100;
+
+      char trial_name_c_str[buf_size];
+      char group_name_c_str[buf_size];
+      char existing_group_name_c_str[buf_size];
+
+      strlcpy(trial_name_c_str, trial_name.c_str(), buf_size);
+      strlcpy(group_name_c_str, group_name.c_str(), buf_size);
+      strlcpy(existing_group_name_c_str,
+              group_name_to_check.as_string().c_str(), buf_size);
+
+      debug::Alias(trial_name_c_str);
+      debug::Alias(group_name_c_str);
+      debug::Alias(existing_group_name_c_str);
+      CHECK_EQ(group_name_to_check.as_string(), group_name);
+    }
+  }
+}
+
 #if defined(OS_WIN)
-HANDLE CreateReadOnlyHandle(SharedPersistentMemoryAllocator* allocator) {
+HANDLE CreateReadOnlyHandle(FieldTrialList::FieldTrialAllocator* allocator) {
   HANDLE src = allocator->shared_memory()->handle().GetHandle();
   ProcessHandle process = GetCurrentProcess();
   DWORD access = SECTION_MAP_READ | SECTION_QUERY;
@@ -313,7 +369,7 @@ FieldTrial::FieldTrial(const std::string& trial_name,
       forced_(false),
       group_reported_(false),
       trial_registered_(false),
-      ref_(SharedPersistentMemoryAllocator::kReferenceNull) {
+      ref_(FieldTrialList::FieldTrialAllocator::kReferenceNull) {
   DCHECK_GT(total_probability, 0);
   DCHECK(!trial_name_.empty());
   DCHECK(!default_group_name_.empty());
@@ -350,7 +406,7 @@ void FieldTrial::FinalizeGroupChoiceImpl(bool is_locked) {
   SetGroupChoice(default_group_name_, kDefaultGroupNumber);
 
   // Add the field trial to shared memory.
-  if (kUseSharedMemoryForFieldTrials)
+  if (kUseSharedMemoryForFieldTrials && trial_registered_)
     FieldTrialList::OnGroupFinalized(is_locked, this);
 }
 
@@ -613,6 +669,39 @@ void FieldTrialList::GetActiveFieldTrialGroupsFromString(
 }
 
 // static
+void FieldTrialList::GetInitiallyActiveFieldTrials(
+    const base::CommandLine& command_line,
+    FieldTrial::ActiveGroups* active_groups) {
+  DCHECK(global_->create_trials_from_command_line_called_);
+
+  if (!global_->field_trial_allocator_) {
+    GetActiveFieldTrialGroupsFromString(
+        command_line.GetSwitchValueASCII(switches::kForceFieldTrials),
+        active_groups);
+    return;
+  }
+
+  FieldTrialAllocator* allocator = global_->field_trial_allocator_.get();
+  FieldTrialAllocator::Iterator mem_iter(allocator);
+  FieldTrial::FieldTrialRef ref;
+  while ((ref = mem_iter.GetNextOfType(kFieldTrialType)) !=
+         SharedPersistentMemoryAllocator::kReferenceNull) {
+    const FieldTrialEntry* entry =
+        allocator->GetAsObject<const FieldTrialEntry>(ref, kFieldTrialType);
+
+    StringPiece trial_name;
+    StringPiece group_name;
+    if (entry->activated &&
+        entry->GetTrialAndGroupName(&trial_name, &group_name)) {
+      FieldTrial::ActiveGroup group;
+      group.trial_name = trial_name.as_string();
+      group.group_name = group_name.as_string();
+      active_groups->push_back(group);
+    }
+  }
+}
+
+// static
 bool FieldTrialList::CreateTrialsFromString(
     const std::string& trials_string,
     const std::set<std::string>& ignored_trial_names) {
@@ -648,27 +737,15 @@ bool FieldTrialList::CreateTrialsFromString(
 void FieldTrialList::CreateTrialsFromCommandLine(
     const CommandLine& cmd_line,
     const char* field_trial_handle_switch) {
-  DCHECK(global_);
+  global_->create_trials_from_command_line_called_ = true;
 
 #if defined(OS_WIN) && !defined(OS_NACL)
   if (cmd_line.HasSwitch(field_trial_handle_switch)) {
     std::string arg = cmd_line.GetSwitchValueASCII(field_trial_handle_switch);
-    size_t token = arg.find(",");
-    int field_trial_handle = std::stoi(arg.substr(0, token));
-    size_t field_trial_length = std::stoi(arg.substr(token + 1, arg.length()));
-
+    int field_trial_handle = std::stoi(arg);
     HANDLE handle = reinterpret_cast<HANDLE>(field_trial_handle);
-    SharedMemoryHandle shm_handle =
-        SharedMemoryHandle(handle, GetCurrentProcId());
-
-    // Gets deleted when it gets out of scope, but that's OK because we need it
-    // only for the duration of this method.
-    std::unique_ptr<SharedMemory> shm(new SharedMemory(shm_handle, true));
-    if (!shm.get()->Map(field_trial_length))
-      TerminateBecauseOutOfMemory(field_trial_length);
-
-    FieldTrialList::CreateTrialsFromSharedMemory(std::move(shm));
-    return;
+    bool result = CreateTrialsFromWindowsHandle(handle);
+    DCHECK(result);
   }
 #endif
 
@@ -722,14 +799,9 @@ void FieldTrialList::CopyFieldTrialStateToFlags(
     // retrieve the handle. See http://stackoverflow.com/a/153077
     auto uintptr_handle =
         reinterpret_cast<uintptr_t>(global_->readonly_allocator_handle_);
-    size_t field_trial_length =
-        global_->field_trial_allocator_->shared_memory()->mapped_size();
-    std::string field_trial_handle = std::to_string(uintptr_handle) + "," +
-                                     std::to_string(field_trial_length);
-
+    std::string field_trial_handle = std::to_string(uintptr_handle);
     cmd_line->AppendSwitchASCII(field_trial_handle_switch, field_trial_handle);
-    UMA_HISTOGRAM_COUNTS_10000("UMA.FieldTrialAllocator.Size",
-                               field_trial_length);
+    global_->field_trial_allocator_->UpdateTrackingHistograms();
     return;
   }
 #endif
@@ -820,31 +892,80 @@ size_t FieldTrialList::GetFieldTrialCount() {
   return global_->registered_.size();
 }
 
+#if defined(OS_WIN)
 // static
-void FieldTrialList::CreateTrialsFromSharedMemory(
-    std::unique_ptr<SharedMemory> shm) {
-  const SharedPersistentMemoryAllocator shalloc(std::move(shm), 0,
-                                                kAllocatorName, true);
-  PersistentMemoryAllocator::Iterator mem_iter(&shalloc);
+bool FieldTrialList::CreateTrialsFromWindowsHandle(HANDLE handle) {
+  SharedMemoryHandle shm_handle(handle, GetCurrentProcId());
 
-  SharedPersistentMemoryAllocator::Reference ref;
+  // shm gets deleted when it gets out of scope, but that's OK because we need
+  // it only for the duration of this method.
+  std::unique_ptr<SharedMemory> shm(new SharedMemory(shm_handle, true));
+  if (!shm.get()->Map(kFieldTrialAllocationSize))
+    TerminateBecauseOutOfMemory(kFieldTrialAllocationSize);
+
+  return FieldTrialList::CreateTrialsFromSharedMemory(std::move(shm));
+}
+#endif
+
+// static
+bool FieldTrialList::CreateTrialsFromSharedMemory(
+    std::unique_ptr<SharedMemory> shm) {
+  global_->field_trial_allocator_.reset(
+      new FieldTrialAllocator(std::move(shm), 0, kAllocatorName, true));
+  FieldTrialAllocator* shalloc = global_->field_trial_allocator_.get();
+  FieldTrialAllocator::Iterator mem_iter(shalloc);
+
+  FieldTrial::FieldTrialRef ref;
   while ((ref = mem_iter.GetNextOfType(kFieldTrialType)) !=
-         SharedPersistentMemoryAllocator::kReferenceNull) {
+         FieldTrialAllocator::kReferenceNull) {
     const FieldTrialEntry* entry =
-        shalloc.GetAsObject<const FieldTrialEntry>(ref, kFieldTrialType);
+        shalloc->GetAsObject<const FieldTrialEntry>(ref, kFieldTrialType);
 
     StringPiece trial_name;
     StringPiece group_name;
-    if (!entry->GetTrialAndGroupName(&trial_name, &group_name)) {
-      NOTREACHED();
-      continue;
-    }
+    if (!entry->GetTrialAndGroupName(&trial_name, &group_name))
+      return false;
 
     // TODO(lawrencewu): Convert the API for CreateFieldTrial to take
     // StringPieces.
     FieldTrial* trial =
         CreateFieldTrial(trial_name.as_string(), group_name.as_string());
 
+    // If we failed to create the field trial, crash with debug info.
+    // TODO(665129): Remove this when the crash is resolved.
+    if (!trial) {
+      constexpr size_t buf_size = 100;
+      char trial_name_c_str[buf_size] = {0};
+      char group_name_c_str[buf_size] = {0};
+      char existing_group_name_c_str[buf_size] = {0};
+
+      // Copy the names over to the stack.
+      std::string trial_name_string = trial_name.as_string();
+      strlcpy(trial_name_c_str, trial_name_string.c_str(), buf_size);
+      std::string group_name_string = group_name.as_string();
+      strlcpy(group_name_c_str, group_name_string.c_str(), buf_size);
+
+      // Alias the trial and group name.
+      debug::Alias(trial_name_c_str);
+      debug::Alias(group_name_c_str);
+
+      // Copy and alias the existing field trial name, if there is one.
+      FieldTrial* existing_field_trial =
+          FieldTrialList::Find(trial_name_string);
+      if (existing_field_trial) {
+        std::string existing_group_name_string =
+            existing_field_trial->group_name_internal();
+        strlcpy(existing_group_name_c_str, group_name_string.c_str(), buf_size);
+        debug::Alias(existing_group_name_c_str);
+      }
+      CHECK(!trial_name_string.empty());
+      CHECK(!group_name_string.empty());
+      CHECK_EQ(existing_field_trial->group_name_internal(),
+               group_name.as_string());
+      return false;
+    }
+
+    trial->ref_ = ref;
     if (entry->activated) {
       // Call |group()| to mark the trial as "used" and notify observers, if
       // any. This is useful to ensure that field trials created in child
@@ -852,6 +973,7 @@ void FieldTrialList::CreateTrialsFromSharedMemory(
       trial->group();
     }
   }
+  return true;
 }
 
 #if !defined(OS_NACL)
@@ -868,8 +990,8 @@ void FieldTrialList::InstantiateFieldTrialAllocatorIfNeeded() {
   if (!shm->CreateAndMapAnonymous(kFieldTrialAllocationSize))
     TerminateBecauseOutOfMemory(kFieldTrialAllocationSize);
 
-  global_->field_trial_allocator_.reset(new SharedPersistentMemoryAllocator(
-      std::move(shm), 0, kAllocatorName, false));
+  global_->field_trial_allocator_.reset(
+      new FieldTrialAllocator(std::move(shm), 0, kAllocatorName, false));
   global_->field_trial_allocator_->CreateTrackingHistograms(kAllocatorName);
 
   // Add all existing field trials.
@@ -888,19 +1010,28 @@ void FieldTrialList::InstantiateFieldTrialAllocatorIfNeeded() {
 
 // static
 void FieldTrialList::AddToAllocatorWhileLocked(FieldTrial* field_trial) {
-  SharedPersistentMemoryAllocator* allocator =
-      global_->field_trial_allocator_.get();
+  FieldTrialAllocator* allocator = global_->field_trial_allocator_.get();
 
   // Don't do anything if the allocator hasn't been instantiated yet.
   if (allocator == nullptr)
     return;
 
-  // Or if we've already added it.
-  if (field_trial->ref_ != SharedPersistentMemoryAllocator::kReferenceNull)
+  // Or if the allocator is read only, which means we are in a child process and
+  // shouldn't be writing to it.
+  if (allocator->IsReadonly())
     return;
 
+  // TODO(665129): Remove this code once the bug has been fixed.
+  CheckAllocatorForTrial(allocator, field_trial->trial_name(),
+                         field_trial->group_name_internal());
+
   FieldTrial::State trial_state;
-  if (!field_trial->GetState(&trial_state))
+  if (!field_trial->GetStateWhileLocked(&trial_state))
+    return;
+
+  // Or if we've already added it. We must check after GetState since it can
+  // also add to the allocator.
+  if (field_trial->ref_)
     return;
 
   Pickle pickle;
@@ -908,9 +1039,9 @@ void FieldTrialList::AddToAllocatorWhileLocked(FieldTrial* field_trial) {
   pickle.WriteString(trial_state.group_name);
 
   size_t total_size = sizeof(FieldTrialEntry) + pickle.size();
-  SharedPersistentMemoryAllocator::Reference ref =
+  FieldTrial::FieldTrialRef ref =
       allocator->Allocate(total_size, kFieldTrialType);
-  if (ref == SharedPersistentMemoryAllocator::kReferenceNull)
+  if (ref == FieldTrialAllocator::kReferenceNull)
     return;
 
   FieldTrialEntry* entry =
@@ -930,10 +1061,14 @@ void FieldTrialList::AddToAllocatorWhileLocked(FieldTrial* field_trial) {
 // static
 void FieldTrialList::ActivateFieldTrialEntryWhileLocked(
     FieldTrial* field_trial) {
-  SharedPersistentMemoryAllocator* allocator =
-      global_->field_trial_allocator_.get();
-  SharedPersistentMemoryAllocator::Reference ref = field_trial->ref_;
-  if (ref == SharedPersistentMemoryAllocator::kReferenceNull) {
+  FieldTrialAllocator* allocator = global_->field_trial_allocator_.get();
+
+  // Check if we're in the child process and return early if so.
+  if (allocator && allocator->IsReadonly())
+    return;
+
+  FieldTrial::FieldTrialRef ref = field_trial->ref_;
+  if (ref == FieldTrialAllocator::kReferenceNull) {
     // It's fine to do this even if the allocator hasn't been instantiated
     // yet -- it'll just return early.
     AddToAllocatorWhileLocked(field_trial);

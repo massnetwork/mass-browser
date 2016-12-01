@@ -64,7 +64,7 @@ class CONTENT_EXPORT BrowserGpuMemoryBufferManager
                                         gfx::BufferUsage usage);
 
   // Overridden from gpu::GpuMemoryBufferManager:
-  std::unique_ptr<gfx::GpuMemoryBuffer> AllocateGpuMemoryBuffer(
+  std::unique_ptr<gfx::GpuMemoryBuffer> CreateGpuMemoryBuffer(
       const gfx::Size& size,
       gfx::BufferFormat format,
       gfx::BufferUsage usage,
@@ -73,8 +73,6 @@ class CONTENT_EXPORT BrowserGpuMemoryBufferManager
       const gfx::GpuMemoryBufferHandle& handle,
       const gfx::Size& size,
       gfx::BufferFormat format) override;
-  gfx::GpuMemoryBuffer* GpuMemoryBufferFromClientBuffer(
-      ClientBuffer buffer) override;
   void SetDestructionSyncToken(gfx::GpuMemoryBuffer* buffer,
                                const gpu::SyncToken& sync_token) override;
 
@@ -87,15 +85,13 @@ class CONTENT_EXPORT BrowserGpuMemoryBufferManager
       const gfx::Size& size,
       gfx::BufferFormat format,
       gfx::BufferUsage usage,
-      base::ProcessHandle child_process_handle,
       int child_client_id,
       const AllocationCallback& callback);
   void ChildProcessDeletedGpuMemoryBuffer(
       gfx::GpuMemoryBufferId id,
-      base::ProcessHandle child_process_handle,
       int child_client_id,
       const gpu::SyncToken& sync_token);
-  void ProcessRemoved(base::ProcessHandle process_handle, int client_id);
+  void ProcessRemoved(int client_id);
 
   bool IsNativeGpuMemoryBufferConfiguration(gfx::BufferFormat format,
                                             gfx::BufferUsage usage) const;

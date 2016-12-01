@@ -7,12 +7,17 @@
 #include <utility>
 
 #include "ash/common/shelf/shelf_controller.h"
+#include "ash/common/shutdown_controller.h"
 #include "ash/common/system/locale/locale_notification_controller.h"
 #include "ash/common/system/tray/system_tray_controller.h"
 #include "ash/common/wallpaper/wallpaper_controller.h"
 #include "ash/common/wm_shell.h"
 #include "base/bind.h"
 #include "services/service_manager/public/cpp/interface_registry.h"
+
+#if defined(OS_CHROMEOS)
+#include "ash/common/system/chromeos/network/vpn_list.h"
+#endif
 
 namespace ash {
 
@@ -28,9 +33,20 @@ void BindShelfRequestOnMainThread(mojom::ShelfControllerRequest request) {
   WmShell::Get()->shelf_controller()->BindRequest(std::move(request));
 }
 
+void BindShutdownControllerRequestOnMainThread(
+    mojom::ShutdownControllerRequest request) {
+  WmShell::Get()->shutdown_controller()->BindRequest(std::move(request));
+}
+
 void BindSystemTrayRequestOnMainThread(mojom::SystemTrayRequest request) {
   WmShell::Get()->system_tray_controller()->BindRequest(std::move(request));
 }
+
+#if defined(OS_CHROMEOS)
+void BindVpnListRequestOnMainThread(mojom::VpnListRequest request) {
+  WmShell::Get()->vpn_list()->BindRequest(std::move(request));
+}
+#endif
 
 void BindWallpaperRequestOnMainThread(
     mojom::WallpaperControllerRequest request) {
@@ -49,8 +65,14 @@ void RegisterInterfaces(
       main_thread_task_runner);
   registry->AddInterface(base::Bind(&BindShelfRequestOnMainThread),
                          main_thread_task_runner);
+  registry->AddInterface(base::Bind(&BindShutdownControllerRequestOnMainThread),
+                         main_thread_task_runner);
   registry->AddInterface(base::Bind(&BindSystemTrayRequestOnMainThread),
                          main_thread_task_runner);
+#if defined(OS_CHROMEOS)
+  registry->AddInterface(base::Bind(&BindVpnListRequestOnMainThread),
+                         main_thread_task_runner);
+#endif
   registry->AddInterface(base::Bind(&BindWallpaperRequestOnMainThread),
                          main_thread_task_runner);
 }

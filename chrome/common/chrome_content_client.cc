@@ -41,6 +41,7 @@
 #include "content/public/common/url_constants.h"
 #include "content/public/common/user_agent.h"
 #include "extensions/common/constants.h"
+#include "extensions/features/features.h"
 #include "gpu/config/gpu_info.h"
 #include "net/http/http_util.h"
 #include "ppapi/features/features.h"
@@ -65,12 +66,12 @@
 #include "components/nacl/common/nacl_sandbox_type.h"
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/common/extensions/extension_process_policy.h"
 #include "extensions/common/features/feature_util.h"
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 #include "content/public/common/pepper_plugin_info.h"
 #include "flapper_version.h"  // nogncheck  In SHARED_INTERMEDIATE_DIR.
 #include "ppapi/shared_impl/ppapi_permissions.h"
@@ -88,7 +89,7 @@
 
 namespace {
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 #if defined(ENABLE_PDF)
 const char kPDFPluginExtension[] = "pdf";
 const char kPDFPluginDescription[] = "Portable Document Format";
@@ -382,7 +383,7 @@ bool GetSystemPepperFlash(content::PepperPluginInfo* plugin) {
 
   return TryCreatePepperFlashInfo(flash_filename, plugin);
 }
-#endif  //  defined(ENABLE_PLUGINS)
+#endif  //  BUILDFLAG(ENABLE_PLUGINS)
 
 std::string GetProduct() {
   return version_info::GetProductNameAndVersionForUserAgent();
@@ -424,7 +425,7 @@ void ChromeContentClient::SetNaClEntryFunctions(
 }
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 void ChromeContentClient::SetPDFEntryFunctions(
     content::PepperPluginInfo::GetInterfaceFunc get_interface,
     content::PepperPluginInfo::PPP_InitializeModuleFunc initialize_module,
@@ -461,7 +462,7 @@ void ChromeContentClient::SetGpuInfo(const gpu::GPUInfo& gpu_info) {
 #endif
 }
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // static
 content::PepperPluginInfo* ChromeContentClient::FindMostRecentPlugin(
     const std::vector<std::unique_ptr<content::PepperPluginInfo>>& plugins) {
@@ -480,11 +481,11 @@ content::PepperPluginInfo* ChromeContentClient::FindMostRecentPlugin(
 
   return plugin_map.rbegin()->second;
 }
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 void ChromeContentClient::AddPepperPlugins(
     std::vector<content::PepperPluginInfo>* plugins) {
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   ComputeBuiltInPlugins(plugins);
 
   std::vector<std::unique_ptr<content::PepperPluginInfo>> flash_versions;
@@ -527,7 +528,7 @@ void ChromeContentClient::AddPepperPlugins(
         FLAPPER_VERSION_STRING, false));
 #endif  // defined(GOOGLE_CHROME_BUILD) && defined(FLAPPER_AVAILABLE)
   }
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 }
 
 void ChromeContentClient::AddContentDecryptionModules(
@@ -657,7 +658,7 @@ void ChromeContentClient::AddSecureSchemesAndOrigins(
 
 void ChromeContentClient::AddServiceWorkerSchemes(
     std::set<std::string>* schemes) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   if (extensions::feature_util::ExtensionServiceWorkersEnabled())
     schemes->insert(extensions::kExtensionScheme);
 #endif
@@ -665,7 +666,7 @@ void ChromeContentClient::AddServiceWorkerSchemes(
 
 bool ChromeContentClient::AllowScriptExtensionForServiceWorker(
     const GURL& script_url) {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   return script_url.SchemeIs(extensions::kExtensionScheme) ||
          script_url.SchemeIs(extensions::kExtensionResourceScheme);
 #else
@@ -674,7 +675,7 @@ bool ChromeContentClient::AllowScriptExtensionForServiceWorker(
 }
 
 bool ChromeContentClient::IsSupplementarySiteIsolationModeEnabled() {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   return extensions::IsIsolateExtensionsEnabled();
 #else
   return false;

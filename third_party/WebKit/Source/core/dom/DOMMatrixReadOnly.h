@@ -16,6 +16,8 @@ namespace blink {
 
 class DOMMatrix;
 class DOMMatrixInit;
+class DOMPoint;
+class DOMPointInit;
 
 class CORE_EXPORT DOMMatrixReadOnly
     : public GarbageCollectedFinalized<DOMMatrixReadOnly>,
@@ -23,6 +25,7 @@ class CORE_EXPORT DOMMatrixReadOnly
   DEFINE_WRAPPERTYPEINFO();
 
  public:
+  static DOMMatrixReadOnly* create(ExceptionState&);
   static DOMMatrixReadOnly* create(Vector<double>, ExceptionState&);
   static DOMMatrixReadOnly* fromFloat32Array(DOMFloat32Array*, ExceptionState&);
   static DOMMatrixReadOnly* fromFloat64Array(DOMFloat64Array*, ExceptionState&);
@@ -57,7 +60,7 @@ class CORE_EXPORT DOMMatrixReadOnly
   bool isIdentity() const;
 
   DOMMatrix* multiply(DOMMatrixInit&, ExceptionState&);
-  DOMMatrix* translate(double tx, double ty, double tz = 0);
+  DOMMatrix* translate(double tx = 0, double ty = 0, double tz = 0);
   DOMMatrix* scale(double sx = 1);
   DOMMatrix* scale(double sx,
                    double sy,
@@ -65,7 +68,10 @@ class CORE_EXPORT DOMMatrixReadOnly
                    double ox = 0,
                    double oy = 0,
                    double oz = 0);
-  DOMMatrix* scale3d(double scale, double ox = 0, double oy = 0, double oz = 0);
+  DOMMatrix* scale3d(double scale = 1,
+                     double ox = 0,
+                     double oy = 0,
+                     double oz = 0);
   DOMMatrix* rotate(double rotX);
   DOMMatrix* rotate(double rotX, double rotY);
   DOMMatrix* rotate(double rotX, double rotY, double rotZ);
@@ -80,10 +86,14 @@ class CORE_EXPORT DOMMatrixReadOnly
   DOMMatrix* flipY();
   DOMMatrix* inverse();
 
+  DOMPoint* transformPoint(const DOMPointInit&);
+
   DOMFloat32Array* toFloat32Array() const;
   DOMFloat64Array* toFloat64Array() const;
 
   const String toString() const;
+
+  ScriptValue toJSONForBinding(ScriptState*) const;
 
   const TransformationMatrix& matrix() const { return *m_matrix; }
 
@@ -91,6 +101,7 @@ class CORE_EXPORT DOMMatrixReadOnly
 
  protected:
   DOMMatrixReadOnly() {}
+  DOMMatrixReadOnly(const TransformationMatrix&, bool is2D = true);
 
   template <typename T>
   DOMMatrixReadOnly(T sequence, int size) {

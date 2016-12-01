@@ -47,6 +47,10 @@
 #include "components/sync/syncable/write_node.h"
 #include "components/sync/syncable/write_transaction.h"
 
+#if defined(OS_WIN)
+#include "components/sync/engine_impl/loopback_server/loopback_connection_manager.h"
+#endif
+
 using base::TimeDelta;
 using sync_pb::GetUpdatesCallerInfo;
 
@@ -190,6 +194,10 @@ void SyncManagerImpl::ConfigureSyncer(
   DCHECK(!ready_task.is_null());
   DCHECK(initialized_);
 
+  // Don't download non-blocking types that have already completed initial sync.
+  to_download.RemoveAll(
+      model_type_registry_->GetInitialSyncDoneNonBlockingTypes());
+
   DVLOG(1) << "Configuring -"
            << "\n\t"
            << "current types: "
@@ -282,11 +290,21 @@ void SyncManagerImpl::Init(InitArgs* args) {
     args->saved_nigori_state.reset();
   }
 
-  connection_manager_ = base::MakeUnique<SyncServerConnectionManager>(
-      args->service_url.host() + args->service_url.path(),
-      args->service_url.EffectiveIntPort(),
-      args->service_url.SchemeIsCryptographic(), args->post_factory.release(),
-      args->cancelation_signal);
+  if (args->enable_local_sync_backend) {
+#if defined(OS_WIN)
+    VLOG(1) << "Running against local sync backend.";
+    connection_manager_ = base::MakeUnique<LoopbackConnectionManager>(
+        args->cancelation_signal, args->local_sync_backend_folder);
+#else
+    NOTREACHED();
+#endif  // defined(OS_WIN)
+  } else {
+    connection_manager_ = base::MakeUnique<SyncServerConnectionManager>(
+        args->service_url.host() + args->service_url.path(),
+        args->service_url.EffectiveIntPort(),
+        args->service_url.SchemeIsCryptographic(), args->post_factory.release(),
+        args->cancelation_signal);
+  }
   connection_manager_->set_client_id(directory()->cache_guid());
   connection_manager_->AddListener(this);
 
@@ -841,6 +859,8 @@ void SyncManagerImpl::OnRetryTimeChanged(base::Time) {}
 
 void SyncManagerImpl::OnThrottledTypesChanged(ModelTypeSet) {}
 
+void SyncManagerImpl::OnBackedOffTypesChanged(ModelTypeSet) {}
+
 void SyncManagerImpl::OnMigrationRequested(ModelTypeSet types) {
   for (auto& observer : observers_) {
     observer.OnMigrationRequested(types);
@@ -1002,6 +1022,10 @@ void SyncManagerImpl::OnCookieJarChanged(bool account_mismatch,
   DCHECK(thread_checker_.CalledOnValidThread());
   cycle_context_->set_cookie_jar_mismatch(account_mismatch);
   cycle_context_->set_cookie_jar_empty(empty_jar);
+}
+
+void SyncManagerImpl::OnMemoryDump(base::trace_event::ProcessMemoryDump* pmd) {
+  directory()->OnMemoryDump(pmd);
 }
 
 }  // namespace syncer

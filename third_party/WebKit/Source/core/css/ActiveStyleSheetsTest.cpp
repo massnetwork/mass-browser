@@ -302,6 +302,32 @@ TEST_F(ActiveStyleSheetsTest,
   EXPECT_EQ(&sheet3->contents()->ruleSet(), changedRuleSets[0]);
 }
 
+TEST_F(ActiveStyleSheetsTest, CompareActiveStyleSheets_ReorderedImportSheets) {
+  ActiveStyleSheetVector oldSheets;
+  ActiveStyleSheetVector newSheets;
+  HeapVector<Member<RuleSet>> changedRuleSets;
+
+  CSSStyleSheet* sheet1 = createSheet();
+  CSSStyleSheet* sheet2 = createSheet();
+
+  // It is possible to have CSSStyleSheet pointers re-orderered for html imports
+  // because their documents, and hence their stylesheets are persisted on
+  // remove / insert. This test is here to show that the active sheet comparison
+  // is not able to see that anything changed.
+  //
+  // Imports are handled by forcing re-append and recalc of the document scope
+  // when html imports are removed.
+  oldSheets.append(std::make_pair(sheet1, &sheet1->contents()->ruleSet()));
+  oldSheets.append(std::make_pair(sheet2, &sheet2->contents()->ruleSet()));
+
+  newSheets.append(std::make_pair(sheet2, &sheet2->contents()->ruleSet()));
+  newSheets.append(std::make_pair(sheet1, &sheet1->contents()->ruleSet()));
+
+  EXPECT_EQ(NoActiveSheetsChanged,
+            compareActiveStyleSheets(oldSheets, newSheets, changedRuleSets));
+  EXPECT_EQ(0u, changedRuleSets.size());
+}
+
 TEST_F(ApplyRulesetsTest, AddUniversalRuleToDocument) {
   document().view()->updateAllLifecyclePhases();
 
@@ -310,14 +336,14 @@ TEST_F(ApplyRulesetsTest, AddUniversalRuleToDocument) {
   ActiveStyleSheetVector newStyleSheets;
   newStyleSheets.append(std::make_pair(sheet, &sheet->contents()->ruleSet()));
 
-  applyRuleSetChanges(styleEngine(), document(), ActiveStyleSheetVector(),
-                      newStyleSheets);
+  styleEngine().applyRuleSetChanges(document(), ActiveStyleSheetVector(),
+                                    newStyleSheets);
 
   EXPECT_EQ(SubtreeStyleChange, document().getStyleChangeType());
 }
 
 TEST_F(ApplyRulesetsTest, AddUniversalRuleToShadowTree) {
-  document().body()->setInnerHTML("<div id=host></div>", ASSERT_NO_EXCEPTION);
+  document().body()->setInnerHTML("<div id=host></div>");
   Element* host = document().getElementById("host");
   ASSERT_TRUE(host);
 
@@ -329,8 +355,8 @@ TEST_F(ApplyRulesetsTest, AddUniversalRuleToShadowTree) {
   ActiveStyleSheetVector newStyleSheets;
   newStyleSheets.append(std::make_pair(sheet, &sheet->contents()->ruleSet()));
 
-  applyRuleSetChanges(styleEngine(), shadowRoot, ActiveStyleSheetVector(),
-                      newStyleSheets);
+  styleEngine().applyRuleSetChanges(shadowRoot, ActiveStyleSheetVector(),
+                                    newStyleSheets);
 
   EXPECT_FALSE(document().needsStyleRecalc());
   EXPECT_EQ(SubtreeStyleChange, host->getStyleChangeType());
@@ -344,14 +370,14 @@ TEST_F(ApplyRulesetsTest, AddShadowV0BoundaryCrossingRuleToDocument) {
   ActiveStyleSheetVector newStyleSheets;
   newStyleSheets.append(std::make_pair(sheet, &sheet->contents()->ruleSet()));
 
-  applyRuleSetChanges(styleEngine(), document(), ActiveStyleSheetVector(),
-                      newStyleSheets);
+  styleEngine().applyRuleSetChanges(document(), ActiveStyleSheetVector(),
+                                    newStyleSheets);
 
   EXPECT_EQ(SubtreeStyleChange, document().getStyleChangeType());
 }
 
 TEST_F(ApplyRulesetsTest, AddShadowV0BoundaryCrossingRuleToShadowTree) {
-  document().body()->setInnerHTML("<div id=host></div>", ASSERT_NO_EXCEPTION);
+  document().body()->setInnerHTML("<div id=host></div>");
   Element* host = document().getElementById("host");
   ASSERT_TRUE(host);
 
@@ -363,8 +389,8 @@ TEST_F(ApplyRulesetsTest, AddShadowV0BoundaryCrossingRuleToShadowTree) {
   ActiveStyleSheetVector newStyleSheets;
   newStyleSheets.append(std::make_pair(sheet, &sheet->contents()->ruleSet()));
 
-  applyRuleSetChanges(styleEngine(), shadowRoot, ActiveStyleSheetVector(),
-                      newStyleSheets);
+  styleEngine().applyRuleSetChanges(shadowRoot, ActiveStyleSheetVector(),
+                                    newStyleSheets);
 
   EXPECT_FALSE(document().needsStyleRecalc());
   EXPECT_EQ(SubtreeStyleChange, host->getStyleChangeType());
@@ -379,14 +405,14 @@ TEST_F(ApplyRulesetsTest, AddFontFaceRuleToDocument) {
   ActiveStyleSheetVector newStyleSheets;
   newStyleSheets.append(std::make_pair(sheet, &sheet->contents()->ruleSet()));
 
-  applyRuleSetChanges(styleEngine(), document(), ActiveStyleSheetVector(),
-                      newStyleSheets);
+  styleEngine().applyRuleSetChanges(document(), ActiveStyleSheetVector(),
+                                    newStyleSheets);
 
   EXPECT_EQ(SubtreeStyleChange, document().getStyleChangeType());
 }
 
 TEST_F(ApplyRulesetsTest, AddFontFaceRuleToShadowTree) {
-  document().body()->setInnerHTML("<div id=host></div>", ASSERT_NO_EXCEPTION);
+  document().body()->setInnerHTML("<div id=host></div>");
   Element* host = document().getElementById("host");
   ASSERT_TRUE(host);
 
@@ -399,20 +425,22 @@ TEST_F(ApplyRulesetsTest, AddFontFaceRuleToShadowTree) {
   ActiveStyleSheetVector newStyleSheets;
   newStyleSheets.append(std::make_pair(sheet, &sheet->contents()->ruleSet()));
 
-  applyRuleSetChanges(styleEngine(), shadowRoot, ActiveStyleSheetVector(),
-                      newStyleSheets);
+  styleEngine().applyRuleSetChanges(shadowRoot, ActiveStyleSheetVector(),
+                                    newStyleSheets);
 
-  EXPECT_FALSE(document().needsLayoutTreeUpdate());
+  EXPECT_FALSE(document().needsStyleRecalc());
+  EXPECT_FALSE(document().childNeedsStyleRecalc());
+  EXPECT_FALSE(document().needsStyleInvalidation());
+  EXPECT_FALSE(document().childNeedsStyleInvalidation());
 }
 
 TEST_F(ApplyRulesetsTest, RemoveSheetFromShadowTree) {
-  document().body()->setInnerHTML("<div id=host></div>", ASSERT_NO_EXCEPTION);
+  document().body()->setInnerHTML("<div id=host></div>");
   Element* host = document().getElementById("host");
   ASSERT_TRUE(host);
 
   ShadowRoot& shadowRoot = attachShadow(*host);
-  shadowRoot.setInnerHTML("<style>::slotted(#dummy){color:pink}</style>",
-                          ASSERT_NO_EXCEPTION);
+  shadowRoot.setInnerHTML("<style>::slotted(#dummy){color:pink}</style>");
   document().view()->updateAllLifecyclePhases();
 
   EXPECT_EQ(1u, styleEngine().treeBoundaryCrossingScopes().size());
@@ -426,8 +454,8 @@ TEST_F(ApplyRulesetsTest, RemoveSheetFromShadowTree) {
   ActiveStyleSheetVector oldStyleSheets;
   oldStyleSheets.append(
       std::make_pair(cssSheet, &cssSheet->contents()->ruleSet()));
-  applyRuleSetChanges(styleEngine(), shadowRoot, oldStyleSheets,
-                      ActiveStyleSheetVector());
+  styleEngine().applyRuleSetChanges(shadowRoot, oldStyleSheets,
+                                    ActiveStyleSheetVector());
 
   EXPECT_TRUE(styleEngine().treeBoundaryCrossingScopes().isEmpty());
 }

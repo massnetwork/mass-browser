@@ -13,7 +13,6 @@
 namespace ash {
 namespace tray {
 class CastTrayView;
-class CastSelectDefaultView;
 class CastDetailedView;
 class CastDuplexView;
 }  // namespace tray
@@ -28,7 +27,7 @@ class ASH_EXPORT TrayCast : public SystemTrayItem,
  private:
   // Helper/utility methods for testing.
   friend class TrayCastTestAPI;
-  void StartCastForTest(const std::string& receiver_id);
+  void StartCastForTest(const std::string& sink_id);
   void StopCastForTest();
   // Returns the id of the item we are currently displaying in the cast view.
   // This assumes that the cast view is active.
@@ -49,10 +48,7 @@ class ASH_EXPORT TrayCast : public SystemTrayItem,
 
   // Overridden from CastConfigDelegate::Observer.
   void OnDevicesUpdated(
-      const CastConfigDelegate::ReceiversAndActivities& devices) override;
-
-  // Returns true if the cast extension was detected.
-  bool HasCastExtension();
+      const CastConfigDelegate::SinksAndRoutes& devices) override;
 
   // This makes sure that the current view displayed in the tray is the correct
   // one, depending on if we are currently casting. If we're casting, then a
@@ -61,10 +57,17 @@ class ASH_EXPORT TrayCast : public SystemTrayItem,
   // casting session.
   void UpdatePrimaryView();
 
-  CastConfigDelegate::ReceiversAndActivities receivers_and_activities_;
-  bool is_casting_ = false;
+  // Returns true if there is an active cast route. The route may be DIAL based,
+  // such as casting YouTube where the cast sink directly streams content from
+  // another server. In that case, is_mirror_casting_ will be false since this
+  // device is not actively transmitting information to the cast sink.
+  bool HasActiveRoute();
 
-  bool added_observer_ = false;
+  CastConfigDelegate::SinksAndRoutes sinks_and_routes_;
+
+  // True if there is a mirror-based cast session and the active-cast tray icon
+  // should be shown.
+  bool is_mirror_casting_ = false;
 
   // Not owned.
   tray::CastTrayView* tray_ = nullptr;

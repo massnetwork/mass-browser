@@ -5,6 +5,7 @@
 #include "chrome/browser/chromeos/arc/arc_support_host.h"
 
 #include <string>
+#include <utility>
 
 #include "ash/common/system/chromeos/devicetype_utils.h"
 #include "base/i18n/timezone.h"
@@ -13,13 +14,15 @@
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/values.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/chromeos/arc/optin/arc_optin_preference_handler.h"
 #include "chrome/browser/chromeos/profiles/profile_helper.h"
+#include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/ash/multi_user/multi_user_util.h"
-#include "chrome/browser/ui/browser_commands.h"
+#include "chrome/browser/ui/extensions/app_launch_params.h"
+#include "chrome/browser/ui/extensions/application_launch.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/user_manager/known_user.h"
+#include "extensions/browser/extension_registry.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/webui/web_ui_util.h"
 #include "ui/display/screen.h"
@@ -29,15 +32,23 @@ constexpr char kAction[] = "action";
 constexpr char kArcManaged[] = "arcManaged";
 constexpr char kData[] = "data";
 constexpr char kDeviceId[] = "deviceId";
-constexpr char kPage[] = "page";
-constexpr char kStatus[] = "status";
 constexpr char kActionInitialize[] = "initialize";
 constexpr char kActionSetMetricsMode[] = "setMetricsMode";
 constexpr char kActionBackupAndRestoreMode[] = "setBackupAndRestoreMode";
 constexpr char kActionLocationServiceMode[] = "setLocationServiceMode";
 constexpr char kActionSetWindowBounds[] = "setWindowBounds";
 constexpr char kActionCloseWindow[] = "closeWindow";
+
+// Action to show a page. The message should have "page" field, which is one of
+// IDs for section div elements.
 constexpr char kActionShowPage[] = "showPage";
+constexpr char kPage[] = "page";
+
+// Action to show the error page. The message should have "errorMessage",
+// which is a localized error text, and "shouldShowSendFeedback" boolean value.
+constexpr char kActionShowErrorPage[] = "showErrorPage";
+constexpr char kErrorMessage[] = "errorMessage";
+constexpr char kShouldShowSendFeedback[] = "shouldShowSendFeedback";
 
 // The preference update should have those two fields.
 constexpr char kEnabled[] = "enabled";
@@ -55,7 +66,7 @@ constexpr char kEventOnWindowClosed[] = "onWindowClosed";
 // "onAuthSucceeded" is fired when successfully done to LSO authorization in
 // extension.
 // The auth token is passed via "code" field.
-constexpr char kEventOnAuthSuccedded[] = "onAuthSucceeded";
+constexpr char kEventOnAuthSucceeded[] = "onAuthSucceeded";
 constexpr char kCode[] = "code";
 
 // "onAgree" is fired when a user clicks "Agree" button.
@@ -68,8 +79,58 @@ constexpr char kIsMetricsEnabled[] = "isMetricsEnabled";
 constexpr char kIsBackupRestoreEnabled[] = "isBackupRestoreEnabled";
 constexpr char kIsLocationServiceEnabled[] = "isLocationServiceEnabled";
 
+// "onRetryClicked" is fired when a user clicks "RETRY" button on the error
+// page.
+constexpr char kEventOnRetryClicked[] = "onRetryClicked";
+
 // "onSendFeedbackClicked" is fired when a user clicks "Send Feedback" button.
 constexpr char kEventOnSendFeedbackClicked[] = "onSendFeedbackClicked";
+
+std::ostream& operator<<(std::ostream& os, ArcSupportHost::UIPage ui_page) {
+  switch (ui_page) {
+    case ArcSupportHost::UIPage::NO_PAGE:
+      return os << "NO_PAGE";
+    case ArcSupportHost::UIPage::TERMS:
+      return os << "TERMS";
+    case ArcSupportHost::UIPage::LSO:
+      return os << "LSO";
+    case ArcSupportHost::UIPage::ARC_LOADING:
+      return os << "ARC_LOADING";
+    case ArcSupportHost::UIPage::ERROR:
+      return os << "ERROR";
+  }
+
+  // Some compiler reports an error even if all values of an enum-class are
+  // covered indivisually in a switch statement.
+  NOTREACHED();
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, ArcSupportHost::Error error) {
+  switch (error) {
+    case ArcSupportHost::Error::SIGN_IN_NETWORK_ERROR:
+      return os << "SIGN_IN_NETWORK_ERROR";
+    case ArcSupportHost::Error::SIGN_IN_SERVICE_UNAVAILABLE_ERROR:
+      return os << "SIGN_IN_SERVICE_UNAVAILABLE_ERROR";
+    case ArcSupportHost::Error::SIGN_IN_BAD_AUTHENTICATION_ERROR:
+      return os << "SIGN_IN_BAD_AUTHENTICATION_ERROR";
+    case ArcSupportHost::Error::SIGN_IN_GMS_NOT_AVAILABLE_ERROR:
+      return os << "SIGN_IN_GMS_NOT_AVAILABLE_ERROR";
+    case ArcSupportHost::Error::SIGN_IN_CLOUD_PROVISION_FLOW_FAIL_ERROR:
+      return os << "SIGN_IN_CLOUD_PROVISION_FLOW_FAIL_ERROR";
+    case ArcSupportHost::Error::SIGN_IN_UNKNOWN_ERROR:
+      return os << "SIGN_IN_UNKNOWN_ERROR";
+    case ArcSupportHost::Error::SERVER_COMMUNICATION_ERROR:
+      return os << "SERVER_COMMUNICATION_ERROR";
+    case ArcSupportHost::Error::ANDROID_MANAGEMENT_REQUIRED_ERROR:
+      return os << "ANDROID_MANAGEMENT_REQUIRED_ERROR";
+  }
+
+  // Some compiler reports an error even if all values of an enum-class are
+  // covered indivisually in a switch statement.
+  NOTREACHED();
+  return os;
+}
 
 }  // namespace
 
@@ -79,21 +140,32 @@ const char ArcSupportHost::kHostAppId[] = "cnbgggchhmkkdmeppjobngjoejnihlei";
 // static
 const char ArcSupportHost::kStorageId[] = "arc_support";
 
-ArcSupportHost::ArcSupportHost() {
-  // TODO(hidehiko): Get rid of dependency to ArcAuthService.
-  arc::ArcAuthService* arc_auth_service = arc::ArcAuthService::Get();
-  DCHECK(arc_auth_service);
-
-  if (!arc_auth_service->IsAllowed())
-    return;
-}
+ArcSupportHost::ArcSupportHost(Profile* profile) : profile_(profile) {}
 
 ArcSupportHost::~ArcSupportHost() {
   if (message_host_)
     DisconnectMessageHost();
 }
 
+void ArcSupportHost::AddObserver(Observer* observer) {
+  observer_list_.AddObserver(observer);
+}
+
+void ArcSupportHost::RemoveObserver(Observer* observer) {
+  observer_list_.RemoveObserver(observer);
+}
+
+bool ArcSupportHost::HasObserver(Observer* observer) {
+  return observer_list_.HasObserver(observer);
+}
+
+void ArcSupportHost::SetArcManaged(bool is_arc_managed) {
+  DCHECK(!message_host_);
+  is_arc_managed_ = is_arc_managed;
+}
+
 void ArcSupportHost::Close() {
+  ui_page_ = UIPage::NO_PAGE;
   if (!message_host_) {
     VLOG(2) << "ArcSupportHost::Close() is called "
             << "but message_host_ is not available.";
@@ -109,18 +181,130 @@ void ArcSupportHost::Close() {
   DisconnectMessageHost();
 }
 
-void ArcSupportHost::ShowPage(arc::ArcAuthService::UIPage page,
-                              const base::string16& status) {
+void ArcSupportHost::ShowTermsOfService() {
+  ShowPage(UIPage::TERMS);
+}
+
+void ArcSupportHost::ShowLso() {
+  ShowPage(UIPage::LSO);
+}
+
+void ArcSupportHost::ShowArcLoading() {
+  ShowPage(UIPage::ARC_LOADING);
+}
+
+void ArcSupportHost::ShowPage(UIPage ui_page) {
+  ui_page_ = ui_page;
   if (!message_host_) {
-    VLOG(2) << "ArcSupportHost::ShowPage() is called "
-            << "but message_host_ is not available.";
+    if (app_start_pending_) {
+      VLOG(2) << "ArcSupportHost::ShowPage(" << ui_page << ") is called "
+              << "before connection to ARC support Chrome app has finished "
+              << "establishing.";
+      return;
+    }
+    RequestAppStart();
     return;
   }
 
   base::DictionaryValue message;
   message.SetString(kAction, kActionShowPage);
-  message.SetInteger(kPage, static_cast<int>(page));
-  message.SetString(kStatus, status);
+  switch (ui_page) {
+    case UIPage::TERMS:
+      message.SetString(kPage, "terms");
+      break;
+    case UIPage::LSO:
+      // TODO(hidehiko): Merge LSO and LSO_LOADING.
+      message.SetString(kPage, "lso-loading");
+      break;
+    case UIPage::ARC_LOADING:
+      message.SetString(kPage, "arc-loading");
+      break;
+    default:
+      NOTREACHED();
+      return;
+  }
+  message_host_->SendMessage(message);
+}
+
+void ArcSupportHost::ShowError(Error error, bool should_show_send_feedback) {
+  ui_page_ = UIPage::ERROR;
+  error_ = error;
+  should_show_send_feedback_ = should_show_send_feedback;
+  if (!message_host_) {
+    if (app_start_pending_) {
+      VLOG(2) << "ArcSupportHost::ShowError(" << error << ", "
+              << should_show_send_feedback << ") is called before connection "
+              << "to ARC support Chrome app is established.";
+      return;
+    }
+    RequestAppStart();
+    return;
+  }
+
+  base::DictionaryValue message;
+  message.SetString(kAction, kActionShowErrorPage);
+  int message_id;
+  switch (error) {
+    case Error::SIGN_IN_NETWORK_ERROR:
+      message_id = IDS_ARC_SIGN_IN_NETWORK_ERROR;
+      break;
+    case Error::SIGN_IN_SERVICE_UNAVAILABLE_ERROR:
+      message_id = IDS_ARC_SIGN_IN_SERVICE_UNAVAILABLE_ERROR;
+      break;
+    case Error::SIGN_IN_BAD_AUTHENTICATION_ERROR:
+      message_id = IDS_ARC_SIGN_IN_BAD_AUTHENTICATION_ERROR;
+      break;
+    case Error::SIGN_IN_GMS_NOT_AVAILABLE_ERROR:
+      message_id = IDS_ARC_SIGN_IN_GMS_NOT_AVAILABLE_ERROR;
+      break;
+    case Error::SIGN_IN_CLOUD_PROVISION_FLOW_FAIL_ERROR:
+      message_id = IDS_ARC_SIGN_IN_CLOUD_PROVISION_FLOW_FAIL_ERROR;
+      break;
+    case Error::SIGN_IN_UNKNOWN_ERROR:
+      message_id = IDS_ARC_SIGN_IN_UNKNOWN_ERROR;
+      break;
+    case Error::SERVER_COMMUNICATION_ERROR:
+      message_id = IDS_ARC_SERVER_COMMUNICATION_ERROR;
+      break;
+    case Error::ANDROID_MANAGEMENT_REQUIRED_ERROR:
+      message_id = IDS_ARC_ANDROID_MANAGEMENT_REQUIRED_ERROR;
+      break;
+  }
+  message.SetString(kErrorMessage, l10n_util::GetStringUTF16(message_id));
+  message.SetBoolean(kShouldShowSendFeedback, should_show_send_feedback);
+  message_host_->SendMessage(message);
+}
+
+void ArcSupportHost::SetMetricsPreferenceCheckbox(bool is_enabled,
+                                                  bool is_managed) {
+  metrics_checkbox_ = PreferenceCheckboxData(is_enabled, is_managed);
+  SendPreferenceCheckboxUpdate(kActionSetMetricsMode, metrics_checkbox_);
+}
+
+void ArcSupportHost::SetBackupAndRestorePreferenceCheckbox(bool is_enabled,
+                                                           bool is_managed) {
+  backup_and_restore_checkbox_ = PreferenceCheckboxData(is_enabled, is_managed);
+  SendPreferenceCheckboxUpdate(kActionBackupAndRestoreMode,
+                               backup_and_restore_checkbox_);
+}
+
+void ArcSupportHost::SetLocationServicesPreferenceCheckbox(bool is_enabled,
+                                                           bool is_managed) {
+  location_services_checkbox_ = PreferenceCheckboxData(is_enabled, is_managed);
+  SendPreferenceCheckboxUpdate(kActionLocationServiceMode,
+                               location_services_checkbox_);
+}
+
+void ArcSupportHost::SendPreferenceCheckboxUpdate(
+    const std::string& action_name,
+    const PreferenceCheckboxData& data) {
+  if (!message_host_)
+    return;
+
+  base::DictionaryValue message;
+  message.SetString(kAction, action_name);
+  message.SetBoolean(kEnabled, data.is_enabled);
+  message.SetBoolean(kManaged, data.is_managed);
   message_host_->SendMessage(message);
 }
 
@@ -128,6 +312,7 @@ void ArcSupportHost::SetMessageHost(arc::ArcSupportMessageHost* message_host) {
   if (message_host_ == message_host)
     return;
 
+  app_start_pending_ = false;
   if (message_host_)
     DisconnectMessageHost();
   message_host_ = message_host;
@@ -139,15 +324,23 @@ void ArcSupportHost::SetMessageHost(arc::ArcSupportMessageHost* message_host) {
     return;
   }
 
-  arc::ArcAuthService* arc_auth_service = arc::ArcAuthService::Get();
-  DCHECK(arc_auth_service);
+  // Hereafter, install the requested ui state into the ARC support Chrome app.
 
-  preference_handler_ = base::MakeUnique<arc::ArcOptInPreferenceHandler>(
-      this, arc_auth_service->profile()->GetPrefs());
-  // This automatically updates all preferences.
-  preference_handler_->Start();
+  // Set preference checkbox state.
+  SendPreferenceCheckboxUpdate(kActionSetMetricsMode, metrics_checkbox_);
+  SendPreferenceCheckboxUpdate(kActionBackupAndRestoreMode,
+                               backup_and_restore_checkbox_);
+  SendPreferenceCheckboxUpdate(kActionLocationServiceMode,
+                               location_services_checkbox_);
 
-  ShowPage(arc_auth_service->ui_page(), arc_auth_service->ui_page_status());
+  if (ui_page_ == UIPage::NO_PAGE) {
+    // Close() is called before opening the window.
+    Close();
+  } else if (ui_page_ == UIPage::ERROR) {
+    ShowError(error_, should_show_send_feedback_);
+  } else {
+    ShowPage(ui_page_);
+  }
 }
 
 void ArcSupportHost::UnsetMessageHost(
@@ -159,20 +352,30 @@ void ArcSupportHost::UnsetMessageHost(
 
 void ArcSupportHost::DisconnectMessageHost() {
   DCHECK(message_host_);
-  preference_handler_.reset();
   display::Screen::GetScreen()->RemoveObserver(this);
   message_host_->SetObserver(nullptr);
   message_host_ = nullptr;
 }
 
+void ArcSupportHost::RequestAppStart() {
+  DCHECK(!message_host_);
+  DCHECK(!app_start_pending_);
+
+  app_start_pending_ = true;
+  const extensions::Extension* extension =
+      extensions::ExtensionRegistry::Get(profile_)->GetInstalledExtension(
+          kHostAppId);
+  DCHECK(extension);
+  DCHECK(extensions::util::IsAppLaunchable(kHostAppId, profile_));
+  OpenApplication(CreateAppLaunchParamsUserContainer(
+      profile_, extension, WindowOpenDisposition::NEW_WINDOW,
+      extensions::SOURCE_CHROME_INTERNAL));
+}
+
 bool ArcSupportHost::Initialize() {
   DCHECK(message_host_);
-  arc::ArcAuthService* arc_auth_service = arc::ArcAuthService::Get();
-  if (!arc_auth_service->IsAllowed())
-    return false;
 
-  std::unique_ptr<base::DictionaryValue> loadtime_data(
-      new base::DictionaryValue());
+  auto loadtime_data = base::MakeUnique<base::DictionaryValue>();
   base::string16 device_name = ash::GetChromeOSDeviceName();
   loadtime_data->SetString(
       "greetingHeader",
@@ -244,24 +447,25 @@ bool ArcSupportHost::Initialize() {
       "privacyPolicyLink",
       l10n_util::GetStringUTF16(IDS_ARC_OPT_IN_PRIVACY_POLICY_LINK));
 
-  const std::string& app_locale = g_browser_process->GetApplicationLocale();
+  loadtime_data->SetBoolean(kArcManaged, is_arc_managed_);
+  loadtime_data->SetBoolean("isOwnerProfile",
+                            chromeos::ProfileHelper::IsOwnerProfile(profile_));
+
   const std::string& country_code = base::CountryCodeForCurrentTimezone();
   loadtime_data->SetString("countryCode", country_code);
-  loadtime_data->SetBoolean(kArcManaged, arc_auth_service->IsArcManaged());
 
+  const std::string& app_locale = g_browser_process->GetApplicationLocale();
   webui::SetLoadTimeDataDefaults(app_locale, loadtime_data.get());
-  DCHECK(arc_auth_service);
-  const std::string device_id = user_manager::known_user::GetDeviceId(
-      multi_user_util::GetAccountIdFromProfile(arc_auth_service->profile()));
-  DCHECK(!device_id.empty());
-  loadtime_data->SetBoolean(
-      "isOwnerProfile",
-      chromeos::ProfileHelper::IsOwnerProfile(arc_auth_service->profile()));
 
   base::DictionaryValue message;
   message.SetString(kAction, kActionInitialize);
   message.Set(kData, std::move(loadtime_data));
+
+  const std::string device_id = user_manager::known_user::GetDeviceId(
+      multi_user_util::GetAccountIdFromProfile(profile_));
+  DCHECK(!device_id.empty());
   message.SetString(kDeviceId, device_id);
+
   message_host_->SendMessage(message);
   return true;
 }
@@ -280,31 +484,6 @@ void ArcSupportHost::OnDisplayMetricsChanged(const display::Display& display,
   message_host_->SendMessage(message);
 }
 
-void ArcSupportHost::OnMetricsModeChanged(bool enabled, bool managed) {
-  SendPreferenceUpdate(kActionSetMetricsMode, enabled, managed);
-}
-
-void ArcSupportHost::OnBackupAndRestoreModeChanged(bool enabled, bool managed) {
-  SendPreferenceUpdate(kActionBackupAndRestoreMode, enabled, managed);
-}
-
-void ArcSupportHost::OnLocationServicesModeChanged(bool enabled, bool managed) {
-  SendPreferenceUpdate(kActionLocationServiceMode, enabled, managed);
-}
-
-void ArcSupportHost::SendPreferenceUpdate(const std::string& action_name,
-                                          bool is_enabled,
-                                          bool is_managed) {
-  if (!message_host_)
-    return;
-
-  base::DictionaryValue message;
-  message.SetString(kAction, action_name);
-  message.SetBoolean(kEnabled, is_enabled);
-  message.SetBoolean(kManaged, is_managed);
-  message_host_->SendMessage(message);
-}
-
 void ArcSupportHost::OnMessage(const base::DictionaryValue& message) {
   std::string event;
   if (!message.GetString(kEvent, &event)) {
@@ -312,18 +491,14 @@ void ArcSupportHost::OnMessage(const base::DictionaryValue& message) {
     return;
   }
 
-  // TODO(hidehiko): Replace by Observer.
-  arc::ArcAuthService* arc_auth_service = arc::ArcAuthService::Get();
-  DCHECK(arc_auth_service);
-
-  DCHECK(preference_handler_);
-
   if (event == kEventOnWindowClosed) {
-    arc_auth_service->CancelAuthCode();
-  } else if (event == kEventOnAuthSuccedded) {
+    for (auto& observer : observer_list_)
+      observer.OnWindowClosed();
+  } else if (event == kEventOnAuthSucceeded) {
     std::string code;
     if (message.GetString(kCode, &code)) {
-      arc_auth_service->SetAuthCodeAndStartArc(code);
+      for (auto& observer : observer_list_)
+        observer.OnAuthSucceeded(code);
     } else {
       NOTREACHED();
     }
@@ -336,15 +511,19 @@ void ArcSupportHost::OnMessage(const base::DictionaryValue& message) {
                            &is_backup_restore_enabled) &&
         message.GetBoolean(kIsLocationServiceEnabled,
                            &is_location_service_enabled)) {
-      preference_handler_->EnableMetrics(is_metrics_enabled);
-      preference_handler_->EnableBackupRestore(is_backup_restore_enabled);
-      preference_handler_->EnableLocationService(is_location_service_enabled);
-      arc_auth_service->StartLso();
+      for (auto& observer : observer_list_) {
+        observer.OnTermsAgreed(is_metrics_enabled, is_backup_restore_enabled,
+                               is_location_service_enabled);
+      }
     } else {
       NOTREACHED();
     }
+  } else if (event == kEventOnRetryClicked) {
+    for (auto& observer : observer_list_)
+      observer.OnRetryClicked();
   } else if (event == kEventOnSendFeedbackClicked) {
-    chrome::OpenFeedbackDialog(nullptr);
+    for (auto& observer : observer_list_)
+      observer.OnSendFeedbackClicked();
   } else {
     LOG(ERROR) << "Unknown message: " << event;
     NOTREACHED();

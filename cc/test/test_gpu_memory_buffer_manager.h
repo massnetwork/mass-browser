@@ -24,7 +24,7 @@ class TestGpuMemoryBufferManager : public gpu::GpuMemoryBufferManager {
   void OnGpuMemoryBufferDestroyed(gfx::GpuMemoryBufferId gpu_memory_buffer_id);
 
   // Overridden from gpu::GpuMemoryBufferManager:
-  std::unique_ptr<gfx::GpuMemoryBuffer> AllocateGpuMemoryBuffer(
+  std::unique_ptr<gfx::GpuMemoryBuffer> CreateGpuMemoryBuffer(
       const gfx::Size& size,
       gfx::BufferFormat format,
       gfx::BufferUsage usage,
@@ -33,8 +33,6 @@ class TestGpuMemoryBufferManager : public gpu::GpuMemoryBufferManager {
       const gfx::GpuMemoryBufferHandle& handle,
       const gfx::Size& size,
       gfx::BufferFormat format) override;
-  gfx::GpuMemoryBuffer* GpuMemoryBufferFromClientBuffer(
-      ClientBuffer buffer) override;
   void SetDestructionSyncToken(gfx::GpuMemoryBuffer* buffer,
                                const gpu::SyncToken& sync_token) override;
 

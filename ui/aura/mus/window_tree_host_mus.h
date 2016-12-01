@@ -5,21 +5,20 @@
 #ifndef UI_AURA_MUS_WINDOW_TREE_HOST_MUS_H_
 #define UI_AURA_MUS_WINDOW_TREE_HOST_MUS_H_
 
+#include <stdint.h>
+
+#include <map>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "base/macros.h"
 #include "services/service_manager/public/cpp/connector.h"
 #include "ui/aura/aura_export.h"
 #include "ui/aura/window_tree_host_platform.h"
 
-class SkBitmap;
-
 namespace display {
 class Display;
-}
-
-namespace service_manager {
-class Connector;
 }
 
 namespace aura {
@@ -31,10 +30,15 @@ class WindowTreeHostMusDelegate;
 
 class AURA_EXPORT WindowTreeHostMus : public aura::WindowTreeHostPlatform {
  public:
-  WindowTreeHostMus(std::unique_ptr<WindowPortMus> window_port,
-                    WindowTreeHostMusDelegate* delegate,
-                    int64_t display_id);
-  explicit WindowTreeHostMus(WindowTreeClient* window_tree_client);
+  WindowTreeHostMus(
+      std::unique_ptr<WindowPortMus> window_port,
+      WindowTreeHostMusDelegate* delegate,
+      int64_t display_id,
+      const std::map<std::string, std::vector<uint8_t>>* properties = nullptr);
+  WindowTreeHostMus(
+      WindowTreeClient* window_tree_client,
+      const std::map<std::string, std::vector<uint8_t>>* properties = nullptr);
+
   ~WindowTreeHostMus() override;
 
   // Sets the bounds in dips.
@@ -45,6 +49,13 @@ class AURA_EXPORT WindowTreeHostMus : public aura::WindowTreeHostPlatform {
   }
 
   InputMethodMus* input_method() { return input_method_.get(); }
+
+  // Sets the client area on the underlying mus window.
+  void SetClientArea(const gfx::Insets& insets);
+
+  // Sets the hit test mask on the underlying mus window. Pass base::nullopt to
+  // clear.
+  void SetHitTestMask(const base::Optional<gfx::Rect>& rect);
 
   // Intended only for WindowTreeClient to call.
   void set_display_id(int64_t id) { display_id_ = id; }

@@ -23,7 +23,6 @@ class TranslateEventProto;
 namespace translate {
 
 class TranslatePrefs;
-class TranslateRankerMetricsProvider;
 class TranslateURLFetcher;
 
 // Features used to enable ranker query, enforcement and logging. Note that
@@ -43,6 +42,12 @@ class TranslateRanker {
 
   // Returns true if translate events logging is enabled.
   static bool IsLoggingEnabled();
+
+  // Returns true if querying is enabled.
+  static bool IsQueryEnabled();
+
+  // Returns true if enforcement is enabled.
+  static bool IsEnforcementEnabled();
 
   // Returns the singleton TranslateRanker instance.
   static TranslateRanker* GetInstance();

@@ -272,13 +272,6 @@ void CanvasRenderingContext2DState::resetTransform() {
   m_isTransformInvertible = true;
 }
 
-static void updateFilterReferences(HTMLCanvasElement* canvasElement,
-                                   CanvasRenderingContext2D* context,
-                                   const FilterOperations& filters) {
-  context->clearFilterReferences();
-  context->addFilterReferences(filters, canvasElement->document());
-}
-
 sk_sp<SkImageFilter> CanvasRenderingContext2DState::getFilter(
     Element* styleResolutionHost,
     IntSize canvasSize,
@@ -322,8 +315,7 @@ sk_sp<SkImageFilter> CanvasRenderingContext2DState::getFilter(
       m_resolvedFilter =
           SkiaImageFilterBuilder::build(lastEffect, ColorSpaceDeviceRGB);
       if (m_resolvedFilter) {
-        updateFilterReferences(toHTMLCanvasElement(styleResolutionHost),
-                               context, filterStyle->filter());
+        context->updateFilterReferences(filterStyle->filter());
         if (lastEffect->originTainted())
           context->setOriginTainted();
       }
@@ -347,22 +339,19 @@ void CanvasRenderingContext2DState::clearResolvedFilter() const {
 }
 
 SkDrawLooper* CanvasRenderingContext2DState::emptyDrawLooper() const {
-  if (!m_emptyDrawLooper) {
-    std::unique_ptr<DrawLooperBuilder> drawLooperBuilder =
-        DrawLooperBuilder::create();
-    m_emptyDrawLooper = drawLooperBuilder->detachDrawLooper();
-  }
+  if (!m_emptyDrawLooper)
+    m_emptyDrawLooper = DrawLooperBuilder().detachDrawLooper();
+
   return m_emptyDrawLooper.get();
 }
 
 SkDrawLooper* CanvasRenderingContext2DState::shadowOnlyDrawLooper() const {
   if (!m_shadowOnlyDrawLooper) {
-    std::unique_ptr<DrawLooperBuilder> drawLooperBuilder =
-        DrawLooperBuilder::create();
-    drawLooperBuilder->addShadow(m_shadowOffset, m_shadowBlur, m_shadowColor,
-                                 DrawLooperBuilder::ShadowIgnoresTransforms,
-                                 DrawLooperBuilder::ShadowRespectsAlpha);
-    m_shadowOnlyDrawLooper = drawLooperBuilder->detachDrawLooper();
+    DrawLooperBuilder drawLooperBuilder;
+    drawLooperBuilder.addShadow(m_shadowOffset, m_shadowBlur, m_shadowColor,
+                                DrawLooperBuilder::ShadowIgnoresTransforms,
+                                DrawLooperBuilder::ShadowRespectsAlpha);
+    m_shadowOnlyDrawLooper = drawLooperBuilder.detachDrawLooper();
   }
   return m_shadowOnlyDrawLooper.get();
 }
@@ -370,13 +359,12 @@ SkDrawLooper* CanvasRenderingContext2DState::shadowOnlyDrawLooper() const {
 SkDrawLooper* CanvasRenderingContext2DState::shadowAndForegroundDrawLooper()
     const {
   if (!m_shadowAndForegroundDrawLooper) {
-    std::unique_ptr<DrawLooperBuilder> drawLooperBuilder =
-        DrawLooperBuilder::create();
-    drawLooperBuilder->addShadow(m_shadowOffset, m_shadowBlur, m_shadowColor,
-                                 DrawLooperBuilder::ShadowIgnoresTransforms,
-                                 DrawLooperBuilder::ShadowRespectsAlpha);
-    drawLooperBuilder->addUnmodifiedContent();
-    m_shadowAndForegroundDrawLooper = drawLooperBuilder->detachDrawLooper();
+    DrawLooperBuilder drawLooperBuilder;
+    drawLooperBuilder.addShadow(m_shadowOffset, m_shadowBlur, m_shadowColor,
+                                DrawLooperBuilder::ShadowIgnoresTransforms,
+                                DrawLooperBuilder::ShadowRespectsAlpha);
+    drawLooperBuilder.addUnmodifiedContent();
+    m_shadowAndForegroundDrawLooper = drawLooperBuilder.detachDrawLooper();
   }
   return m_shadowAndForegroundDrawLooper.get();
 }

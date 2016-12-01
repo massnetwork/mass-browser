@@ -8,7 +8,6 @@
 #include <string>
 
 #include "base/metrics/histogram_macros.h"
-#include "base/strings/stringprintf.h"
 #include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search/search.h"
@@ -115,18 +114,7 @@ void NTPUserDataLogger::LogMostVisitedImpression(
     return;
   }
   impression_was_logged_[position] = true;
-
-  switch (tile_source) {
-    case NTPLoggingTileSource::CLIENT:
-      has_client_side_suggestions_ = true;
-      break;
-    case NTPLoggingTileSource::SERVER:
-      has_server_side_suggestions_ = true;
-      break;
-  }
-
-  ntp_tiles::metrics::RecordTileImpression(position,
-                                           ConvertTileSource(tile_source));
+  impression_tile_source_[position] = tile_source;
 }
 
 void NTPUserDataLogger::LogMostVisitedNavigation(
@@ -141,8 +129,7 @@ void NTPUserDataLogger::LogMostVisitedNavigation(
 
 NTPUserDataLogger::NTPUserDataLogger(content::WebContents* contents)
     : content::WebContentsObserver(contents),
-      has_server_side_suggestions_(false),
-      has_client_side_suggestions_(false),
+      impression_tile_source_(kNumMostVisited),
       has_emitted_(false),
       during_startup_(!AfterStartupTaskUtils::IsBrowserStartupComplete()) {
   // We record metrics about session data here because when this class typically
@@ -166,8 +153,6 @@ void NTPUserDataLogger::NavigatedFromURLToURL(const GURL& from,
     DVLOG(1) << "Returning to New Tab Page";
     impression_was_logged_.reset();
     has_emitted_ = false;
-    has_server_side_suggestions_ = false;
-    has_client_side_suggestions_ = false;
   }
 }
 
@@ -176,22 +161,34 @@ void NTPUserDataLogger::EmitNtpStatistics(base::TimeDelta load_time) {
   if (has_emitted_)
     return;
 
-  size_t number_of_tiles = impression_was_logged_.count();
   DVLOG(1) << "Emitting NTP load time: " << load_time << ", "
-           << "number of tiles: " << number_of_tiles;
+           << "number of tiles: " << impression_was_logged_.count();
 
-  ntp_tiles::metrics::RecordPageImpression(number_of_tiles);
+  std::vector<std::pair<ntp_tiles::NTPTileSource,
+                        ntp_tiles::metrics::MostVisitedTileType>>
+      tiles;
+  bool has_server_side_suggestions = false;
+  for (int i = 0; i < kNumMostVisited; i++) {
+    if (!impression_was_logged_[i]) {
+      break;
+    }
+    if (impression_tile_source_[i] == NTPLoggingTileSource::SERVER) {
+      has_server_side_suggestions = true;
+    }
+    tiles.emplace_back(ConvertTileSource(impression_tile_source_[i]),
+                       ntp_tiles::metrics::THUMBNAIL);
+  }
+  ntp_tiles::metrics::RecordPageImpression(tiles);
 
   LogLoadTimeHistogram("NewTabPage.LoadTime", load_time);
 
   // Split between ML and MV.
-  std::string type = has_server_side_suggestions_ ?
-      "MostLikely" : "MostVisited";
+  std::string type = has_server_side_suggestions ? "MostLikely" : "MostVisited";
   LogLoadTimeHistogram("NewTabPage.LoadTime." + type, load_time);
 
   // Split between Web and Local.
-  std::string source = ntp_url_.SchemeIsHTTPOrHTTPS() ? "Web" : "LocalNTP";
-  LogLoadTimeHistogram("NewTabPage.LoadTime." + source, load_time);
+  std::string variant = ntp_url_.SchemeIsHTTPOrHTTPS() ? "Web" : "LocalNTP";
+  LogLoadTimeHistogram("NewTabPage.LoadTime." + variant, load_time);
 
   // Split between Startup and non-startup.
   std::string status = during_startup_ ? "Startup" : "NewTab";

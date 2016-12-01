@@ -34,7 +34,7 @@ class QuicCryptoServerConfigPeer {
   std::string NewSourceAddressToken(
       std::string config_id,
       SourceAddressTokens previous_tokens,
-      const IPAddress& ip,
+      const QuicIpAddress& ip,
       QuicRandom* rand,
       QuicWallTime now,
       CachedNetworkParameters* cached_network_params);
@@ -43,25 +43,18 @@ class QuicCryptoServerConfigPeer {
   HandshakeFailureReason ValidateSourceAddressTokens(
       std::string config_id,
       base::StringPiece tokens,
-      const IPAddress& ip,
+      const QuicIpAddress& ip,
       QuicWallTime now,
       CachedNetworkParameters* cached_network_params);
 
   // Attempts to validate the single source address token in |token|.
   HandshakeFailureReason ValidateSingleSourceAddressToken(
       base::StringPiece token,
-      const IPAddress& ip,
+      const QuicIpAddress& ip,
       QuicWallTime now);
 
   // Returns a new server nonce.
   std::string NewServerNonce(QuicRandom* rand, QuicWallTime now) const;
-
-  // Check if |nonce| is valid |now|.
-  HandshakeFailureReason ValidateServerNonce(base::StringPiece nonce,
-                                             QuicWallTime now);
-
-  // Returns the mutex needed to access the strike register client.
-  base::Lock* GetStrikeRegisterClientLock();
 
   // CheckConfigs compares the state of the Configs in |server_config_| to the
   // description given as arguments. The arguments are given as
@@ -97,10 +90,6 @@ class QuicCryptoServerConfigPeer {
   uint32_t source_address_token_future_secs();
 
   uint32_t source_address_token_lifetime_secs();
-
-  uint32_t server_nonce_strike_register_max_entries();
-
-  uint32_t server_nonce_strike_register_window_secs();
 
  private:
   const QuicCryptoServerConfig* server_config_;

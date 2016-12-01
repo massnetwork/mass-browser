@@ -27,21 +27,21 @@
 /**
  * @unrestricted
  */
-WebInspector.UIList = class extends WebInspector.VBox {
+Sources.UIList = class extends UI.VBox {
   constructor() {
     super(true);
     this.registerRequiredCSS('sources/uiList.css');
 
-    /** @type {!Array.<!WebInspector.UIList.Item>} */
+    /** @type {!Array.<!Sources.UIList.Item>} */
     this._items = [];
   }
 
   /**
-   * @param {!WebInspector.UIList.Item} item
-   * @param {?WebInspector.UIList.Item=} beforeItem
+   * @param {!Sources.UIList.Item} item
+   * @param {?Sources.UIList.Item=} beforeItem
    */
   addItem(item, beforeItem) {
-    item[WebInspector.UIList._Key] = this;
+    item[Sources.UIList._Key] = this;
     var beforeElement = beforeItem ? beforeItem.element : null;
     this.contentElement.insertBefore(item.element, beforeElement);
 
@@ -51,7 +51,7 @@ WebInspector.UIList = class extends WebInspector.VBox {
   }
 
   /**
-   * @param {!WebInspector.UIList.Item} item
+   * @param {!Sources.UIList.Item} item
    */
   removeItem(item) {
     var index = this._items.indexOf(item);
@@ -66,12 +66,12 @@ WebInspector.UIList = class extends WebInspector.VBox {
   }
 };
 
-WebInspector.UIList._Key = Symbol('ownerList');
+Sources.UIList._Key = Symbol('ownerList');
 
 /**
  * @unrestricted
  */
-WebInspector.UIList.Item = class {
+Sources.UIList.Item = class {
   /**
    * @param {string} title
    * @param {string} subtitle
@@ -84,19 +84,22 @@ WebInspector.UIList.Item = class {
 
     this.titleElement = this.element.createChild('div', 'title');
     this.subtitleElement = this.element.createChild('div', 'subtitle');
-
+    /** @type {?Element} */
+    this._actionElement = null;
     this._hidden = false;
     this._isLabel = !!isLabel;
+    /** @type {?HTMLElement} */
+    this._icon = null;
     this.setTitle(title);
     this.setSubtitle(subtitle);
     this.setSelected(false);
   }
 
   /**
-   * @return {?WebInspector.UIList.Item}
+   * @return {?Sources.UIList.Item}
    */
   nextSibling() {
-    var list = this[WebInspector.UIList._Key];
+    var list = this[Sources.UIList._Key];
     var index = list._items.indexOf(this);
     console.assert(index >= 0);
     return list._items[index + 1] || null;
@@ -157,14 +160,16 @@ WebInspector.UIList.Item = class {
     if (this._selected)
       return;
     this._selected = true;
-    this.element.classList.add('selected');
+    this._icon = UI.Icon.create('smallicon-thick-right-arrow', 'selected-icon');
+    this.element.appendChild(this._icon);
   }
 
   deselect() {
     if (!this._selected)
       return;
     this._selected = false;
-    this.element.classList.remove('selected');
+    this._icon.remove();
+    this._icon = null;
   }
 
   toggleSelected() {
@@ -199,7 +204,7 @@ WebInspector.UIList.Item = class {
    * @param {boolean} x
    */
   setDimmed(x) {
-    this.element.classList.toggle('dimmed', x);
+    this.element.classList.toggle('dimmed-item', x);
   }
 
   discard() {
@@ -210,5 +215,24 @@ WebInspector.UIList.Item = class {
    */
   setHoverable(hoverable) {
     this.element.classList.toggle('ignore-hover', !hoverable);
+  }
+
+  /**
+   * @param {?string} title
+   * @param {?function(!Event):!Promise} handler
+   */
+  setAction(title, handler) {
+    if (this._actionElement)
+      this._actionElement.remove();
+    if (!title || !handler)
+      return;
+    this._actionElement = this.element.createChild('div', 'action');
+    var link = this._actionElement.createChild('span', 'action-link');
+    link.textContent = title;
+    link.addEventListener('click', (event) => {
+      link.disabled = true;
+      handler(event).then(() => link.disabled = false);
+      event.stopPropagation();
+    });
   }
 };

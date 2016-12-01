@@ -316,7 +316,7 @@ void HTMLSelectElement::parseAttribute(const QualifiedName& name,
               ensureUniqueElementData().attributes().find(sizeAttr))
         sizeAttribute->setValue(attrSize);
     }
-    m_size = std::max(size, 0u);
+    m_size = size;
     setNeedsValidityCheck();
     if (m_size != oldSize) {
       if (inActiveDocument())
@@ -330,11 +330,6 @@ void HTMLSelectElement::parseAttribute(const QualifiedName& name,
   } else if (name == accesskeyAttr) {
     // FIXME: ignore for the moment.
     //
-  } else if (name == disabledAttr) {
-    HTMLFormControlElementWithState::parseAttribute(name, oldValue, value);
-    if (popupIsVisible())
-      hidePopup();
-
   } else {
     HTMLFormControlElementWithState::parseAttribute(name, oldValue, value);
   }
@@ -1078,6 +1073,8 @@ void HTMLSelectElement::dispatchBlurEvent(
   if (usesMenuList())
     dispatchInputAndChangeEventForMenuList();
   m_lastOnChangeSelection.clear();
+  if (popupIsVisible())
+    hidePopup();
   HTMLFormControlElementWithState::dispatchBlurEvent(newFocusedElement, type,
                                                      sourceCapabilities);
 }
@@ -1287,6 +1284,11 @@ void HTMLSelectElement::menuListDefaultEventHandler(Event* event) {
         !isSpatialNavigationEnabled(document().frame()))
       return;
 
+    int ignoreModifiers = PlatformEvent::ShiftKey | PlatformEvent::CtrlKey |
+                          PlatformEvent::AltKey | PlatformMouseEvent::MetaKey;
+    if (keyEvent->modifiers() & ignoreModifiers)
+      return;
+
     const String& key = keyEvent->key();
     bool handled = true;
     const ListItems& listItems = this->listItems();
@@ -1370,11 +1372,6 @@ void HTMLSelectElement::menuListDefaultEventHandler(Event* event) {
       }
     }
     event->setDefaultHandled();
-  }
-
-  if (event->type() == EventTypeNames::blur) {
-    if (popupIsVisible())
-      hidePopup();
   }
 }
 

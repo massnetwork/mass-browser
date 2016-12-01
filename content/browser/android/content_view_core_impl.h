@@ -22,17 +22,13 @@
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/android/content_view_core.h"
 #include "content/public/browser/web_contents_observer.h"
-#include "third_party/WebKit/public/web/WebInputEvent.h"
+#include "third_party/WebKit/public/platform/WebInputEvent.h"
 #include "ui/android/overscroll_refresh.h"
 #include "ui/android/view_android.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/selection_bound.h"
 #include "url/gurl.h"
-
-namespace cc {
-struct ViewportSelectionBound;
-}
 
 namespace ui {
 class WindowAndroid;
@@ -54,6 +50,7 @@ class ContentViewCoreImpl : public ContentViewCore,
       JNIEnv* env,
       const base::android::JavaRef<jobject>& obj,
       WebContents* web_contents,
+      float dpi_scale,
       const base::android::JavaRef<jobject>& java_bridge_retained_object_set);
 
   // ContentViewCore implementation.
@@ -125,12 +122,20 @@ class ContentViewCoreImpl : public ContentViewCore,
       jint android_button_state,
       jint android_meta_state,
       jboolean is_touch_handle_event);
-  jboolean SendMouseMoveEvent(JNIEnv* env,
-                              const base::android::JavaParamRef<jobject>& obj,
-                              jlong time_ms,
-                              jfloat x,
-                              jfloat y,
-                              jint tool_type);
+  jboolean SendMouseEvent(JNIEnv* env,
+                          const base::android::JavaParamRef<jobject>& obj,
+                          jlong time_ms,
+                          jint android_action,
+                          jfloat x,
+                          jfloat y,
+                          jint pointer_id,
+                          jfloat pressure,
+                          jfloat orientation,
+                          jfloat tilt,
+                          jint android_changed_button,
+                          jint android_button_state,
+                          jint android_meta_state,
+                          jint tool_type);
   jboolean SendMouseWheelEvent(JNIEnv* env,
                                const base::android::JavaParamRef<jobject>& obj,
                                jlong time_ms,
@@ -197,8 +202,6 @@ class ContentViewCoreImpl : public ContentViewCore,
                jfloat x,
                jfloat y,
                jfloat delta);
-  void DismissTextHandles(JNIEnv* env,
-                          const base::android::JavaParamRef<jobject>& obj);
   void SetTextHandlesTemporarilyHidden(
       JNIEnv* env,
       const base::android::JavaParamRef<jobject>& obj,
@@ -220,6 +223,10 @@ class ContentViewCoreImpl : public ContentViewCore,
   void SetFocus(JNIEnv* env,
                 const base::android::JavaParamRef<jobject>& obj,
                 jboolean focused);
+
+  void SetDIPScale(JNIEnv* env,
+                   const base::android::JavaParamRef<jobject>& obj,
+                   jfloat dipScale);
 
   jint GetBackgroundColor(JNIEnv* env, jobject obj);
   void SetAllowJavascriptInterfacesInspection(
@@ -328,9 +335,7 @@ class ContentViewCoreImpl : public ContentViewCore,
                         int composition_start,
                         int composition_end,
                         bool show_ime_if_needed,
-                        bool is_non_ime_change,
-                        bool in_batch_edit_mode);
-  void SetTitle(const base::string16& title);
+                        bool is_non_ime_change);
   void OnBackgroundColorChanged(SkColor color);
 
   bool HasFocus();
@@ -412,6 +417,7 @@ class ContentViewCoreImpl : public ContentViewCore,
   // --------------------------------------------------------------------------
 
   void InitWebContents();
+  void SendScreenRectsAndResizeWidget();
 
   RenderWidgetHostViewAndroid* GetRenderWidgetHostViewAndroid() const;
 
@@ -448,7 +454,7 @@ class ContentViewCoreImpl : public ContentViewCore,
   float page_scale_;
 
   // Device scale factor.
-  const float dpi_scale_;
+  float dpi_scale_;
 
   // Observer to notify of lifecyle changes.
   base::ObserverList<ContentViewCoreImplObserver> observer_list_;

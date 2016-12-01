@@ -438,21 +438,11 @@ class SimulatorTestRunner(TestRunner):
 
   def extract_test_data(self):
     """Extracts data emitted by the test."""
-    # Find the directory named after the unique device ID of the simulator we
-    # started. We expect only one because we use a new homedir each time.
-    udid_dir = os.path.join(
-        self.homedir, 'Library', 'Developer', 'CoreSimulator', 'Devices')
-    if not os.path.exists(udid_dir):
-      return
-    udids = os.listdir(udid_dir)
-    if len(udids) != 1:
-      return
-
     # Find the Documents directory of the test app. The app directory names
     # don't correspond with any known information, so we have to examine them
     # all until we find one with a matching CFBundleIdentifier.
     apps_dir = os.path.join(
-        udid_dir, udids[0], 'data', 'Containers', 'Data', 'Application')
+        self.homedir, 'Containers', 'Data', 'Application')
     if os.path.exists(apps_dir):
       for appid_dir in os.listdir(apps_dir):
         docs_dir = os.path.join(apps_dir, appid_dir, 'Documents')
@@ -520,26 +510,22 @@ class SimulatorTestRunner(TestRunner):
         '-d', self.platform,
         '-s', self.version,
     ]
-    args = []
 
     if test_filter:
       kif_filter = get_kif_test_filter(test_filter, invert=invert)
       gtest_filter = get_gtest_filter(test_filter, invert=invert)
       cmd.extend(['-e', 'GKIF_SCENARIO_FILTER=%s' % kif_filter])
-
-      if self.xcode_version == '8.0':
-        args.extend(['-c', '--gtest_filter=%s' % gtest_filter])
-      else:
-        args.append('--gtest_filter=%s' % gtest_filter)
+      cmd.extend(['-c', '--gtest_filter=%s' % gtest_filter])
 
     for env_var in self.env_vars:
       cmd.extend(['-e', env_var])
 
+    for test_arg in self.test_args:
+      cmd.extend(['-c', test_arg])
+
     cmd.append(self.app_path)
     if self.xctest_path:
       cmd.append(self.xctest_path)
-    cmd.extend(self.test_args)
-    cmd.extend(args)
     return cmd
 
   def get_launch_env(self):
@@ -645,7 +631,6 @@ class DeviceTestRunner(TestRunner):
         'xcodebuild',
         'test-without-building',
         'BUILT_PRODUCTS_DIR=%s' % os.path.dirname(self.app_path),
-        'NSUnbufferedIO=YES',
         '-destination', 'id=%s' % self.udid,
         '-project', XCTEST_PROJECT,
         '-scheme', XCTEST_SCHEME,
@@ -682,9 +667,10 @@ class DeviceTestRunner(TestRunner):
     """
     env = super(DeviceTestRunner, self).get_launch_env()
     if self.xctest_path:
-      # e.g. ios_web_shell_test_host
-      env['APP_TARGET_NAME'] = (
-        os.path.splitext(os.path.basename(self.app_path))[0])
-      # e.g. ios_web_shell_test
-      env['TEST_TARGET_NAME'] = env['APP_TARGET_NAME'].rsplit('_', 1)[0]
+      env['NSUnbufferedIO'] = 'YES'
+      # e.g. ios_web_shell_egtests
+      env['APP_TARGET_NAME'] = os.path.splitext(
+          os.path.basename(self.app_path))[0]
+      # e.g. ios_web_shell_egtests_module
+      env['TEST_TARGET_NAME'] = env['APP_TARGET_NAME'] + '_module'
     return env

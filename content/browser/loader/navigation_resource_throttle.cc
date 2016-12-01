@@ -81,9 +81,7 @@ NavigationHandleImpl* FindNavigationHandle(
   }
 
   NavigationHandleImpl* navigation_handle =
-      render_frame_host->frame_tree_node()
-          ->navigator()
-          ->GetNavigationHandleForFrameHost(render_frame_host);
+      render_frame_host->navigation_handle();
   if (!navigation_handle) {
     SendCheckResultToIOThread(callback, NavigationThrottle::CANCEL);
     return nullptr;

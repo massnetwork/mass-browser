@@ -17,17 +17,8 @@
 
 class ChromeLauncherController;
 class ChromeLauncherAppMenuItem;
-class Profile;
 
 typedef ScopedVector<ChromeLauncherAppMenuItem> ChromeLauncherAppMenuItems;
-
-namespace aura {
-class Window;
-}
-
-namespace content {
-class WebContents;
-}
 
 // LauncherItemController is used by ChromeLauncherController to track one
 // or more windows associated with a shelf item.
@@ -68,9 +59,6 @@ class LauncherItemController : public ash::ShelfItemDelegate {
     image_set_by_controller_ = image_set_by_controller;
   }
 
-  // Returns true if this item is open.
-  virtual bool IsOpen() const = 0;
-
   // Returns true if this item is visible (e.g. not minimized).
   virtual bool IsVisible() const = 0;
 
@@ -90,14 +78,18 @@ class LauncherItemController : public ash::ShelfItemDelegate {
 
  private:
   const Type type_;
-  // App id will be empty if there is no app associated with the window.
+
+  // The application id; empty if there is no app associated with the item.
   const std::string app_id_;
+
   // An id that can be passed to an app when launched in order to support
   // multiple shelf items per app. This id is used together with the app_id to
   // uniquely identify each shelf item that has the same app_id.
   const std::string launch_id_;
+
   // A unique id assigned by the shelf model for the shelf item.
   ash::ShelfID shelf_id_;
+
   ChromeLauncherController* launcher_controller_;
 
   // The lock counter which tells the launcher if the item can be removed from

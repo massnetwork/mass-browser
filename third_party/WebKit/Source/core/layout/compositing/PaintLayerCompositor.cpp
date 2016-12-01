@@ -633,16 +633,32 @@ void PaintLayerCompositor::frameViewDidChangeLocation(
     m_overflowControlsHostLayer->setPosition(contentsOffset);
 }
 
-void PaintLayerCompositor::frameViewDidChangeSize() {
-  if (m_containerLayer) {
-    FrameView* frameView = m_layoutView.frameView();
-    m_containerLayer->setSize(FloatSize(frameView->visibleContentSize()));
-    m_overflowControlsHostLayer->setSize(
-        FloatSize(frameView->visibleContentSize(IncludeScrollbars)));
+void PaintLayerCompositor::updateContainerSizes() {
+  if (!m_containerLayer)
+    return;
 
-    frameViewDidScroll();
-    updateOverflowControlsLayers();
-  }
+  FrameView* frameView = m_layoutView.frameView();
+
+  const TopDocumentRootScrollerController& globalRootScrollerController =
+      m_layoutView.document().frameHost()->globalRootScrollerController();
+
+  // The global root scroller must always size to the root FrameView.
+  if (rootLayer() &&
+      rootLayer() == globalRootScrollerController.rootScrollerPaintLayer())
+    frameView = m_layoutView.document().topDocument().view();
+
+  m_containerLayer->setSize(FloatSize(frameView->visibleContentSize()));
+  m_overflowControlsHostLayer->setSize(
+      FloatSize(frameView->visibleContentSize(IncludeScrollbars)));
+}
+
+void PaintLayerCompositor::frameViewDidChangeSize() {
+  if (!m_containerLayer)
+    return;
+
+  updateContainerSizes();
+  frameViewDidScroll();
+  updateOverflowControlsLayers();
 }
 
 enum AcceleratedFixedRootBackgroundHistogramBuckets {
@@ -831,16 +847,19 @@ void PaintLayerCompositor::setIsInWindow(bool isInWindow) {
 
 void PaintLayerCompositor::updateRootLayerPosition() {
   if (m_rootContentLayer) {
-    const IntRect& documentRect = m_layoutView.documentRect();
+    IntRect documentRect = m_layoutView.documentRect();
+
+    // Ensure the root content layer is at least the size of the outer viewport
+    // so that we don't end up clipping position: fixed elements if the
+    // document is smaller.
+    documentRect.unite(IntRect(documentRect.location(),
+                               m_layoutView.frameView()->visibleContentSize()));
+
     m_rootContentLayer->setSize(FloatSize(documentRect.size()));
     m_rootContentLayer->setPosition(documentRect.location());
   }
-  if (m_containerLayer) {
-    FrameView* frameView = m_layoutView.frameView();
-    m_containerLayer->setSize(FloatSize(frameView->visibleContentSize()));
-    m_overflowControlsHostLayer->setSize(
-        FloatSize(frameView->visibleContentSize(IncludeScrollbars)));
-  }
+  if (m_containerLayer)
+    updateContainerSizes();
 }
 
 void PaintLayerCompositor::updatePotentialCompositingReasonsFromStyle(

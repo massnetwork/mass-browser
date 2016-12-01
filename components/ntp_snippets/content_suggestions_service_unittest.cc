@@ -60,7 +60,8 @@ class MockProvider : public ContentSuggestionsProvider {
 
   CategoryInfo GetCategoryInfo(Category category) override {
     return CategoryInfo(base::ASCIIToUTF16("Section title"),
-                        ContentSuggestionsCardLayout::FULL_CARD, true, true,
+                        ContentSuggestionsCardLayout::FULL_CARD, true, false,
+                        true, false,
                         base::ASCIIToUTF16("No suggestions message"));
   }
 
@@ -88,6 +89,10 @@ class MockProvider : public ContentSuggestionsProvider {
                void(base::Time begin,
                     base::Time end,
                     const base::Callback<bool(const GURL& url)>& filter));
+  MOCK_METHOD3(Fetch,
+               void(const Category&,
+                    const std::set<std::string>&,
+                    const FetchDoneCallback&));
   MOCK_METHOD1(ClearCachedSuggestions, void(Category category));
   MOCK_METHOD2(GetDismissedSuggestionsForDebugging,
                void(Category category,
@@ -114,6 +119,7 @@ class MockServiceObserver : public ContentSuggestionsService::Observer {
                void(Category changed_category, CategoryStatus new_status));
   MOCK_METHOD1(OnSuggestionInvalidated,
                void(const ContentSuggestion::ID& suggestion_id));
+  MOCK_METHOD0(OnFullRefreshRequired, void());
   MOCK_METHOD0(ContentSuggestionsServiceShutdown, void());
 
  private:
@@ -209,7 +215,8 @@ class ContentSuggestionsServiceTest : public testing::Test {
       ContentSuggestionsService::State enabled) {
     ASSERT_FALSE(service_);
     service_.reset(new ContentSuggestionsService(
-        enabled, /*history_service=*/nullptr, pref_service_.get()));
+        enabled, /*signin_manager=*/nullptr, /*history_service=*/nullptr,
+        pref_service_.get()));
   }
 
   void ResetService() {
@@ -477,7 +484,9 @@ TEST_F(ContentSuggestionsServiceTest, ShouldReturnCategoryInfo) {
   const CategoryInfo& actual = result.value();
   EXPECT_THAT(expected.title(), Eq(actual.title()));
   EXPECT_THAT(expected.card_layout(), Eq(actual.card_layout()));
-  EXPECT_THAT(expected.has_more_button(), Eq(actual.has_more_button()));
+  EXPECT_THAT(expected.has_more_action(), Eq(actual.has_more_action()));
+  EXPECT_THAT(expected.has_reload_action(), Eq(actual.has_reload_action()));
+  EXPECT_THAT(expected.has_view_all_action(), Eq(actual.has_view_all_action()));
 }
 
 TEST_F(ContentSuggestionsServiceTest,
@@ -573,6 +582,15 @@ TEST_F(ContentSuggestionsServiceTest, ShouldForwardClearHistory) {
   EXPECT_CALL(*provider, ClearHistory(begin, end, _));
   base::Callback<bool(const GURL& url)> filter;
   service()->ClearHistory(begin, end, filter);
+}
+
+TEST_F(ContentSuggestionsServiceTest, ShouldForwardFetch) {
+  Category category = FromKnownCategory(KnownCategories::ARTICLES);
+  std::set<std::string> known_suggestions;
+  MockProvider* provider = RegisterProvider(category);
+  provider->FireCategoryStatusChangedWithCurrentStatus(category);
+  EXPECT_CALL(*provider, Fetch(category, known_suggestions, _));
+  service()->Fetch(category, known_suggestions, FetchDoneCallback());
 }
 
 TEST_F(ContentSuggestionsServiceTest, DismissAndRestoreCategory) {

@@ -14,9 +14,11 @@
 #include "ash/common/system/tray/system_tray_delegate.h"
 #include "ash/common/system/tray/system_tray_notifier.h"
 #include "ash/common/system/tray/tray_constants.h"
+#include "ash/common/system/tray/tray_popup_item_style.h"
 #include "ash/common/system/tray/tray_utils.h"
 #include "ash/common/system/user/rounded_image_view.h"
 #include "ash/common/wm_shell.h"
+#include "ash/resources/vector_icons/vector_icons.h"
 #include "base/i18n/rtl.h"
 #include "base/memory/scoped_vector.h"
 #include "base/strings/string16.h"
@@ -25,12 +27,15 @@
 #include "components/user_manager/user_info.h"
 #include "grit/ash_resources.h"
 #include "grit/ash_strings.h"
-#include "ui/accessibility/ax_view_state.h"
+#include "ui/accessibility/ax_node_data.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
+#include "ui/compositor/compositing_recorder.h"
+#include "ui/gfx/canvas.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
+#include "ui/gfx/paint_vector_icon.h"
 #include "ui/gfx/range/range.h"
 #include "ui/gfx/render_text.h"
 #include "ui/gfx/text_elider.h"
@@ -58,6 +63,35 @@ const int kUserDetailsVerticalPadding = 5;
 // The invisible word joiner character, used as a marker to indicate the start
 // and end of the user's display name in the public account user card's text.
 const base::char16 kDisplayNameMark[] = {0x2060, 0};
+
+bool UseMd() {
+  return MaterialDesignController::IsSystemTrayMenuMaterial();
+}
+
+views::View* CreateUserAvatarView(LoginStatus login_status, int user_index) {
+  RoundedImageView* image_view = new RoundedImageView(
+      UseMd() ? kTrayItemSize / 2 : kTrayRoundedBorderRadius, user_index == 0);
+  if (login_status == LoginStatus::GUEST) {
+    gfx::ImageSkia icon =
+        UseMd() ? gfx::CreateVectorIcon(kSystemMenuGuestIcon, kMenuIconColor)
+                : *ui::ResourceBundle::GetSharedInstance()
+                       .GetImageNamed(IDR_AURA_UBER_TRAY_GUEST_ICON)
+                       .ToImageSkia();
+    image_view->SetImage(icon, icon.size());
+  } else {
+    SessionStateDelegate* delegate = WmShell::Get()->GetSessionStateDelegate();
+    image_view->SetImage(delegate->GetUserInfo(user_index)->GetImage(),
+                         gfx::Size(kTrayItemSize, kTrayItemSize));
+  }
+
+  if (UseMd()) {
+    image_view->SetBorder(views::CreateEmptyBorder(gfx::Insets(
+        (GetTrayConstant(TRAY_POPUP_ITEM_MAIN_IMAGE_CONTAINER_WIDTH) -
+         image_view->GetPreferredSize().width()) /
+        2)));
+  }
+  return image_view;
+}
 
 #if defined(OS_CHROMEOS)
 class MediaIndicator : public views::View, public MediaCaptureObserver {
@@ -155,7 +189,7 @@ PublicAccountUserDetails::PublicAccountUserDetails(int max_width)
   const int inner_padding =
       kTrayPopupPaddingHorizontal - kTrayPopupPaddingBetweenItems;
   const bool rtl = base::i18n::IsRTL();
-  SetBorder(views::Border::CreateEmptyBorder(
+  SetBorder(views::CreateEmptyBorder(
       kUserDetailsVerticalPadding, rtl ? 0 : inner_padding,
       kUserDetailsVerticalPadding, rtl ? inner_padding : 0));
 
@@ -280,9 +314,13 @@ void PublicAccountUserDetails::CalculatePreferredSize(int max_allowed_width) {
       gfx::GetStringWidth(base::ASCIIToUTF16(" "), font_list);
   const gfx::Insets insets = GetInsets();
   int min_width = link_size.width();
-  int max_width = std::min(
-      gfx::GetStringWidth(text_, font_list) + space_width + link_size.width(),
-      max_allowed_width - insets.width());
+  int max_width =
+      gfx::GetStringWidth(text_, font_list) + space_width + link_size.width();
+  // TODO(estade): |max_allowed_width| isn't used in MD.
+  if (UseMd())
+    DCHECK_EQ(-1, max_allowed_width);
+  else
+    max_width = std::min(max_width, max_allowed_width - insets.width());
   // Do a binary search for the minimum width that ensures no more than three
   // lines are needed. The lower bound is the minimum of the current bubble
   // width and the width of the link (as no wrapping is permitted inside the
@@ -327,44 +365,65 @@ void PublicAccountUserDetails::CalculatePreferredSize(int max_allowed_width) {
 
 UserCardView::UserCardView(LoginStatus login_status,
                            int max_width,
-                           int user_index) {
-  SetLayoutManager(new views::BoxLayout(views::BoxLayout::kHorizontal, 0, 0,
-                                        kTrayPopupPaddingBetweenItems));
+                           int user_index)
+    : user_index_(user_index) {
+  auto layout = new views::BoxLayout(views::BoxLayout::kHorizontal, 0, 0,
+                                     UseMd() ? kTrayPopupLabelHorizontalPadding
+                                             : kTrayPopupPaddingBetweenItems);
+  SetLayoutManager(layout);
+  if (UseMd()) {
+    layout->set_minimum_cross_axis_size(
+        GetTrayConstant(TRAY_POPUP_ITEM_MIN_HEIGHT));
+    layout->set_cross_axis_alignment(
+        views::BoxLayout::CROSS_AXIS_ALIGNMENT_CENTER);
+  }
+
   if (login_status == LoginStatus::PUBLIC) {
     AddPublicModeUserContent(max_width);
   } else {
-    AddUserContent(login_status, user_index);
+    AddUserContent(login_status);
   }
 }
 
 UserCardView::~UserCardView() {}
 
-void UserCardView::GetAccessibleState(ui::AXViewState* state) {
-  state->role = ui::AX_ROLE_STATIC_TEXT;
+void UserCardView::PaintChildren(const ui::PaintContext& context) {
+  if (!is_active_user()) {
+    ui::CompositingRecorder alpha(context, 0xFF / 2, true);
+    View::PaintChildren(context);
+  } else {
+    View::PaintChildren(context);
+  }
+}
+
+void UserCardView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
+  node_data->role = ui::AX_ROLE_STATIC_TEXT;
   std::vector<base::string16> labels;
   for (int i = 0; i < child_count(); ++i)
     GetAccessibleLabelFromDescendantViews(child_at(i), labels);
-  state->name = base::JoinString(labels, base::ASCIIToUTF16(" "));
+  node_data->SetName(base::JoinString(labels, base::ASCIIToUTF16(" ")));
 }
 
 void UserCardView::AddPublicModeUserContent(int max_width) {
-  views::View* icon = CreateIcon(LoginStatus::PUBLIC, 0);
-  AddChildView(icon);
-  int details_max_width = max_width - icon->GetPreferredSize().width() -
+  views::View* avatar = CreateUserAvatarView(LoginStatus::PUBLIC, 0);
+  AddChildView(avatar);
+  int details_max_width = max_width - avatar->GetPreferredSize().width() -
                           kTrayPopupPaddingBetweenItems;
   AddChildView(new PublicAccountUserDetails(details_max_width));
 }
 
-void UserCardView::AddUserContent(LoginStatus login_status, int user_index) {
-  views::View* icon = CreateIcon(login_status, user_index);
-  AddChildView(icon);
+void UserCardView::AddUserContent(LoginStatus login_status) {
+  if (UseMd())
+    return AddUserContentMd(login_status);
+  views::View* avatar = CreateUserAvatarView(login_status, user_index_);
+  AddChildView(avatar);
   views::Label* user_name = NULL;
   SessionStateDelegate* delegate = WmShell::Get()->GetSessionStateDelegate();
-  if (!user_index) {
+  if (!user_index_) {
     base::string16 user_name_string =
         login_status == LoginStatus::GUEST
             ? l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_GUEST_LABEL)
-            : delegate->GetUserInfo(user_index)->GetDisplayName();
+            : delegate->GetUserInfo(user_index_)->GetDisplayName();
     if (!user_name_string.empty()) {
       user_name = new views::Label(user_name_string);
       user_name->SetHorizontalAlignment(gfx::ALIGN_LEFT);
@@ -378,7 +437,7 @@ void UserCardView::AddUserContent(LoginStatus login_status, int user_index) {
         tray_delegate->IsUserSupervised()
             ? l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_SUPERVISED_LABEL)
             : base::UTF8ToUTF16(
-                  delegate->GetUserInfo(user_index)->GetDisplayEmail());
+                  delegate->GetUserInfo(user_index_)->GetDisplayEmail());
     if (!user_email_string.empty()) {
       user_email = new views::Label(user_email_string);
       user_email->SetFontList(
@@ -389,7 +448,7 @@ void UserCardView::AddUserContent(LoginStatus login_status, int user_index) {
   }
 
   // Adjust text properties dependent on if it is an active or inactive user.
-  if (user_index) {
+  if (user_index_) {
     // Fade the text of non active users to 50%.
     SkColor text_color = user_email->enabled_color();
     text_color = SkColorSetA(text_color, SkColorGetA(text_color) / 2);
@@ -412,7 +471,7 @@ void UserCardView::AddUserContent(LoginStatus login_status, int user_index) {
     if (user_email) {
 #if defined(OS_CHROMEOS)
       // Only non active user can have a media indicator.
-      MediaIndicator* media_indicator = new MediaIndicator(user_index);
+      MediaIndicator* media_indicator = new MediaIndicator(user_index_);
       views::View* email_indicator_view = new views::View;
       email_indicator_view->SetLayoutManager(new views::BoxLayout(
           views::BoxLayout::kHorizontal, 0, 0, kTrayPopupPaddingBetweenItems));
@@ -432,24 +491,82 @@ void UserCardView::AddUserContent(LoginStatus login_status, int user_index) {
   }
 }
 
-views::View* UserCardView::CreateIcon(LoginStatus login_status,
-                                      int user_index) {
-  RoundedImageView* icon =
-      new RoundedImageView(MaterialDesignController::IsSystemTrayMenuMaterial()
-                               ? kTrayItemSize / 2
-                               : kTrayRoundedBorderRadius,
-                           user_index == 0);
-  if (login_status == LoginStatus::GUEST) {
-    icon->SetImage(*ui::ResourceBundle::GetSharedInstance()
-                        .GetImageNamed(IDR_AURA_UBER_TRAY_GUEST_ICON)
-                        .ToImageSkia(),
-                   gfx::Size(kTrayItemSize, kTrayItemSize));
-  } else {
-    SessionStateDelegate* delegate = WmShell::Get()->GetSessionStateDelegate();
-    icon->SetImage(delegate->GetUserInfo(user_index)->GetImage(),
-                   gfx::Size(kTrayItemSize, kTrayItemSize));
+void UserCardView::AddUserContentMd(LoginStatus login_status) {
+  AddChildView(CreateUserAvatarView(login_status, user_index_));
+  views::Label* user_name = nullptr;
+  SessionStateDelegate* delegate = WmShell::Get()->GetSessionStateDelegate();
+  if (is_active_user()) {
+    base::string16 user_name_string =
+        login_status == LoginStatus::GUEST
+            ? l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_GUEST_LABEL)
+            : delegate->GetUserInfo(user_index_)->GetDisplayName();
+    if (!user_name_string.empty()) {
+      user_name = new views::Label(user_name_string);
+      user_name->SetHorizontalAlignment(gfx::ALIGN_LEFT);
+      TrayPopupItemStyle user_name_style(nullptr,
+                                         TrayPopupItemStyle::FontStyle::TITLE);
+      user_name_style.SetupLabel(user_name);
+    }
   }
-  return icon;
+
+  views::Label* user_email = NULL;
+  if (login_status != LoginStatus::GUEST) {
+    SystemTrayDelegate* tray_delegate = WmShell::Get()->system_tray_delegate();
+    base::string16 user_email_string =
+        tray_delegate->IsUserSupervised()
+            ? l10n_util::GetStringUTF16(IDS_ASH_STATUS_TRAY_SUPERVISED_LABEL)
+            : base::UTF8ToUTF16(
+                  delegate->GetUserInfo(user_index_)->GetDisplayEmail());
+    if (!user_email_string.empty()) {
+      user_email = new views::Label(user_email_string);
+      user_email->SetFontList(
+          ui::ResourceBundle::GetSharedInstance().GetFontList(
+              ui::ResourceBundle::SmallFont));
+      user_email->SetHorizontalAlignment(gfx::ALIGN_LEFT);
+      TrayPopupItemStyle user_email_style(
+          nullptr, TrayPopupItemStyle::FontStyle::CAPTION);
+      user_email_style.set_color_style(
+          TrayPopupItemStyle::ColorStyle::INACTIVE);
+      user_email_style.SetupLabel(user_email);
+    }
+  }
+
+  if (user_email && user_name) {
+    views::View* details = new views::View;
+    details->SetLayoutManager(
+        new views::BoxLayout(views::BoxLayout::kVertical, 0, 0, 0));
+    details->AddChildView(user_name);
+    details->AddChildView(user_email);
+    // The name and email have different font sizes. This border is designed
+    // to make both views take up equal space so the whitespace between them
+    // is centered on the vertical midpoint.
+    user_email->SetBorder(views::CreateEmptyBorder(
+        0, 0, user_name->GetPreferredSize().height() -
+                  user_email->GetPreferredSize().height(),
+        0));
+    AddChildView(details);
+  } else if (user_name) {
+    AddChildView(user_name);
+  } else if (user_email) {
+#if defined(OS_CHROMEOS)
+    // Only non active user can have a media indicator.
+    MediaIndicator* media_indicator = new MediaIndicator(user_index_);
+    views::View* email_indicator_view = new views::View;
+    email_indicator_view->SetLayoutManager(new views::BoxLayout(
+        views::BoxLayout::kHorizontal, 0, 0, kTrayPopupPaddingBetweenItems));
+    email_indicator_view->AddChildView(user_email);
+    email_indicator_view->AddChildView(media_indicator);
+
+    views::View* details = new views::View;
+    details->SetLayoutManager(new views::BoxLayout(
+        views::BoxLayout::kVertical, 0, kUserDetailsVerticalPadding, 0));
+    details->AddChildView(email_indicator_view);
+    details->AddChildView(media_indicator->GetMessageView());
+    AddChildView(details);
+#else
+    AddChildView(user_email);
+#endif
+  }
 }
 
 }  // namespace tray

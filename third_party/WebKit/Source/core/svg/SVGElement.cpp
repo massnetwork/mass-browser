@@ -28,8 +28,8 @@
 #include "core/HTMLNames.h"
 #include "core/SVGNames.h"
 #include "core/XMLNames.h"
-#include "core/animation/AnimationStack.h"
 #include "core/animation/DocumentAnimations.h"
+#include "core/animation/EffectStack.h"
 #include "core/animation/ElementAnimations.h"
 #include "core/animation/InterpolationEnvironment.h"
 #include "core/animation/InvalidatableInterpolation.h"
@@ -88,7 +88,7 @@ void SVGElement::attachLayoutTree(const AttachContext& context) {
     element->mapInstanceToElement(this);
 }
 
-short SVGElement::tabIndex() const {
+int SVGElement::tabIndex() const {
   if (supportsFocus())
     return Element::tabIndex();
   return -1;
@@ -113,26 +113,29 @@ void SVGElement::buildPendingResourcesIfNeeded() {
   AtomicString resourceId = getIdAttribute();
   if (!extensions.hasPendingResource(resourceId))
     return;
+  // Guaranteed by hasPendingResource.
+  DCHECK(!resourceId.isEmpty());
 
-  // Mark pending resources as pending for removal.
-  extensions.markPendingResourcesForRemoval(resourceId);
+  // Get pending elements for this id.
+  SVGDocumentExtensions::SVGPendingElements* pendingElements =
+      extensions.removePendingResource(resourceId);
+  if (!pendingElements || pendingElements->isEmpty())
+    return;
 
   // Rebuild pending resources for each client of a pending resource that is
   // being removed.
-  while (
-      Element* clientElement =
-          extensions.removeElementFromPendingResourcesForRemoval(resourceId)) {
-    ASSERT(clientElement->hasPendingResources());
-    if (clientElement->hasPendingResources()) {
-      // FIXME: Ideally we'd always resolve pending resources async instead of
-      // inside insertedInto and svgAttributeChanged. For now we only do it for
-      // <use> since that would stamp out DOM.
-      if (isSVGUseElement(clientElement))
-        toSVGUseElement(clientElement)->invalidateShadowTree();
-      else
-        clientElement->buildPendingResource();
-      extensions.clearHasPendingResourcesIfPossible(clientElement);
-    }
+  for (Element* clientElement : *pendingElements) {
+    DCHECK(clientElement->hasPendingResources());
+    if (!clientElement->hasPendingResources())
+      continue;
+    // TODO(fs): Ideally we'd always resolve pending resources async instead of
+    // inside insertedInto and svgAttributeChanged. For now we only do it for
+    // <use> since that would stamp out DOM.
+    if (isSVGUseElement(clientElement))
+      toSVGUseElement(clientElement)->invalidateShadowTree();
+    else
+      clientElement->buildPendingResource();
+    extensions.clearHasPendingResourcesIfPossible(clientElement);
   }
 }
 
@@ -226,8 +229,8 @@ static bool isSVGAttributeHandle(const PropertyHandle& propertyHandle) {
 
 void SVGElement::applyActiveWebAnimations() {
   ActiveInterpolationsMap activeInterpolationsMap =
-      AnimationStack::activeInterpolations(
-          &elementAnimations()->animationStack(), nullptr, nullptr,
+      EffectStack::activeInterpolations(
+          &elementAnimations()->effectStack(), nullptr, nullptr,
           KeyframeEffectReadOnly::DefaultPriority, isSVGAttributeHandle);
   for (auto& entry : activeInterpolationsMap) {
     const QualifiedName& attribute = entry.key.svgAttribute();
@@ -741,7 +744,15 @@ bool SVGElement::isAnimatableCSSProperty(const QualifiedName& attrName) {
 }
 
 bool SVGElement::isPresentationAttribute(const QualifiedName& name) const {
+  if (const SVGAnimatedPropertyBase* property = propertyFromAttribute(name))
+    return property->hasPresentationAttributeMapping();
   return cssPropertyIdForSVGAttributeName(name) > 0;
+}
+
+bool SVGElement::isPresentationAttributeWithSVGDOM(
+    const QualifiedName& name) const {
+  const SVGAnimatedPropertyBase* property = propertyFromAttribute(name);
+  return property && property->hasPresentationAttributeMapping();
 }
 
 void SVGElement::collectStyleForPresentationAttribute(
@@ -1162,6 +1173,13 @@ bool SVGElement::isAnimatableAttribute(const QualifiedName& name) const {
   return animatableAttributes.contains(name);
 }
 #endif  // DCHECK_IS_ON()
+
+SVGElementProxySet* SVGElement::elementProxySet() {
+  // Limit to specific element types.
+  if (!isSVGFilterElement(*this) && !isSVGClipPathElement(*this))
+    return nullptr;
+  return &ensureSVGRareData()->ensureElementProxySet();
+}
 
 SVGElementSet* SVGElement::setOfIncomingReferences() const {
   if (!hasSVGRareData())

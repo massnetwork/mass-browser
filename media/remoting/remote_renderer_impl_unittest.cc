@@ -6,9 +6,10 @@
 
 #include "base/run_loop.h"
 #include "media/base/pipeline_status.h"
+#include "media/base/test_helpers.h"
 #include "media/remoting/fake_remoting_controller.h"
 #include "media/remoting/fake_remoting_demuxer_stream_provider.h"
-#include "media/remoting/remoting_controller.h"
+#include "media/remoting/remoting_renderer_controller.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -19,6 +20,14 @@ using testing::Return;
 namespace media {
 
 namespace {
+
+PipelineMetadata DefaultMetadata() {
+  PipelineMetadata data;
+  data.has_audio = true;
+  data.has_video = true;
+  data.video_decoder_config = TestVideoConfig::Normal();
+  return data;
+}
 
 class RendererClientImpl : public RendererClient {
  public:
@@ -121,7 +130,7 @@ class RemoteRendererImplTest : public testing::Test {
         acquire_done->set_proc(
             remoting::pb::RpcMessage::RPC_ACQUIRE_RENDERER_DONE);
         acquire_done->set_integer_value(receiver_renderer_handle_);
-        remoting_controller_->GetRpcBroker()->ProcessMessageFromRemote(
+        remoting_renderer_controller_->GetRpcBroker()->ProcessMessageFromRemote(
             std::move(acquire_done));
       } break;
       case remoting::pb::RpcMessage::RPC_R_INITIALIZE: {
@@ -141,8 +150,8 @@ class RemoteRendererImplTest : public testing::Test {
           ds_init->set_handle(sender_audio_demuxer_handle_);
           ds_init->set_proc(remoting::pb::RpcMessage::RPC_DS_INITIALIZE);
           ds_init->set_integer_value(receiver_audio_demuxer_callback_handle_);
-          remoting_controller_->GetRpcBroker()->ProcessMessageFromRemote(
-              std::move(ds_init));
+          remoting_renderer_controller_->GetRpcBroker()
+              ->ProcessMessageFromRemote(std::move(ds_init));
         }
         if (sender_video_demuxer_handle_ != remoting::kInvalidHandle) {
           std::unique_ptr<remoting::pb::RpcMessage> ds_init(
@@ -150,8 +159,8 @@ class RemoteRendererImplTest : public testing::Test {
           ds_init->set_handle(sender_video_demuxer_handle_);
           ds_init->set_proc(remoting::pb::RpcMessage::RPC_DS_INITIALIZE);
           ds_init->set_integer_value(receiver_video_demuxer_callback_handle_);
-          remoting_controller_->GetRpcBroker()->ProcessMessageFromRemote(
-              std::move(ds_init));
+          remoting_renderer_controller_->GetRpcBroker()
+              ->ProcessMessageFromRemote(std::move(ds_init));
         }
       } break;
       case remoting::pb::RpcMessage::RPC_DS_INITIALIZE_CALLBACK: {
@@ -172,8 +181,8 @@ class RemoteRendererImplTest : public testing::Test {
           init_cb->set_proc(
               remoting::pb::RpcMessage::RPC_R_INITIALIZE_CALLBACK);
           init_cb->set_boolean_value(true);
-          remoting_controller_->GetRpcBroker()->ProcessMessageFromRemote(
-              std::move(init_cb));
+          remoting_renderer_controller_->GetRpcBroker()
+              ->ProcessMessageFromRemote(std::move(init_cb));
           renderer_initialized_ = true;
         }
 
@@ -184,7 +193,7 @@ class RemoteRendererImplTest : public testing::Test {
             new remoting::pb::RpcMessage());
         flush_cb->set_handle(rpc->renderer_flushuntil_rpc().callback_handle());
         flush_cb->set_proc(remoting::pb::RpcMessage::RPC_R_FLUSHUNTIL_CALLBACK);
-        remoting_controller_->GetRpcBroker()->ProcessMessageFromRemote(
+        remoting_renderer_controller_->GetRpcBroker()->ProcessMessageFromRemote(
             std::move(flush_cb));
 
       } break;
@@ -211,7 +220,7 @@ class RemoteRendererImplTest : public testing::Test {
     EXPECT_CALL(*render_client_, OnPipelineStatus(_)).Times(1);
     DCHECK(remote_renderer_impl_);
     // Redirect RPC message for simulate receiver scenario
-    remoting_controller_->GetRpcBroker()->SetMessageCallbackForTesting(
+    remoting_renderer_controller_->GetRpcBroker()->SetMessageCallbackForTesting(
         base::Bind(&RemoteRendererImplTest::RpcMessageResponseBot,
                    base::Unretained(this)));
     RunPendingTasks();
@@ -221,7 +230,7 @@ class RemoteRendererImplTest : public testing::Test {
                    base::Unretained(render_client_.get())));
     RunPendingTasks();
     // Redirect RPC message back to save for later check.
-    remoting_controller_->GetRpcBroker()->SetMessageCallbackForTesting(
+    remoting_renderer_controller_->GetRpcBroker()->SetMessageCallbackForTesting(
         base::Bind(&RemoteRendererImplTest::OnSendMessageToSink,
                    base::Unretained(this)));
     RunPendingTasks();
@@ -236,18 +245,21 @@ class RemoteRendererImplTest : public testing::Test {
   }
 
   void SetUp() override {
-    // Creates RemotingController.
-    remoter_factory_.reset(new FakeRemoterFactory(true));
-    remoting_controller_ = CreateRemotingController(remoter_factory_.get());
+    // Creates RemotingRendererController.
+    remoting_renderer_controller_ =
+        base::MakeUnique<RemotingRendererController>(
+            CreateRemotingSourceImpl(false));
+    remoting_renderer_controller_->OnMetadataChanged(DefaultMetadata());
+
     // Redirect RPC message to RemoteRendererImplTest::OnSendMessageToSink().
-    remoting_controller_->GetRpcBroker()->SetMessageCallbackForTesting(
+    remoting_renderer_controller_->GetRpcBroker()->SetMessageCallbackForTesting(
         base::Bind(&RemoteRendererImplTest::OnSendMessageToSink,
                    base::Unretained(this)));
 
     // Creates RemoteRendererImpl.
-    remote_renderer_impl_.reset(
-        new RemoteRendererImpl(base::ThreadTaskRunnerHandle::Get(),
-                               remoting_controller_->GetWeakPtr()));
+    remote_renderer_impl_.reset(new RemoteRendererImpl(
+        base::ThreadTaskRunnerHandle::Get(),
+        remoting_renderer_controller_->GetWeakPtr(), nullptr));
     RunPendingTasks();
   }
 
@@ -274,8 +286,7 @@ class RemoteRendererImplTest : public testing::Test {
     ASSERT_EQ(remote_renderer_impl_->current_max_time_, current_max);
   }
 
-  std::unique_ptr<FakeRemoterFactory> remoter_factory_;
-  std::unique_ptr<RemotingController> remoting_controller_;
+  std::unique_ptr<RemotingRendererController> remoting_renderer_controller_;
   std::unique_ptr<RendererClientImpl> render_client_;
   std::unique_ptr<FakeRemotingDemuxerStreamProvider> demuxer_stream_provider_;
   std::unique_ptr<RemoteRendererImpl> remote_renderer_impl_;
@@ -321,8 +332,9 @@ TEST_F(RemoteRendererImplTest, Flush) {
 
   // Flush Renderer.
   // Redirect RPC message for simulate receiver scenario
-  remoting_controller_->GetRpcBroker()->SetMessageCallbackForTesting(base::Bind(
-      &RemoteRendererImplTest::RpcMessageResponseBot, base::Unretained(this)));
+  remoting_renderer_controller_->GetRpcBroker()->SetMessageCallbackForTesting(
+      base::Bind(&RemoteRendererImplTest::RpcMessageResponseBot,
+                 base::Unretained(this)));
   RunPendingTasks();
   EXPECT_CALL(*render_client_, OnFlushCallback()).Times(1);
   remote_renderer_impl_->Flush(
@@ -376,8 +388,9 @@ TEST_F(RemoteRendererImplTest, SetPlaybackRate) {
   InitializeRenderer();
   RunPendingTasks();
 
-  remoting_controller_->GetRpcBroker()->SetMessageCallbackForTesting(base::Bind(
-      &RemoteRendererImplTest::OnSendMessageToSink, base::Unretained(this)));
+  remoting_renderer_controller_->GetRpcBroker()->SetMessageCallbackForTesting(
+      base::Bind(&RemoteRendererImplTest::OnSendMessageToSink,
+                 base::Unretained(this)));
   remote_renderer_impl_->SetPlaybackRate(2.5);
   RunPendingTasks();
   ASSERT_EQ(1, ReceivedRpcMessageCount());

@@ -16,6 +16,8 @@ source_set("browser_state") {
     "//ios/web",
     "//net",
   ]
+
+  configs += [ "//build/config/compiler:enable_arc" ]
 }
 
 source_set("browser_state_impl") {
@@ -43,6 +45,9 @@ source_set("browser_state_impl") {
     "off_the_record_chrome_browser_state_io_data.h",
     "off_the_record_chrome_browser_state_io_data.mm",
   ]
+
+  configs += [ "//build/config/compiler:enable_arc" ]
+
   deps = [
     ":browser_state",
     "//base",
@@ -84,6 +89,7 @@ source_set("browser_state_impl") {
     "//ios/chrome/browser/ntp_snippets",
     "//ios/chrome/browser/passwords",
     "//ios/chrome/browser/prefs",
+    "//ios/chrome/browser/reading_list",
     "//ios/chrome/browser/search_engines",
     "//ios/chrome/browser/services/gcm",
     "//ios/chrome/browser/signin",

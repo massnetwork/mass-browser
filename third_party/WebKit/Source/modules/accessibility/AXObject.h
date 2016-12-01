@@ -765,6 +765,10 @@ class MODULES_EXPORT AXObject : public GarbageCollectedFinalized<AXObject> {
   virtual int headingLevel() const { return 0; }
   // Value should be 1-based. 0 means not supported.
   virtual unsigned hierarchicalLevel() const { return 0; }
+  // Return the content of an image or canvas as an image data url in
+  // PNG format. If |maxSize| is not empty and if the image is larger than
+  // those dimensions, the image will be resized proportionally first to fit.
+  virtual String imageDataUrl(const IntSize& maxSize) const { return nullAtom; }
   virtual AccessibilityOrientation orientation() const;
   virtual String text() const { return String(); }
   virtual AccessibilityTextDirection textDirection() const {
@@ -812,7 +816,6 @@ class MODULES_EXPORT AXObject : public GarbageCollectedFinalized<AXObject> {
   // ARIA attributes.
   virtual AXObject* activeDescendant() { return nullptr; }
   virtual String ariaAutoComplete() const { return String(); }
-  virtual String ariaDescribedByAttribute() const { return String(); }
   virtual void ariaFlowToElements(AXObjectVector&) const {}
   virtual void ariaControlsElements(AXObjectVector&) const {}
   virtual void ariaOwnsElements(AXObjectVector& owns) const {}
@@ -822,7 +825,6 @@ class MODULES_EXPORT AXObject : public GarbageCollectedFinalized<AXObject> {
   virtual bool isEditable() const { return false; }
   bool isMultiline() const;
   virtual bool isRichlyEditable() const { return false; }
-  virtual String ariaLabelledbyAttribute() const { return String(); }
   bool ariaPressedIsPresent() const;
   virtual AccessibilityRole ariaRoleAttribute() const { return UnknownRole; }
   virtual bool ariaRoleHasPresentationalChildren() const { return false; }

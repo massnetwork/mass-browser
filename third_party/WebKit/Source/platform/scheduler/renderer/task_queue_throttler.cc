@@ -13,7 +13,6 @@
 #include "base/strings/stringprintf.h"
 #include "platform/scheduler/base/real_time_domain.h"
 #include "platform/scheduler/child/scheduler_tqm_delegate.h"
-#include "platform/scheduler/renderer/auto_advancing_virtual_time_domain.h"
 #include "platform/scheduler/renderer/renderer_scheduler_impl.h"
 #include "platform/scheduler/renderer/throttled_time_domain.h"
 #include "platform/scheduler/renderer/web_frame_scheduler_impl.h"
@@ -23,9 +22,6 @@ namespace blink {
 namespace scheduler {
 
 namespace {
-constexpr base::TimeDelta kMaxBudgetLevel = base::TimeDelta::FromSeconds(1);
-constexpr base::TimeDelta kMaxThrottlingDuration =
-    base::TimeDelta::FromMinutes(1);
 
 base::Optional<base::TimeTicks> NextTaskRunTime(LazyNow* lazy_now,
                                                 TaskQueue* queue) {
@@ -67,6 +63,12 @@ base::Optional<T> Max(const base::Optional<T>& a, const base::Optional<T>& b) {
   return std::max(a.value(), b.value());
 }
 
+std::string PointerToId(void* pointer) {
+  return base::StringPrintf(
+      "0x%" PRIx64,
+      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pointer)));
+}
+
 }  // namespace
 
 TaskQueueThrottler::TimeBudgetPool::TimeBudgetPool(
@@ -85,8 +87,9 @@ TaskQueueThrottler::TimeBudgetPool::TimeBudgetPool(
 
 TaskQueueThrottler::TimeBudgetPool::~TimeBudgetPool() {}
 
-void TaskQueueThrottler::TimeBudgetPool::SetTimeBudget(base::TimeTicks now,
-                                                       double cpu_percentage) {
+void TaskQueueThrottler::TimeBudgetPool::SetTimeBudgetRecoveryRate(
+    base::TimeTicks now,
+    double cpu_percentage) {
   Advance(now);
   cpu_percentage_ = cpu_percentage;
   EnforceBudgetLevelRestrictions();
@@ -96,17 +99,17 @@ void TaskQueueThrottler::TimeBudgetPool::AddQueue(base::TimeTicks now,
                                                   TaskQueue* queue) {
   std::pair<TaskQueueMap::iterator, bool> insert_result =
       task_queue_throttler_->queue_details_.insert(
-          std::make_pair(queue, Metadata(0, queue->IsQueueEnabled())));
+          std::make_pair(queue, Metadata()));
   Metadata& metadata = insert_result.first->second;
   DCHECK(!metadata.time_budget_pool);
   metadata.time_budget_pool = this;
 
   associated_task_queues_.insert(queue);
 
-  if (!is_enabled_ || !metadata.IsThrottled())
+  if (!is_enabled_ || !task_queue_throttler_->IsThrottled(queue))
     return;
 
-  queue->SetQueueEnabled(false);
+  queue->InsertFence(TaskQueue::InsertFencePosition::BEGINNING_OF_TIME);
 
   task_queue_throttler_->MaybeSchedulePumpQueue(FROM_HERE, now, queue,
                                                 GetNextAllowedRunTime());
@@ -118,7 +121,7 @@ void TaskQueueThrottler::TimeBudgetPool::RemoveQueue(base::TimeTicks now,
   DCHECK(find_it != task_queue_throttler_->queue_details_.end() &&
          find_it->second.time_budget_pool == this);
   find_it->second.time_budget_pool = nullptr;
-  bool is_throttled = find_it->second.IsThrottled();
+  bool is_throttled = task_queue_throttler_->IsThrottled(queue);
 
   task_queue_throttler_->MaybeDeleteQueueMetadata(find_it);
   associated_task_queues_.erase(queue);
@@ -135,6 +138,9 @@ void TaskQueueThrottler::TimeBudgetPool::EnableThrottling(LazyNow* lazy_now) {
     return;
   is_enabled_ = true;
 
+  TRACE_EVENT0(task_queue_throttler_->tracing_category_,
+               "TaskQueueThrottler_TimeBudgetPool_EnableThrottling");
+
   BlockThrottledQueues(lazy_now->Now());
 }
 
@@ -143,6 +149,9 @@ void TaskQueueThrottler::TimeBudgetPool::DisableThrottling(LazyNow* lazy_now) {
     return;
   is_enabled_ = false;
 
+  TRACE_EVENT0(task_queue_throttler_->tracing_category_,
+               "TaskQueueThrottler_TimeBudgetPool_DisableThrottling");
+
   for (TaskQueue* queue : associated_task_queues_) {
     if (!task_queue_throttler_->IsThrottled(queue))
       continue;
@@ -150,10 +159,26 @@ void TaskQueueThrottler::TimeBudgetPool::DisableThrottling(LazyNow* lazy_now) {
     task_queue_throttler_->MaybeSchedulePumpQueue(FROM_HERE, lazy_now->Now(),
                                                   queue, base::nullopt);
   }
+
+  // TODO(altimin): We need to disable TimeBudgetQueues here or they will
+  // regenerate extra time budget when they are disabled.
 }
 
 bool TaskQueueThrottler::TimeBudgetPool::IsThrottlingEnabled() const {
   return is_enabled_;
+}
+
+void TaskQueueThrottler::TimeBudgetPool::GrantAdditionalBudget(
+    base::TimeTicks now,
+    base::TimeDelta budget_level) {
+  Advance(now);
+  current_budget_level_ += budget_level;
+  EnforceBudgetLevelRestrictions();
+}
+
+void TaskQueueThrottler::TimeBudgetPool::SetReportingCallback(
+    base::Callback<void(base::TimeDelta)> reporting_callback) {
+  reporting_callback_ = reporting_callback;
 }
 
 void TaskQueueThrottler::TimeBudgetPool::Close() {
@@ -183,8 +208,14 @@ void TaskQueueThrottler::TimeBudgetPool::RecordTaskRunTime(
   DCHECK_LE(start_time, end_time);
   Advance(end_time);
   if (is_enabled_) {
+    base::TimeDelta old_budget_level = current_budget_level_;
     current_budget_level_ -= (end_time - start_time);
     EnforceBudgetLevelRestrictions();
+
+    if (!reporting_callback_.is_null() && old_budget_level.InSecondsF() > 0 &&
+        current_budget_level_.InSecondsF() < 0) {
+      reporting_callback_.Run(-current_budget_level_ / cpu_percentage_);
+    }
   }
 }
 
@@ -203,11 +234,11 @@ void TaskQueueThrottler::TimeBudgetPool::AsValueInto(
                    current_budget_level_.InSecondsF());
   state->SetDouble("last_checkpoint_seconds_ago",
                    (now - last_checkpoint_).InSecondsF());
+  state->SetBoolean("is_enabled", is_enabled_);
 
   state->BeginArray("task_queues");
   for (TaskQueue* queue : associated_task_queues_) {
-    state->AppendString(base::StringPrintf(
-        "%" PRIx64, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(queue))));
+    state->AppendString(PointerToId(queue));
   }
   state->EndArray();
 
@@ -230,7 +261,7 @@ void TaskQueueThrottler::TimeBudgetPool::BlockThrottledQueues(
     if (!task_queue_throttler_->IsThrottled(queue))
       continue;
 
-    queue->SetQueueEnabled(false);
+    queue->InsertFence(TaskQueue::InsertFencePosition::BEGINNING_OF_TIME);
     task_queue_throttler_->MaybeSchedulePumpQueue(FROM_HERE, now, queue,
                                                   base::nullopt);
   }
@@ -249,8 +280,6 @@ void TaskQueueThrottler::TimeBudgetPool::EnforceBudgetLevelRestrictions() {
   }
 }
 
-// TODO(altimin): Control max_budget_level and max_throttling_duration
-// from Finch.
 TaskQueueThrottler::TaskQueueThrottler(
     RendererSchedulerImpl* renderer_scheduler,
     const char* tracing_category)
@@ -259,9 +288,7 @@ TaskQueueThrottler::TaskQueueThrottler(
       tick_clock_(renderer_scheduler->tick_clock()),
       tracing_category_(tracing_category),
       time_domain_(new ThrottledTimeDomain(this, tracing_category)),
-      max_budget_level_(kMaxBudgetLevel),
-      max_throttling_duration_(kMaxThrottlingDuration),
-      virtual_time_(false),
+      allow_throttling_(true),
       weak_factory_(this) {
   pump_throttled_tasks_closure_.Reset(base::Bind(
       &TaskQueueThrottler::PumpThrottledTasks, weak_factory_.GetWeakPtr()));
@@ -276,8 +303,8 @@ TaskQueueThrottler::~TaskQueueThrottler() {
   // It's possible for queues to be still throttled, so we need to tidy up
   // before unregistering the time domain.
   for (const TaskQueueMap::value_type& map_entry : queue_details_) {
-    if (map_entry.second.IsThrottled()) {
-      TaskQueue* task_queue = map_entry.first;
+    TaskQueue* task_queue = map_entry.first;
+    if (IsThrottled(task_queue)) {
       task_queue->SetTimeDomain(renderer_scheduler_->real_time_domain());
       task_queue->RemoveFence();
     }
@@ -286,89 +313,65 @@ TaskQueueThrottler::~TaskQueueThrottler() {
   renderer_scheduler_->UnregisterTimeDomain(time_domain_.get());
 }
 
-void TaskQueueThrottler::SetQueueEnabled(TaskQueue* task_queue, bool enabled) {
-  TaskQueueMap::iterator find_it = queue_details_.find(task_queue);
-
-  if (find_it == queue_details_.end()) {
-    task_queue->SetQueueEnabled(enabled);
-    return;
-  }
-
-  find_it->second.enabled = enabled;
-
-  if (!find_it->second.IsThrottled()) {
-    task_queue->SetQueueEnabled(enabled);
-    return;
-  }
-
-  // We don't enable the queue here because it's throttled and there might be
-  // tasks in it's work queue that would execute immediatly rather than after
-  // PumpThrottledTasks runs.
-  if (!enabled) {
-    task_queue->SetQueueEnabled(false);
-    MaybeSchedulePumpQueue(FROM_HERE, tick_clock_->NowTicks(), task_queue,
-                           base::nullopt);
-  }
-}
-
 void TaskQueueThrottler::IncreaseThrottleRefCount(TaskQueue* task_queue) {
   DCHECK_NE(task_queue, task_runner_.get());
 
-  if (virtual_time_)
-    return;
-
   std::pair<TaskQueueMap::iterator, bool> insert_result =
       queue_details_.insert(std::make_pair(task_queue, Metadata()));
-
-  if (!insert_result.first->second.IsThrottled()) {
-    // The insert was successful so we need to throttle the queue.
-    insert_result.first->second.enabled = task_queue->IsQueueEnabled();
-
-    task_queue->SetTimeDomain(time_domain_.get());
-    task_queue->RemoveFence();
-    task_queue->SetQueueEnabled(false);
-
-    if (!task_queue->IsEmpty()) {
-      if (task_queue->HasPendingImmediateWork()) {
-        OnTimeDomainHasImmediateWork(task_queue);
-      } else {
-        OnTimeDomainHasDelayedWork(task_queue);
-      }
-    }
-
-    TRACE_EVENT1(tracing_category_, "TaskQueueThrottler_TaskQueueThrottled",
-                 "task_queue", task_queue);
-  }
-
   insert_result.first->second.throttling_ref_count++;
+
+  // If ref_count is 1, the task queue is newly throttled.
+  if (insert_result.first->second.throttling_ref_count != 1)
+    return;
+
+  TRACE_EVENT1(tracing_category_, "TaskQueueThrottler_TaskQueueThrottled",
+               "task_queue", task_queue);
+
+  if (!allow_throttling_)
+    return;
+
+  task_queue->SetTimeDomain(time_domain_.get());
+  // This blocks any tasks from |task_queue| until PumpThrottledTasks() to
+  // enforce task alignment.
+  task_queue->InsertFence(TaskQueue::InsertFencePosition::BEGINNING_OF_TIME);
+
+  if (!task_queue->IsEmpty()) {
+    if (task_queue->HasPendingImmediateWork()) {
+      OnTimeDomainHasImmediateWork(task_queue);
+    } else {
+      OnTimeDomainHasDelayedWork(task_queue);
+    }
+  }
 }
 
 void TaskQueueThrottler::DecreaseThrottleRefCount(TaskQueue* task_queue) {
-  if (virtual_time_)
-    return;
-
   TaskQueueMap::iterator iter = queue_details_.find(task_queue);
 
-  if (iter != queue_details_.end() &&
-      --iter->second.throttling_ref_count == 0) {
-    bool enabled = iter->second.enabled;
-
-    MaybeDeleteQueueMetadata(iter);
-
-    task_queue->SetTimeDomain(renderer_scheduler_->real_time_domain());
-    task_queue->RemoveFence();
-    task_queue->SetQueueEnabled(enabled);
-
-    TRACE_EVENT1(tracing_category_, "TaskQueueThrottler_TaskQueueUntrottled",
-                 "task_queue", task_queue);
+  if (iter == queue_details_.end() ||
+      --iter->second.throttling_ref_count != 0) {
+    return;
   }
+
+  TRACE_EVENT1(tracing_category_, "TaskQueueThrottler_TaskQueueUnthrottled",
+               "task_queue", task_queue);
+
+  MaybeDeleteQueueMetadata(iter);
+
+  if (!allow_throttling_)
+    return;
+
+  task_queue->SetTimeDomain(renderer_scheduler_->real_time_domain());
+  task_queue->RemoveFence();
 }
 
 bool TaskQueueThrottler::IsThrottled(TaskQueue* task_queue) const {
+  if (!allow_throttling_)
+    return false;
+
   auto find_it = queue_details_.find(task_queue);
   if (find_it == queue_details_.end())
     return false;
-  return find_it->second.IsThrottled();
+  return find_it->second.throttling_ref_count > 0;
 }
 
 void TaskQueueThrottler::UnregisterTaskQueue(TaskQueue* task_queue) {
@@ -421,8 +424,7 @@ void TaskQueueThrottler::PumpThrottledTasks() {
 
   for (const TaskQueueMap::value_type& map_entry : queue_details_) {
     TaskQueue* task_queue = map_entry.first;
-    if (!map_entry.second.enabled || task_queue->IsEmpty() ||
-        !map_entry.second.IsThrottled())
+    if (task_queue->IsEmpty() || !IsThrottled(task_queue))
       continue;
 
     // Don't enable queues whose budget pool doesn't allow them to run now.
@@ -452,8 +454,9 @@ void TaskQueueThrottler::PumpThrottledTasks() {
     if (next_allowed_run_time > lazy_now.Now())
       continue;
 
-    task_queue->SetQueueEnabled(true);
-    task_queue->InsertFence();
+    // Remove previous fence and install a new one, allowing all tasks posted
+    // on |task_queue| up until this point to run and block all further tasks.
+    task_queue->InsertFence(TaskQueue::InsertFencePosition::NOW);
   }
 
   // Maybe schedule a call to TaskQueueThrottler::PumpThrottledTasks if there is
@@ -478,7 +481,7 @@ void TaskQueueThrottler::MaybeSchedulePumpThrottledTasks(
     const tracked_objects::Location& from_here,
     base::TimeTicks now,
     base::TimeTicks unaligned_runtime) {
-  if (virtual_time_)
+  if (!allow_throttling_)
     return;
 
   base::TimeTicks runtime =
@@ -503,35 +506,13 @@ void TaskQueueThrottler::MaybeSchedulePumpThrottledTasks(
       from_here, pump_throttled_tasks_closure_.callback(), delay);
 }
 
-void TaskQueueThrottler::EnableVirtualTime() {
-  virtual_time_ = true;
-
-  pump_throttled_tasks_closure_.Cancel();
-
-  for (auto it = queue_details_.begin(); it != queue_details_.end();) {
-    TaskQueue* task_queue = it->first;
-    bool enabled = it->second.enabled;
-
-    if (!it->second.time_budget_pool) {
-      it = queue_details_.erase(it);
-    } else {
-      // Fall back to default values.
-      it->second.throttling_ref_count = 0;
-      it->second.enabled = false;
-      it++;
-    }
-
-    task_queue->SetTimeDomain(renderer_scheduler_->GetVirtualTimeDomain());
-    task_queue->RemoveFence();
-    task_queue->SetQueueEnabled(enabled);
-  }
-}
-
 TaskQueueThrottler::TimeBudgetPool* TaskQueueThrottler::CreateTimeBudgetPool(
-    const char* name) {
+    const char* name,
+    base::Optional<base::TimeDelta> max_budget_level,
+    base::Optional<base::TimeDelta> max_throttling_duration) {
   TimeBudgetPool* time_budget_pool =
-      new TimeBudgetPool(name, this, tick_clock_->NowTicks(), max_budget_level_,
-                         max_throttling_duration_);
+      new TimeBudgetPool(name, this, tick_clock_->NowTicks(), max_budget_level,
+                         max_throttling_duration);
   time_budget_pools_[time_budget_pool] = base::WrapUnique(time_budget_pool);
   return time_budget_pool;
 }
@@ -559,13 +540,24 @@ void TaskQueueThrottler::AsValueInto(base::trace_event::TracedValue* state,
         (pending_pump_throttled_tasks_runtime_.value() - now).InSecondsF());
   }
 
-  state->BeginDictionary("time_budget_pools");
+  state->SetBoolean("allow_throttling", allow_throttling_);
 
+  state->BeginDictionary("time_budget_pools");
   for (const auto& map_entry : time_budget_pools_) {
     TaskQueueThrottler::TimeBudgetPool* pool = map_entry.first;
     pool->AsValueInto(state, now);
   }
+  state->EndDictionary();
 
+  state->BeginDictionary("queue_details");
+  for (const auto& map_entry : queue_details_) {
+    state->BeginDictionaryWithCopiedName(PointerToId(map_entry.first));
+
+    state->SetInteger("throttling_ref_count",
+                      map_entry.second.throttling_ref_count);
+
+    state->EndDictionary();
+  }
   state->EndDictionary();
 }
 
@@ -600,8 +592,56 @@ base::TimeTicks TaskQueueThrottler::GetNextAllowedRunTime(base::TimeTicks now,
 }
 
 void TaskQueueThrottler::MaybeDeleteQueueMetadata(TaskQueueMap::iterator it) {
-  if (!it->second.IsThrottled() && !it->second.time_budget_pool)
+  if (it->second.throttling_ref_count == 0 && !it->second.time_budget_pool)
     queue_details_.erase(it);
+}
+
+void TaskQueueThrottler::DisableThrottling() {
+  if (!allow_throttling_)
+    return;
+
+  allow_throttling_ = false;
+
+  for (const auto& map_entry : queue_details_) {
+    if (map_entry.second.throttling_ref_count == 0)
+      continue;
+
+    TaskQueue* queue = map_entry.first;
+
+    queue->SetTimeDomain(renderer_scheduler_->GetActiveTimeDomain());
+
+    queue->RemoveFence();
+  }
+
+  pump_throttled_tasks_closure_.Cancel();
+  pending_pump_throttled_tasks_runtime_ = base::nullopt;
+
+  TRACE_EVENT0(tracing_category_, "TaskQueueThrottler_DisableThrottling");
+}
+
+void TaskQueueThrottler::EnableThrottling() {
+  if (allow_throttling_)
+    return;
+
+  allow_throttling_ = true;
+
+  LazyNow lazy_now(tick_clock_);
+
+  for (const auto& map_entry : queue_details_) {
+    if (map_entry.second.throttling_ref_count == 0)
+      continue;
+
+    TaskQueue* queue = map_entry.first;
+
+    // Throttling is enabled and task queue should be blocked immediately
+    // to enforce task alignment.
+    queue->InsertFence(TaskQueue::InsertFencePosition::BEGINNING_OF_TIME);
+    queue->SetTimeDomain(time_domain_.get());
+    MaybeSchedulePumpQueue(FROM_HERE, lazy_now.Now(), queue,
+                           GetNextAllowedRunTime(lazy_now.Now(), queue));
+  }
+
+  TRACE_EVENT0(tracing_category_, "TaskQueueThrottler_EnableThrottling");
 }
 
 }  // namespace scheduler

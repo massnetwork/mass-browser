@@ -21,9 +21,9 @@ class ScopedTooltipDisabler;
 }
 
 namespace views {
-class DesktopCursorClient;
 class DesktopDragDropClientWin;
 class HWNDMessageHandler;
+class NonClientFrameView;
 
 namespace corewm {
 class TooltipWin;
@@ -90,6 +90,7 @@ class VIEWS_EXPORT DesktopWindowTreeHostWin
       Widget::MoveLoopEscapeBehavior escape_behavior) override;
   void EndMoveLoop() override;
   void SetVisibilityChangedAnimationsEnabled(bool value) override;
+  NonClientFrameView* CreateNonClientFrameView() override;
   bool ShouldUseNativeFrame() const override;
   bool ShouldWindowContentsBeTransparent() const override;
   void FrameTypeChanged() override;
@@ -100,7 +101,6 @@ class VIEWS_EXPORT DesktopWindowTreeHostWin
                       const gfx::ImageSkia& app_icon) override;
   void InitModalType(ui::ModalType modal_type) override;
   void FlashFrame(bool flash_frame) override;
-  void OnRootViewLayout() override;
   bool IsAnimatingClosed() const override;
   bool IsTranslucentWindowOpacitySupported() const override;
   void SizeConstraintsChanged() override;

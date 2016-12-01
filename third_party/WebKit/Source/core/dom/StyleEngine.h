@@ -33,6 +33,7 @@
 #include "bindings/core/v8/ScriptWrappable.h"
 #include "bindings/core/v8/TraceWrapperMember.h"
 #include "core/CoreExport.h"
+#include "core/css/ActiveStyleSheets.h"
 #include "core/css/CSSFontSelectorClient.h"
 #include "core/css/CSSGlobalRuleSet.h"
 #include "core/css/invalidation/StyleInvalidator.h"
@@ -54,10 +55,12 @@ namespace blink {
 
 class CSSFontSelector;
 class CSSStyleSheet;
+class MediaQueryEvaluator;
 class Node;
 class RuleFeatureSet;
 class ShadowTreeStyleSheetCollection;
 class StyleRuleFontFace;
+class StyleRuleUsageTracker;
 class StyleSheet;
 class StyleSheetContents;
 class ViewportStyleResolver;
@@ -99,6 +102,7 @@ class CORE_EXPORT StyleEngine final
 
   const HeapVector<Member<CSSStyleSheet>> activeStyleSheetsForInspector() const;
 
+  bool needsActiveStyleUpdate() const;
   void setNeedsActiveStyleUpdate(StyleSheet*, StyleResolverUpdateMode);
   void addStyleSheetCandidateNode(Node&);
   void removeStyleSheetCandidateNode(Node&);
@@ -107,6 +111,7 @@ class CORE_EXPORT StyleEngine final
   void watchedSelectorsChanged();
   void initialViewportChanged();
   void viewportRulesChanged();
+  void importRemoved();
 
   void injectAuthorSheet(StyleSheetContents* authorSheet);
   CSSStyleSheet& ensureInspectorStyleSheet();
@@ -114,9 +119,11 @@ class CORE_EXPORT StyleEngine final
     return m_globalRuleSet.watchedSelectorsRuleSet();
   }
 
-  void clearMediaQueryRuleSetStyleSheets();
+  RuleSet* ruleSetForSheet(CSSStyleSheet&);
+  void mediaQueryAffectingValueChanged();
   void updateStyleSheetsInImport(DocumentStyleSheetCollector& parentCollector);
   void updateActiveStyleSheets(StyleResolverUpdateMode);
+  void updateActiveStyle();
 
   enum ActiveSheetsUpdate { DontUpdateActiveSheets, UpdateActiveSheets };
   String preferredStylesheetSetName() const {
@@ -172,11 +179,13 @@ class CORE_EXPORT StyleEngine final
 
   StyleResolver* resolver() const { return m_resolver; }
 
+  void setRuleUsageTracker(StyleRuleUsageTracker*);
+
   StyleResolver& ensureResolver() {
+    updateActiveStyle();
     if (!m_resolver) {
       createResolver();
     } else if (m_resolver->hasPendingAuthorStyleSheets()) {
-      viewportRulesChanged();
       m_resolver->appendPendingAuthorStyleSheets();
       finishAppendAuthorStyleSheets();
     } else if (m_globalRuleSet.isDirty()) {
@@ -190,6 +199,13 @@ class CORE_EXPORT StyleEngine final
   void clearMasterResolver();
 
   StyleInvalidator& styleInvalidator() { return m_styleInvalidator; }
+  bool mediaQueryAffectedByViewportChange();
+  bool mediaQueryAffectedByDeviceChange();
+  bool hasViewportDependentMediaQueries() const {
+    return !m_globalRuleSet.ruleFeatureSet()
+                .viewportDependentMediaQueryResults()
+                .isEmpty();
+  }
 
   CSSFontSelector* fontSelector() { return m_fontSelector; }
   void setFontSelector(CSSFontSelector*);
@@ -244,6 +260,10 @@ class CORE_EXPORT StyleEngine final
 
   PassRefPtr<ComputedStyle> findSharedStyle(const ElementResolveContext&);
 
+  void applyRuleSetChanges(TreeScope&,
+                           const ActiveStyleSheetVector& oldStyleSheets,
+                           const ActiveStyleSheetVector& newStyleSheets);
+
   DECLARE_VIRTUAL_TRACE();
   DECLARE_TRACE_WRAPPERS();
 
@@ -269,7 +289,7 @@ class CORE_EXPORT StyleEngine final
 
   typedef HeapHashSet<Member<TreeScope>> UnorderedTreeScopeSet;
 
-  void clearMediaQueryRuleSetOnTreeScopeStyleSheets(UnorderedTreeScopeSet&);
+  void mediaQueryAffectingValueChanged(UnorderedTreeScopeSet&);
   const RuleFeatureSet& ruleFeatureSet() const {
     return m_globalRuleSet.ruleFeatureSet();
   }
@@ -303,6 +323,10 @@ class CORE_EXPORT StyleEngine final
       const HeapVector<Member<RuleSet>>&);
   void invalidateSlottedElements(HTMLSlotElement&);
 
+  void updateViewport();
+  void updateActiveStyleSheets();
+  const MediaQueryEvaluator& ensureMediaQueryEvaluator();
+
   Member<Document> m_document;
   bool m_isMaster;
 
@@ -318,6 +342,8 @@ class CORE_EXPORT StyleEngine final
 
   TraceWrapperMember<DocumentStyleSheetCollection>
       m_documentStyleSheetCollection;
+
+  Member<StyleRuleUsageTracker> m_tracker;
 
   typedef HeapHashMap<WeakMember<TreeScope>,
                       Member<ShadowTreeStyleSheetCollection>>
@@ -340,6 +366,7 @@ class CORE_EXPORT StyleEngine final
 
   Member<StyleResolver> m_resolver;
   Member<ViewportStyleResolver> m_viewportResolver;
+  Member<MediaQueryEvaluator> m_mediaQueryEvaluator;
   StyleInvalidator m_styleInvalidator;
 
   Member<CSSFontSelector> m_fontSelector;

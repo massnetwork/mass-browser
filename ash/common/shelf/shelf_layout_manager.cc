@@ -389,7 +389,7 @@ void ShelfLayoutManager::OnKeyboardBoundsChanging(const gfx::Rect& new_bounds) {
   bool change_work_area =
       (!base::CommandLine::ForCurrentProcess()->HasSwitch(
            ::switches::kUseNewVirtualKeyboardBehavior) ||
-       keyboard::KeyboardController::GetInstance()->get_lock_keyboard());
+       keyboard::KeyboardController::GetInstance()->keyboard_locked());
 
   keyboard_bounds_ = new_bounds;
   LayoutShelfAndUpdateBounds(change_work_area);
@@ -596,7 +596,7 @@ void ShelfLayoutManager::UpdateBoundsAndOpacity(
   // Set an empty border to avoid the shelf view and status area overlapping.
   // TODO(msw): Avoid setting bounds of views within the shelf widget here.
   gfx::Rect shelf_bounds = gfx::Rect(target_bounds.shelf_bounds_in_root.size());
-  shelf_widget_->GetContentsView()->SetBorder(views::Border::CreateEmptyBorder(
+  shelf_widget_->GetContentsView()->SetBorder(views::CreateEmptyBorder(
       shelf_bounds.InsetsFrom(target_bounds.shelf_bounds_in_shelf)));
   shelf_widget_->GetContentsView()->Layout();
 

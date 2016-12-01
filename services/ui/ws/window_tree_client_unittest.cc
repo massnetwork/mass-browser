@@ -11,18 +11,20 @@
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
 #include "mojo/public/cpp/bindings/associated_binding.h"
+#include "mojo/public/cpp/bindings/binding.h"
+#include "services/service_manager/public/cpp/interface_factory.h"
+#include "services/service_manager/public/cpp/interface_registry.h"
 #include "services/service_manager/public/cpp/service_test.h"
 #include "services/ui/public/cpp/tests/window_server_shelltest_base.h"
+#include "services/ui/public/interfaces/constants.mojom.h"
 #include "services/ui/public/interfaces/window_tree.mojom.h"
 #include "services/ui/public/interfaces/window_tree_host.mojom.h"
 #include "services/ui/ws/ids.h"
 #include "services/ui/ws/test_change_tracker.h"
 
-using mojo::Array;
 using service_manager::Connection;
 using mojo::InterfaceRequest;
 using service_manager::Service;
-using mojo::String;
 using ui::mojom::WindowDataPtr;
 using ui::mojom::WindowTree;
 using ui::mojom::WindowTreeClient;
@@ -44,7 +46,7 @@ Id BuildWindowId(ClientSpecificId client_id,
 
 void WindowTreeResultCallback(base::RunLoop* run_loop,
                               std::vector<TestWindow>* windows,
-                              Array<WindowDataPtr> results) {
+                              std::vector<WindowDataPtr> results) {
   WindowDatasToTestWindows(results, windows);
   run_loop->Quit();
 }
@@ -60,13 +62,13 @@ void EmbedCallbackImpl(base::RunLoop* run_loop,
 
 bool EmbedUrl(service_manager::Connector* connector,
               WindowTree* tree,
-              const String& url,
+              const std::string& url,
               Id root_id) {
   bool result = false;
   base::RunLoop run_loop;
   {
     mojom::WindowTreeClientPtr client;
-    connector->ConnectToInterface(url.get(), &client);
+    connector->ConnectToInterface(url, &client);
     const uint32_t embed_flags = 0;
     tree->Embed(root_id, std::move(client), embed_flags,
                 base::Bind(&EmbedCallbackImpl, &run_loop, &result));
@@ -216,7 +218,7 @@ class TestWindowTreeClient : public mojom::WindowTreeClient,
   // Generally you want NewWindow(), but use this if you need to test given
   // a complete window id (NewWindow() ors with the client id).
   Id NewWindowWithCompleteId(Id id) {
-    mojo::Map<mojo::String, mojo::Array<uint8_t>> properties;
+    std::unordered_map<std::string, std::vector<uint8_t>> properties;
     const uint32_t change_id = GetAndAdvanceChangeId();
     tree()->NewWindow(change_id, id, std::move(properties));
     return WaitForChangeCompleted(change_id) ? id : 0;
@@ -225,11 +227,11 @@ class TestWindowTreeClient : public mojom::WindowTreeClient,
   bool SetWindowProperty(Id window_id,
                          const std::string& name,
                          const std::vector<uint8_t>* data) {
-    Array<uint8_t> mojo_data(nullptr);
+    base::Optional<std::vector<uint8_t>> mojo_data;
     if (data)
-      mojo_data = Array<uint8_t>::From(*data);
+      mojo_data.emplace(*data);
     const uint32_t change_id = GetAndAdvanceChangeId();
-    tree()->SetWindowProperty(change_id, window_id, name, std::move(mojo_data));
+    tree()->SetWindowProperty(change_id, window_id, name, mojo_data);
     return WaitForChangeCompleted(change_id);
   }
 
@@ -312,7 +314,7 @@ class TestWindowTreeClient : public mojom::WindowTreeClient,
   void OnClientAreaChanged(
       uint32_t window_id,
       const gfx::Insets& new_client_area,
-      mojo::Array<gfx::Rect> new_additional_client_areas) override {}
+      const std::vector<gfx::Rect>& new_additional_client_areas) override {}
   void OnTransientWindowAdded(uint32_t window_id,
                               uint32_t transient_window_id) override {
     tracker()->OnTransientWindowAdded(window_id, transient_window_id);
@@ -324,7 +326,7 @@ class TestWindowTreeClient : public mojom::WindowTreeClient,
   void OnWindowHierarchyChanged(Id window,
                                 Id old_parent,
                                 Id new_parent,
-                                Array<WindowDataPtr> windows) override {
+                                std::vector<WindowDataPtr> windows) override {
     tracker()->OnWindowHierarchyChanged(window, old_parent, new_parent,
                                         std::move(windows));
   }
@@ -360,10 +362,11 @@ class TestWindowTreeClient : public mojom::WindowTreeClient,
   }
   void OnPointerEventObserved(std::unique_ptr<ui::Event>,
                               uint32_t window_id) override {}
-  void OnWindowSharedPropertyChanged(uint32_t window,
-                                     const String& name,
-                                     Array<uint8_t> new_data) override {
-    tracker_.OnWindowSharedPropertyChanged(window, name, std::move(new_data));
+  void OnWindowSharedPropertyChanged(
+      uint32_t window,
+      const std::string& name,
+      const base::Optional<std::vector<uint8_t>>& new_data) override {
+    tracker_.OnWindowSharedPropertyChanged(window, name, new_data);
   }
   // TODO(sky): add testing coverage.
   void OnWindowFocused(uint32_t focused_window_id) override {}
@@ -373,17 +376,17 @@ class TestWindowTreeClient : public mojom::WindowTreeClient,
   }
 
   void OnDragDropStart(
-      mojo::Map<mojo::String, mojo::Array<uint8_t>> drag_data) override {
+      const std::unordered_map<std::string, std::vector<uint8_t>>& drag_data)
+      override {
     NOTIMPLEMENTED();
   }
 
   void OnWindowSurfaceChanged(Id window_id,
                               const cc::SurfaceId& surface_id,
-                              const cc::SurfaceSequence& surface_sequence,
                               const gfx::Size& frame_size,
                               float device_scale_factor) override {
-    tracker_.OnWindowSurfaceChanged(window_id, surface_id, surface_sequence,
-                                    frame_size, device_scale_factor);
+    tracker_.OnWindowSurfaceChanged(window_id, surface_id, frame_size,
+                                    device_scale_factor);
   }
 
   void OnDragEnter(uint32_t window,
@@ -449,16 +452,18 @@ class TestWindowTreeClient : public mojom::WindowTreeClient,
                    const gfx::Rect& bounds) override {
     window_manager_client_->WmResponse(change_id, false);
   }
-  void WmSetProperty(uint32_t change_id,
-                     uint32_t window_id,
-                     const mojo::String& name,
-                     mojo::Array<uint8_t> value) override {
+  void WmSetProperty(
+      uint32_t change_id,
+      uint32_t window_id,
+      const std::string& name,
+      const base::Optional<std::vector<uint8_t>>& value) override {
     window_manager_client_->WmResponse(change_id, false);
   }
   void WmCreateTopLevelWindow(
       uint32_t change_id,
       ClientSpecificId requesting_client_id,
-      mojo::Map<mojo::String, mojo::Array<uint8_t>> properties) override {
+      const std::unordered_map<std::string, std::vector<uint8_t>>& properties)
+      override {
     NOTIMPLEMENTED();
   }
   void WmClientJankinessChanged(ClientSpecificId client_id,
@@ -648,7 +653,7 @@ class WindowTreeClientTest : public WindowServerServiceTestBase {
     WindowServerServiceTestBase::SetUp();
 
     mojom::WindowTreeHostFactoryPtr factory;
-    connector()->ConnectToInterface("service:ui", &factory);
+    connector()->ConnectToInterface(ui::mojom::kServiceName, &factory);
 
     mojom::WindowTreeClientPtr tree_client_ptr;
     wt_client1_ = base::MakeUnique<TestWindowTreeClient>();
@@ -2162,12 +2167,47 @@ TEST_F(WindowTreeClientTest, SurfaceIdPropagation) {
   render_pass->SetNew(cc::RenderPassId(1, 1), frame_rect, frame_rect,
                       gfx::Transform());
   compositor_frame.render_pass_list.push_back(std::move(render_pass));
-  surface_ptr->SubmitCompositorFrame(std::move(compositor_frame));
+  cc::LocalFrameId local_frame_id(1, base::UnguessableToken::Create());
+  surface_ptr->SubmitCompositorFrame(local_frame_id,
+                                     std::move(compositor_frame));
   // Make sure the parent connection gets the surface ID.
   wt_client1()->WaitForChangeCount(1);
   // Verify that the submitted frame is for |window_2_101|.
   EXPECT_EQ(window_2_101_in_ws1,
             changes1()->back().surface_id.frame_sink_id().client_id());
+}
+
+// Verifies when an unknown window with a known child is added to a hierarchy
+// the known child is identified in the WindowData.
+TEST_F(WindowTreeClientTest, AddUnknownWindowKnownParent) {
+  const Id window_1_100 = wt_client1()->NewWindow(100);
+  ASSERT_TRUE(window_1_100);
+  ASSERT_TRUE(wt_client1()->AddWindow(root_window_id(), window_1_100));
+
+  // Establish the second client at 1,100.
+  ASSERT_NO_FATAL_FAILURE(EstablishSecondClientWithRoot(window_1_100));
+  const Id window_2_1 = wt_client2()->NewWindow(1000);
+  const Id window_2_2 = wt_client2()->NewWindow(2000);
+  // Add 2_1 to the root, remove 2_1, add 2_1 to 2_2 and then 2_2 to the parent.
+  ASSERT_TRUE(
+      wt_client2()->AddWindow(wt_client2()->root_window_id(), window_2_1));
+  ASSERT_TRUE(wt_client2()->RemoveWindowFromParent(window_2_1));
+  ASSERT_TRUE(wt_client2()->AddWindow(window_2_2, window_2_1));
+  wt_client1()->WaitForChangeCount(2);
+  changes1()->clear();
+  ASSERT_TRUE(
+      wt_client2()->AddWindow(wt_client2()->root_window_id(), window_2_2));
+  wt_client1()->WaitForChangeCount(1);
+  const Id window_2_1_in_wm = BuildWindowId(client_id_2(), 1);
+  const Id window_2_2_in_wm = BuildWindowId(client_id_2(), 2);
+  EXPECT_EQ("HierarchyChanged window=" + IdToString(window_2_2_in_wm) +
+                " old_parent=null new_parent=" + IdToString(window_1_100),
+            SingleChangeToDescription(*changes1()));
+  EXPECT_EQ("[window=" + IdToString(window_2_2_in_wm) + " parent=" +
+                IdToString(window_1_100) + "],[window=" +
+                IdToString(window_2_1_in_wm) + " parent=" +
+                IdToString(window_2_2_in_wm) + "]",
+            ChangeWindowDescription(*changes1()));
 }
 
 // TODO(sky): need to better track changes to initial client. For example,

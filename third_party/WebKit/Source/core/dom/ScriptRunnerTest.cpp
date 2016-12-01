@@ -8,7 +8,6 @@
 #include "core/dom/Element.h"
 #include "core/dom/ScriptLoader.h"
 #include "platform/heap/Handle.h"
-#include "platform/scheduler/CancellableTaskFactory.h"
 #include "platform/testing/TestingPlatformSupport.h"
 #include "public/platform/Platform.h"
 #include "public/platform/WebViewScheduler.h"
@@ -42,7 +41,7 @@ class ScriptRunnerTest : public testing::Test {
  public:
   ScriptRunnerTest()
       : m_document(Document::create()),
-        m_element(m_document->createElement("foo", ASSERT_NO_EXCEPTION)) {}
+        m_element(m_document->createElement("foo")) {}
 
   void SetUp() override {
     // We have to create ScriptRunner after initializing platform, because we

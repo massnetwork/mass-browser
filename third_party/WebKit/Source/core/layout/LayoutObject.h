@@ -668,18 +668,29 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
   virtual FloatRect strokeBoundingBox() const;
 
   // Returns the smallest rectangle enclosing all of the painted content
-  // respecting clipping, masking, filters, opacity, stroke-width and markers
+  // respecting clipping, masking, filters, opacity, stroke-width and markers.
+  // For most SVG objects, the local SVG coordinate space is the space where
+  // localSVGTransform applies. For SVG objects defining viewports (e.g.
+  // LayoutSVGForeignObject, LayoutSVGViewportContainer,
+  // LayoutSVGResourceMarker), the local SVG coordinate space is the viewport
+  // space.
   virtual FloatRect visualRectInLocalSVGCoordinates() const;
 
-  // This only returns the transform="" value from the SVG element.
-  // Most callsites want localToParentTransform() instead.
+  // This returns the transform applying to the local SVG coordinate space,
+  // which combines the transform attribute value or CSS transform properties,
+  // and animation motion transform.
+  // See SVGGraphicsElement::calculateAnimatedLocalTransform().
+  // Most callsites want localToSVGParentTransform() instead.
   virtual AffineTransform localSVGTransform() const;
 
-  // Returns the full transform mapping from local coordinates to local coords
-  // for the parent SVG layoutObject
-  // This includes any viewport transforms and x/y offsets as well as the
-  // transform="" value off the element.
-  virtual const AffineTransform& localToSVGParentTransform() const;
+  // Returns the full transform mapping from local coordinates to parent's local
+  // coordinates. For most SVG objects, this is the same as localSVGTransform.
+  // For SVG objects defining viewports (see visualRectInLocalSVGCoordinates),
+  // this includes any viewport transforms and x/y offsets as well as
+  // localSVGTransform.
+  virtual AffineTransform localToSVGParentTransform() const {
+    return localSVGTransform();
+  }
 
   // SVG uses FloatPoint precise hit testing, and passes the point in parent
   // coordinates instead of in paint invalidation container coordinates.
@@ -698,7 +709,7 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     // LayoutTextFragment are not LayoutBlocks and will return false.
     // See https://bugs.webkit.org/show_bug.cgi?id=56709.
     return isAnonymous() && (style()->display() == EDisplay::Block ||
-                             style()->display() == EDisplay::Box) &&
+                             style()->display() == EDisplay::WebkitBox) &&
            style()->styleType() == PseudoIdNone && isLayoutBlock() &&
            !isListMarker() && !isLayoutFlowThread() &&
            !isLayoutMultiColumnSet() && !isLayoutFullScreen() &&
@@ -1274,21 +1285,6 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
 
   virtual CursorDirective getCursor(const LayoutPoint&, Cursor&) const;
 
-  struct AppliedTextDecoration {
-    STACK_ALLOCATED();
-    Color color;
-    TextDecorationStyle style;
-    AppliedTextDecoration()
-        : color(Color::transparent), style(TextDecorationStyleSolid) {}
-  };
-
-  void getTextDecorations(unsigned decorations,
-                          AppliedTextDecoration& underline,
-                          AppliedTextDecoration& overline,
-                          AppliedTextDecoration& linethrough,
-                          bool quirksMode = false,
-                          bool firstlineStyle = false);
-
   // Return the LayoutBoxModelObject in the container chain which is responsible
   // for painting this object. The function crosses frames boundaries so the
   // returned value can be in a different document.
@@ -1584,21 +1580,14 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
   // Called when the previous visual rect(s) is no longer valid.
   virtual void clearPreviousVisualRects();
 
+  const LayoutPoint& previousPaintOffset() const {
+    return m_previousPaintOffset;
+  }
+
   // Only adjusts if the paint invalidation container is not a composited
   // scroller.
   void adjustPreviousPaintInvalidationForScrollIfNeeded(
       const DoubleSize& scrollDelta);
-
-  // The previous position of the top-left corner of the object in its previous
-  // paint backing.
-  const LayoutPoint& previousPositionFromPaintInvalidationBacking() const {
-    return m_previousPositionFromPaintInvalidationBacking;
-  }
-  void setPreviousPositionFromPaintInvalidationBacking(
-      const LayoutPoint& positionFromPaintInvalidationBacking) {
-    m_previousPositionFromPaintInvalidationBacking =
-        positionFromPaintInvalidationBacking;
-  }
 
   PaintInvalidationReason fullPaintInvalidationReason() const {
     return m_bitfields.fullPaintInvalidationReason();
@@ -1612,7 +1601,7 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     m_bitfields.setFullPaintInvalidationReason(PaintInvalidationNone);
   }
 
-  virtual void clearPaintInvalidationFlags();
+  void clearPaintInvalidationFlags();
 
   bool mayNeedPaintInvalidation() const {
     return m_bitfields.mayNeedPaintInvalidation();
@@ -1683,6 +1672,9 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     void setShouldDoFullPaintInvalidation(PaintInvalidationReason reason) {
       m_layoutObject.setShouldDoFullPaintInvalidation(reason);
     }
+    void setBackgroundChangedSinceLastPaintInvalidation() {
+      m_layoutObject.setBackgroundChangedSinceLastPaintInvalidation();
+    }
     void ensureIsReadyForPaintInvalidation() {
       m_layoutObject.ensureIsReadyForPaintInvalidation();
     }
@@ -1690,14 +1682,33 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     void setPreviousVisualRect(const LayoutRect& r) {
       m_layoutObject.setPreviousVisualRect(r);
     }
-    void setPreviousPositionFromPaintInvalidationBacking(const LayoutPoint& p) {
-      m_layoutObject.setPreviousPositionFromPaintInvalidationBacking(p);
+    void setPreviousPaintOffset(const LayoutPoint& p) {
+      DCHECK(RuntimeEnabledFeatures::slimmingPaintInvalidationEnabled());
+      m_layoutObject.m_previousPaintOffset = p;
+    }
+    void setHasPreviousLocationInBacking(bool b) {
+      m_layoutObject.m_bitfields.setHasPreviousLocationInBacking(b);
+    }
+    void setHasPreviousSelectionVisualRect(bool b) {
+      m_layoutObject.m_bitfields.setHasPreviousSelectionVisualRect(b);
+    }
+    void setHasPreviousBoxGeometries(bool b) {
+      m_layoutObject.m_bitfields.setHasPreviousBoxGeometries(b);
     }
     void setPreviousBackgroundObscured(bool b) {
       m_layoutObject.setPreviousBackgroundObscured(b);
     }
     void clearPreviousVisualRects() {
       m_layoutObject.clearPreviousVisualRects();
+    }
+    void setNeedsPaintPropertyUpdate() {
+      m_layoutObject.setNeedsPaintPropertyUpdate();
+    }
+    void clearNeedsPaintPropertyUpdate() {
+      m_layoutObject.clearNeedsPaintPropertyUpdate();
+    }
+    void clearDescendantNeedsPaintPropertyUpdate() {
+      m_layoutObject.clearDescendantNeedsPaintPropertyUpdate();
     }
 
    protected:
@@ -1721,6 +1732,34 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
   MutableForPainting getMutableForPainting() const {
     return MutableForPainting(*this);
   }
+
+  // Paint properties (see: |ObjectPaintProperties|) are built from an object's
+  // state (location, transform, etc) as well as properties from ancestors.
+  // When these inputs change, setNeedsPaintPropertyUpdate will cause a property
+  // tree update during the next document lifecycle update.
+  //
+  // In addition to tracking if an object needs its own paint properties
+  // updated, |descendantNeedsPaintPropertyUpdate| is used to track if any
+  // descendant needs an update too. This bit is up the tree, crossing frames,
+  // when calling |setNeedsPaintPropertyUpdate|.
+  void setNeedsPaintPropertyUpdate();
+  bool needsPaintPropertyUpdate() const {
+    return m_bitfields.needsPaintPropertyUpdate();
+  }
+  void clearNeedsPaintPropertyUpdate() {
+    DCHECK_EQ(document().lifecycle().state(), DocumentLifecycle::InPrePaint);
+    m_bitfields.setNeedsPaintPropertyUpdate(false);
+  }
+  bool descendantNeedsPaintPropertyUpdate() const {
+    return m_bitfields.descendantNeedsPaintPropertyUpdate();
+  }
+  void clearDescendantNeedsPaintPropertyUpdate() {
+    DCHECK_EQ(document().lifecycle().state(), DocumentLifecycle::InPrePaint);
+    m_bitfields.setDescendantNeedsPaintPropertyUpdate(false);
+  }
+  // Main thread scrolling reasons require fully updating paint propeties of all
+  // ancestors (see: ScrollPaintPropertyNode.h).
+  void setAncestorsNeedPaintPropertyUpdateForMainThreadScrolling();
 
   void setIsScrollAnchorObject() { m_bitfields.setIsScrollAnchorObject(true); }
   // Clears the IsScrollAnchorObject bit if and only if no ScrollAnchors still
@@ -1752,6 +1791,25 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
 
   bool isBackgroundAttachmentFixedObject() const {
     return m_bitfields.isBackgroundAttachmentFixedObject();
+  }
+
+  // Paint invalidators will access the internal global map storing the data
+  // only when the flag is set, to avoid unnecessary map lookups.
+  bool hasPreviousLocationInBacking() const {
+    return m_bitfields.hasPreviousLocationInBacking();
+  }
+  bool hasPreviousSelectionVisualRect() const {
+    return m_bitfields.hasPreviousSelectionVisualRect();
+  }
+  bool hasPreviousBoxGeometries() const {
+    return m_bitfields.hasPreviousBoxGeometries();
+  }
+
+  bool backgroundChangedSinceLastPaintInvalidation() const {
+    return m_bitfields.backgroundChangedSinceLastPaintInvalidation();
+  }
+  void setBackgroundChangedSinceLastPaintInvalidation() {
+    m_bitfields.setBackgroundChangedSinceLastPaintInvalidation(true);
   }
 
  protected:
@@ -1887,9 +1945,10 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     m_previousVisualRect = rect;
   }
 
-#if ENABLE(ASSERT)
+#if DCHECK_IS_ON()
   virtual bool paintInvalidationStateIsDirty() const {
-    return shouldCheckForPaintInvalidationRegardlessOfPaintInvalidationState();
+    return backgroundChangedSinceLastPaintInvalidation() ||
+           shouldCheckForPaintInvalidationRegardlessOfPaintInvalidationState();
   }
 #endif
 
@@ -1932,10 +1991,9 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
   }
 
  private:
-  // Adjusts a visual rect in the space of |m_previousVisualRect| and
-  // |m_previousPositionFromPaintInvalidationBacking| to be in the space of the
-  // |paintInvalidationContainer|, if needed. They can be different only if
-  // |paintInvalidationContainer| is a composited scroller.
+  // Adjusts a visual rect in the space of |m_previousVisualRect| to be in the
+  // space of the |paintInvalidationContainer|, if needed. They can be different
+  // only if |paintInvalidationContainer| is a composited scroller.
   void adjustVisualRectForCompositedScrolling(
       LayoutRect&,
       const LayoutBoxModelObject& paintInvalidationContainer) const;
@@ -2003,7 +2061,8 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
   //   if any or nullptr;
   // - For multi-column spanner, returns the spanner placeholder;
   // - Otherwise returns parent().
-  LayoutObject* paintInvalidationParent() const;
+  inline LayoutObject* paintInvalidationParent() const;
+  LayoutObject* slowPaintInvalidationParentForTesting() const;
 
   RefPtr<ComputedStyle> m_style;
 
@@ -2094,12 +2153,16 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
           m_isScrollAnchorObject(false),
           m_scrollAnchorDisablingStyleChanged(false),
           m_hasBoxDecorationBackground(false),
+          m_hasPreviousLocationInBacking(false),
+          m_hasPreviousSelectionVisualRect(false),
+          m_hasPreviousBoxGeometries(false),
+          m_needsPaintPropertyUpdate(true),
+          m_descendantNeedsPaintPropertyUpdate(true),
+          m_backgroundChangedSinceLastPaintInvalidation(false),
           m_positionedState(IsStaticallyPositioned),
           m_selectionState(SelectionNone),
           m_backgroundObscurationState(BackgroundObscurationStatusInvalid),
           m_fullPaintInvalidationReason(PaintInvalidationNone) {}
-
-    // 32 bits have been used in the first word, and 19 in the second.
 
     // Self needs layout means that this layout object is marked for a full
     // layout. This is the default layout but it is expensive as it recomputes
@@ -2258,6 +2321,27 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     ADD_BOOLEAN_BITFIELD(hasBoxDecorationBackground,
                          HasBoxDecorationBackground);
 
+    ADD_BOOLEAN_BITFIELD(hasPreviousLocationInBacking,
+                         HasPreviousLocationInBacking);
+    ADD_BOOLEAN_BITFIELD(hasPreviousSelectionVisualRect,
+                         HasPreviousSelectionVisualRect);
+    ADD_BOOLEAN_BITFIELD(hasPreviousBoxGeometries, HasPreviousBoxGeometries);
+
+    // Whether the paint properties need to be updated. For more details, see
+    // LayoutObject::needsPaintPropertyUpdate().
+    ADD_BOOLEAN_BITFIELD(needsPaintPropertyUpdate, NeedsPaintPropertyUpdate);
+    // Whether the paint properties of a descendant need to be updated. For more
+    // details, see LayoutObject::descendantNeedsPaintPropertyUpdate().
+    ADD_BOOLEAN_BITFIELD(descendantNeedsPaintPropertyUpdate,
+                         DescendantNeedsPaintPropertyUpdate);
+
+    ADD_BOOLEAN_BITFIELD(backgroundChangedSinceLastPaintInvalidation,
+                         BackgroundChangedSinceLastPaintInvalidation);
+
+   protected:
+    // Use protected to avoid warning about unused variable.
+    unsigned m_unusedBits : 7;
+
    private:
     // This is the cached 'position' value of this object
     // (see ComputedStyle::position).
@@ -2345,16 +2429,21 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
   // Store state between styleWillChange and styleDidChange
   static bool s_affectsParentBlock;
 
-  // This stores the visual rect from the previous frame. This rect does *not*
-  // account for composited scrolling. See
+  // This stores the visual rect computed by the latest paint invalidation.
+  // This rect does *not* account for composited scrolling. See
   // adjustVisualRectForCompositedScrolling().
   LayoutRect m_previousVisualRect;
 
-  // This stores the position in the paint invalidation backing's coordinate.
-  // It is used to detect layoutObject shifts that forces a full invalidation.
-  // This point does *not* account for composited scrolling. See
-  // adjustInvalidationRectForCompositedScrolling().
-  LayoutPoint m_previousPositionFromPaintInvalidationBacking;
+  // This stores the paint offset computed by the latest paint property tree
+  // building. It is relative to the containing transform space. It is the same
+  // offset that will be used to paint the object on SPv2. It's used to detect
+  // paint offset change for paint invalidation on SPv2, and partial paint
+  // property tree update for SlimmingPaintInvalidation on SPv1 and SPv2.
+  LayoutPoint m_previousPaintOffset;
+
+  // For SPv2 only. The ObjectPaintProperties structure holds references to the
+  // property tree nodes that are created by the layout object for painting.
+  std::unique_ptr<ObjectPaintProperties> m_paintProperties;
 };
 
 // FIXME: remove this once the layout object lifecycle ASSERTS are no longer

@@ -13,16 +13,11 @@
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_registrar.h"
 
-class GURL;
 class Profile;
 struct ExtensionHostMsg_APIActionOrEvent_Params;
 struct ExtensionHostMsg_DOMAction_Params;
 struct ExtensionMsg_ExternalConnectionInfo;
 struct ExtensionMsg_TabTargetConnectionInfo;
-
-namespace base {
-class FilePath;
-}
 
 namespace extensions {
 class ActivityLog;
@@ -58,6 +53,12 @@ class ChromeExtensionMessageFilter : public content::BrowserMessageFilter,
                                 const std::string& channel_name,
                                 bool include_tls_channel_id,
                                 int request_id);
+  void OnOpenChannelToExtensionSync(
+      int routing_id,
+      const ExtensionMsg_ExternalConnectionInfo& info,
+      const std::string& channel_name,
+      bool include_tls_channel_id,
+      int* port_id);
   void OpenChannelToExtensionOnUIThread(
       int source_process_id,
       int source_routing_id,

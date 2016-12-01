@@ -275,8 +275,22 @@ TEST(KeyConverter, MAYBE_AllShorthandKeys) {
       ->SetText("\r", "\r")
       ->Generate(&key_events);
   builder.Generate(&key_events);
-  builder.SetKeyCode(ui::VKEY_TAB)->SetText("\t", "\t")->Generate(&key_events);
-  builder.SetKeyCode(ui::VKEY_BACK)->SetText("\b", "\b")->Generate(&key_events);
+  builder.SetKeyCode(ui::VKEY_TAB);
+#if defined(USE_AURA) || defined(OS_LINUX)
+  builder.SetText("\t", "\t")->Generate(&key_events);
+#else
+  builder.SetText(std::string(), std::string());
+  key_events.push_back(builder.SetType(kRawKeyDownEventType)->Build());
+  key_events.push_back(builder.SetType(kKeyUpEventType)->Build());
+#endif
+  builder.SetKeyCode(ui::VKEY_BACK);
+#if defined(USE_AURA) || defined(OS_LINUX)
+  builder.SetText("\b", "\b")->Generate(&key_events);
+#else
+  builder.SetText(std::string(), std::string());
+  key_events.push_back(builder.SetType(kRawKeyDownEventType)->Build());
+  key_events.push_back(builder.SetType(kKeyUpEventType)->Build());
+#endif
   builder.SetKeyCode(ui::VKEY_SPACE)->SetText(" ", " ")->Generate(&key_events);
   CheckEventsReleaseModifiers("\n\r\n\t\b ", key_events);
 }

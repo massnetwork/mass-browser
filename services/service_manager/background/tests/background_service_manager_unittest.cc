@@ -17,13 +17,19 @@
 namespace service_manager {
 namespace {
 
-const char kTestName[] = "service:background_service_manager_unittest";
-const char kAppName[] = "service:background_service_manager_test_service";
+const char kTestName[] = "background_service_manager_unittest";
+const char kAppName[] = "background_service_manager_test_service";
 
 class ServiceImpl : public Service {
  public:
   ServiceImpl() {}
   ~ServiceImpl() override {}
+
+  // Service:
+  bool OnConnect(const ServiceInfo& remote_info,
+                 InterfaceRegistry* registry) override {
+    return false;
+  }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ServiceImpl);
@@ -50,9 +56,9 @@ TEST(BackgroundServiceManagerTest, MAYBE_Basic) {
   BackgroundServiceManager background_service_manager;
   base::MessageLoop message_loop;
   background_service_manager.Init(nullptr);
-  ServiceImpl service;
   ServiceContext service_context(
-      &service, background_service_manager.CreateServiceRequest(kTestName));
+      base::MakeUnique<ServiceImpl>(),
+      background_service_manager.CreateServiceRequest(kTestName));
   mojom::TestServicePtr test_service;
   service_context.connector()->ConnectToInterface(kAppName, &test_service);
   base::RunLoop run_loop;

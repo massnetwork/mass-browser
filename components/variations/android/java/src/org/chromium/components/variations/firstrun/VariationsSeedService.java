@@ -7,6 +7,7 @@ package org.chromium.components.variations.firstrun;
 import android.app.IntentService;
 import android.content.Intent;
 import android.os.SystemClock;
+import android.support.v4.content.LocalBroadcastManager;
 
 import org.chromium.base.Log;
 import org.chromium.base.metrics.CachedMetrics.SparseHistogramSample;
@@ -26,6 +27,9 @@ import java.util.concurrent.TimeUnit;
  */
 public class VariationsSeedService extends IntentService {
     private static final String TAG = "VariationsSeedServ";
+
+    public static final String COMPLETE_BROADCAST = "VariationsseedService.Complete";
+
     private static final String VARIATIONS_SERVER_URL =
             "https://clientservices.googleapis.com/chrome-variations/seed?osname=android";
     private static final int BUFFER_SIZE = 4096;
@@ -39,34 +43,31 @@ public class VariationsSeedService extends IntentService {
     private static final int SEED_FETCH_RESULT_TIMEOUT = -2;
     private static final int SEED_FETCH_RESULT_IOEXCEPTION = -1;
 
-    // Static variable that indicates a status of the variations seed fetch. If one request is in
-    // progress, we do not start another fetch.
-    private static boolean sFetchInProgress = false;
-
     public VariationsSeedService() {
         super(TAG);
     }
 
     @Override
     public void onHandleIntent(Intent intent) {
-        // Check if any variations seed fetch is in progress, or the seed has been already fetched,
-        // or seed has been successfully stored on the C++ side.
-        if (sFetchInProgress || VariationsSeedBridge.hasJavaPref(getApplicationContext())
+        // Early return if the seed has already been fetched. In such a case, either the Java-side
+        // variations seed pref is set, or a different Java pref is set that indicates that the
+        // seed exists in the native prefs.
+        // Note: There is no need to check for a concurrent seed fetch here, because the service
+        // runs all its intents on the same worker thread serially.
+        if (VariationsSeedBridge.hasJavaPref(getApplicationContext())
                 || VariationsSeedBridge.hasNativePref(getApplicationContext())) {
+            broadcastCompleteIntent();
             return;
         }
-        setFetchInProgressFlagValue(true);
         try {
             downloadContent();
         } finally {
-            setFetchInProgressFlagValue(false);
+            broadcastCompleteIntent();
         }
     }
 
-    // Separate function is needed to avoid FINDBUGS build error (assigning value to static variable
-    // from non-static onHandleIntent() method).
-    private static void setFetchInProgressFlagValue(boolean value) {
-        sFetchInProgress = value;
+    private void broadcastCompleteIntent() {
+        LocalBroadcastManager.getInstance(this).sendBroadcast(new Intent(COMPLETE_BROADCAST));
     }
 
     private void recordFetchResultOrCode(int resultOrCode) {

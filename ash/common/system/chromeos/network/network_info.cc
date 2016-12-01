@@ -6,10 +6,20 @@
 
 namespace ash {
 
-NetworkInfo::NetworkInfo() : disable(false), highlight(false), is_wifi(false) {}
+NetworkInfo::NetworkInfo()
+    : disable(false),
+      highlight(false),
+      connected(false),
+      connecting(false),
+      type(Type::UNKNOWN) {}
 
 NetworkInfo::NetworkInfo(const std::string& path)
-    : service_path(path), disable(false), highlight(false), is_wifi(false) {}
+    : service_path(path),
+      disable(false),
+      highlight(false),
+      connected(false),
+      connecting(false),
+      type(Type::UNKNOWN) {}
 
 NetworkInfo::~NetworkInfo() {}
 

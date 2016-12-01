@@ -21,11 +21,12 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/common/content_constants.h"
 #include "content/public/common/url_constants.h"
+#include "ppapi/features/features.h"
 #include "ppapi/proxy/ppapi_messages.h"
 #include "third_party/kasko/kasko_features.h"
 #include "url/gurl.h"
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 #include "content/browser/ppapi_plugin_process_host.h"
 #endif
 
@@ -55,7 +56,7 @@ const char kKaskoSendReport[] = "/send-report";
 #endif
 
 void HandlePpapiFlashDebugURL(const GURL& url) {
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   bool crash = url == kChromeUIPpapiFlashCrashURL;
 
   std::vector<PpapiPluginProcessHost*> hosts;
@@ -75,7 +76,7 @@ bool IsKaskoDebugURL(const GURL& url) {
 #if BUILDFLAG(ENABLE_KASKO)
   return (url.is_valid() && url.SchemeIs(kChromeUIScheme) &&
           url.DomainIs(kKaskoCrashDomain) &&
-          url.path() == kKaskoSendReport);
+          url.path_piece() == kKaskoSendReport);
 #else
   return false;
 #endif
@@ -127,14 +128,17 @@ bool IsAsanDebugURL(const GURL& url) {
     return false;
   }
 
-  if (url.path() == kAsanHeapOverflow || url.path() == kAsanHeapUnderflow ||
-      url.path() == kAsanUseAfterFree) {
+  if (url.path_piece() == kAsanHeapOverflow ||
+      url.path_piece() == kAsanHeapUnderflow ||
+      url.path_piece() == kAsanUseAfterFree) {
     return true;
   }
 
 #if defined(SYZYASAN)
-  if (url.path() == kAsanCorruptHeapBlock || url.path() == kAsanCorruptHeap)
+  if (url.path_piece() == kAsanCorruptHeapBlock ||
+      url.path_piece() == kAsanCorruptHeap) {
     return true;
+  }
 #endif
 
   return false;
@@ -145,21 +149,21 @@ bool HandleAsanDebugURL(const GURL& url) {
   if (!base::debug::IsBinaryInstrumented())
     return false;
 
-  if (url.path() == kAsanCorruptHeapBlock) {
+  if (url.path_piece() == kAsanCorruptHeapBlock) {
     base::debug::AsanCorruptHeapBlock();
     return true;
-  } else if (url.path() == kAsanCorruptHeap) {
+  } else if (url.path_piece() == kAsanCorruptHeap) {
     base::debug::AsanCorruptHeap();
     return true;
   }
 #endif
 
 #if defined(ADDRESS_SANITIZER) || defined(SYZYASAN)
-  if (url.path() == kAsanHeapOverflow) {
+  if (url.path_piece() == kAsanHeapOverflow) {
     base::debug::AsanHeapOverflow();
-  } else if (url.path() == kAsanHeapUnderflow) {
+  } else if (url.path_piece() == kAsanHeapUnderflow) {
     base::debug::AsanHeapUnderflow();
-  } else if (url.path() == kAsanUseAfterFree) {
+  } else if (url.path_piece() == kAsanUseAfterFree) {
     base::debug::AsanHeapUseAfterFree();
   } else {
     return false;

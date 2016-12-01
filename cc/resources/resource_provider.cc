@@ -796,6 +796,9 @@ void ResourceProvider::DeleteResourceInternal(ResourceMap::iterator it,
     DCHECK(gl);
     gl->DeleteTextures(1, &resource->gl_id);
     resource->gl_id = 0;
+    // Shallow flush after deleting a texture to make sure the memory is freed
+    // as soon as possible.
+    gl->ShallowFlushCHROMIUM();
   }
   if (resource->shared_bitmap) {
     DCHECK(resource->origin != Resource::EXTERNAL);
@@ -1260,8 +1263,9 @@ ResourceProvider::ScopedWriteLockSoftware::ScopedWriteLockSoftware(
     ResourceProvider* resource_provider,
     ResourceId resource_id)
     : resource_provider_(resource_provider), resource_id_(resource_id) {
-  resource_provider->PopulateSkBitmapWithResource(
-      &sk_bitmap_, resource_provider->LockForWrite(resource_id));
+  Resource* resource = resource_provider->LockForWrite(resource_id);
+  resource_provider->PopulateSkBitmapWithResource(&sk_bitmap_, resource);
+  sk_color_space_ = resource_provider->GetResourceSkColorSpace(resource);
   DCHECK(valid());
 }
 
@@ -1314,7 +1318,7 @@ gfx::GpuMemoryBuffer*
 ResourceProvider::ScopedWriteLockGpuMemoryBuffer::GetGpuMemoryBuffer() {
   if (!gpu_memory_buffer_) {
     gpu_memory_buffer_ =
-        resource_provider_->gpu_memory_buffer_manager_->AllocateGpuMemoryBuffer(
+        resource_provider_->gpu_memory_buffer_manager_->CreateGpuMemoryBuffer(
             size_, BufferFormat(format_), usage_, gpu::kNullSurfaceHandle);
   }
   return gpu_memory_buffer_.get();
@@ -1872,7 +1876,7 @@ void ResourceProvider::LazyAllocate(Resource* resource) {
   gl->BindTexture(resource->target, resource->gl_id);
   if (resource->type == RESOURCE_TYPE_GPU_MEMORY_BUFFER) {
     resource->gpu_memory_buffer =
-        gpu_memory_buffer_manager_->AllocateGpuMemoryBuffer(
+        gpu_memory_buffer_manager_->CreateGpuMemoryBuffer(
             size, BufferFormat(format), resource->usage,
             gpu::kNullSurfaceHandle);
     if (resource->gpu_memory_buffer && enable_color_correct_rendering_) {

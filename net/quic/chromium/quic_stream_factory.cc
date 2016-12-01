@@ -50,10 +50,11 @@
 #include "net/quic/core/quic_crypto_client_stream_factory.h"
 #include "net/quic/core/quic_flags.h"
 #include "net/socket/client_socket_factory.h"
+#include "net/socket/next_proto.h"
 #include "net/socket/socket_performance_watcher.h"
 #include "net/socket/socket_performance_watcher_factory.h"
+#include "net/socket/udp_client_socket.h"
 #include "net/ssl/token_binding.h"
-#include "net/udp/udp_client_socket.h"
 #include "third_party/boringssl/src/include/openssl/aead.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
@@ -623,7 +624,8 @@ int QuicStreamFactory::Job::DoConnectComplete(int rv) {
   DCHECK(!factory_->HasActiveSession(key_.server_id()));
   // There may well now be an active session for this IP.  If so, use the
   // existing session instead.
-  AddressList address(session_->connection()->peer_address());
+  AddressList address(
+      session_->connection()->peer_address().impl().socket_address());
   if (factory_->OnResolution(key_, address)) {
     session_->connection()->CloseConnection(
         QUIC_CONNECTION_IP_POOLED, "An active session exists for the given IP.",
@@ -753,6 +755,7 @@ QuicStreamFactory::QuicStreamFactory(
       random_generator_(random_generator),
       clock_(clock),
       max_packet_length_(max_packet_length),
+      clock_skew_detector_(base::TimeTicks::Now(), base::Time::Now()),
       socket_performance_watcher_factory_(socket_performance_watcher_factory),
       config_(InitializeQuicConfig(connection_options,
                                    idle_connection_timeout_seconds)),
@@ -925,6 +928,14 @@ int QuicStreamFactory::Create(const QuicServerId& server_id,
                               base::StringPiece method,
                               const NetLogWithSource& net_log,
                               QuicStreamRequest* request) {
+  if (clock_skew_detector_.ClockSkewDetected(base::TimeTicks::Now(),
+                                             base::Time::Now())) {
+    while (!active_sessions_.empty()) {
+      QuicChromiumClientSession* session = active_sessions_.begin()->second;
+      OnSessionGoingAway(session);
+      // TODO(rch): actually close the session?
+    }
+  }
   DCHECK(server_id.host_port_pair().Equals(HostPortPair::FromURL(url)));
   // Enforce session affinity for promised streams.
   QuicClientPromisedInfo* promised =
@@ -1443,8 +1454,9 @@ MigrationResult QuicStreamFactory::MigrateSessionToNewNetwork(
     NetworkHandle network,
     bool close_session_on_error,
     const NetLogWithSource& net_log) {
-  return MigrateSessionInner(session, session->connection()->peer_address(),
-                             network, close_session_on_error, net_log);
+  return MigrateSessionInner(
+      session, session->connection()->peer_address().impl().socket_address(),
+      network, close_session_on_error, net_log);
 }
 
 MigrationResult QuicStreamFactory::MigrateSessionInner(
@@ -1653,8 +1665,9 @@ int QuicStreamFactory::CreateSession(
 
   QuicChromiumPacketWriter* writer = new QuicChromiumPacketWriter(socket.get());
   QuicConnection* connection = new QuicConnection(
-      connection_id, addr, helper_.get(), alarm_factory_.get(), writer,
-      true /* owns_writer */, Perspective::IS_CLIENT, supported_versions_);
+      connection_id, QuicSocketAddress(QuicSocketAddressImpl(addr)),
+      helper_.get(), alarm_factory_.get(), writer, true /* owns_writer */,
+      Perspective::IS_CLIENT, supported_versions_);
   connection->set_ping_timeout(ping_timeout_);
   connection->SetMaxPacketLength(max_packet_length_);
 
@@ -1720,7 +1733,8 @@ void QuicStreamFactory::ActivateSession(const QuicSessionKey& key,
   UMA_HISTOGRAM_COUNTS("Net.QuicActiveSessions", active_sessions_.size());
   active_sessions_[server_id] = session;
   session_aliases_[session].insert(key);
-  const IPEndPoint peer_address = session->connection()->peer_address();
+  const IPEndPoint peer_address =
+      session->connection()->peer_address().impl().socket_address();
   DCHECK(!base::ContainsKey(ip_aliases_[peer_address], session));
   ip_aliases_[peer_address].insert(session);
   DCHECK(!base::ContainsKey(session_peer_ip_, session));
@@ -1740,7 +1754,7 @@ int64_t QuicStreamFactory::GetServerNetworkStatsSmoothedRttInMicroseconds(
 
 bool QuicStreamFactory::WasQuicRecentlyBroken(
     const QuicServerId& server_id) const {
-  const AlternativeService alternative_service(QUIC,
+  const AlternativeService alternative_service(kProtoQUIC,
                                                server_id.host_port_pair());
   return http_server_properties_->WasAlternativeServiceRecentlyBroken(
       alternative_service);
@@ -1834,7 +1848,7 @@ void QuicStreamFactory::MaybeInitialize() {
     HostPortPair host_port_pair(key_value.first.host(), key_value.first.port());
     for (const AlternativeServiceInfo& alternative_service_info :
          key_value.second) {
-      if (alternative_service_info.alternative_service.protocol == QUIC) {
+      if (alternative_service_info.alternative_service.protocol == kProtoQUIC) {
         quic_supported_servers_at_startup_.insert(host_port_pair);
         break;
       }
@@ -1872,7 +1886,7 @@ void QuicStreamFactory::ProcessGoingAwaySession(
     return;
 
   const QuicConnectionStats& stats = session->connection()->GetStats();
-  const AlternativeService alternative_service(QUIC,
+  const AlternativeService alternative_service(kProtoQUIC,
                                                server_id.host_port_pair());
   if (session->IsCryptoHandshakeConfirmed()) {
     http_server_properties_->ConfirmAlternativeService(alternative_service);

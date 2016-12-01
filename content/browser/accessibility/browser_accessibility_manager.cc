@@ -564,7 +564,7 @@ void BrowserAccessibilityManager::SetFocus(const BrowserAccessibility& node) {
     return;
 
   ui::AXActionData action_data;
-  action_data.action = ui::AX_ACTION_SET_FOCUS;
+  action_data.action = ui::AX_ACTION_FOCUS;
   action_data.target_node_id = node.GetId();
   delegate_->AccessibilityPerformAction(action_data);
 }
@@ -582,6 +582,17 @@ void BrowserAccessibilityManager::SetFocusChangeCallbackForTesting(
   g_focus_change_callback_for_testing.Get() = callback;
 }
 
+void BrowserAccessibilityManager::Decrement(
+    const BrowserAccessibility& node) {
+  if (!delegate_)
+    return;
+
+  ui::AXActionData action_data;
+  action_data.action = ui::AX_ACTION_DECREMENT;
+  action_data.target_node_id = node.GetId();
+  delegate_->AccessibilityPerformAction(action_data);
+}
+
 void BrowserAccessibilityManager::DoDefaultAction(
     const BrowserAccessibility& node) {
   if (!delegate_)
@@ -589,6 +600,30 @@ void BrowserAccessibilityManager::DoDefaultAction(
 
   ui::AXActionData action_data;
   action_data.action = ui::AX_ACTION_DO_DEFAULT;
+  action_data.target_node_id = node.GetId();
+  delegate_->AccessibilityPerformAction(action_data);
+}
+
+void BrowserAccessibilityManager::GetImageData(
+    const BrowserAccessibility& node,
+    const gfx::Size& max_size) {
+  if (!delegate_)
+    return;
+
+  ui::AXActionData action_data;
+  action_data.action = ui::AX_ACTION_GET_IMAGE_DATA;
+  action_data.target_node_id = node.GetId();
+  action_data.target_rect = gfx::Rect(gfx::Point(), max_size);
+  delegate_->AccessibilityPerformAction(action_data);
+}
+
+void BrowserAccessibilityManager::Increment(
+    const BrowserAccessibility& node) {
+  if (!delegate_)
+    return;
+
+  ui::AXActionData action_data;
+  action_data.action = ui::AX_ACTION_INCREMENT;
   action_data.target_node_id = node.GetId();
   delegate_->AccessibilityPerformAction(action_data);
 }

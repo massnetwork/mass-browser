@@ -83,9 +83,9 @@ class CORE_EXPORT CSPDirectiveList
   bool allowObjectFromSource(const KURL&,
                              ResourceRequest::RedirectStatus,
                              ContentSecurityPolicy::ReportingStatus) const;
-  bool allowChildFrameFromSource(const KURL&,
-                                 ResourceRequest::RedirectStatus,
-                                 ContentSecurityPolicy::ReportingStatus) const;
+  bool allowFrameFromSource(const KURL&,
+                            ResourceRequest::RedirectStatus,
+                            ContentSecurityPolicy::ReportingStatus) const;
   bool allowImageFromSource(const KURL&,
                             ResourceRequest::RedirectStatus,
                             ContentSecurityPolicy::ReportingStatus) const;
@@ -107,10 +107,9 @@ class CORE_EXPORT CSPDirectiveList
   bool allowBaseURI(const KURL&,
                     ResourceRequest::RedirectStatus,
                     ContentSecurityPolicy::ReportingStatus) const;
-  bool allowChildContextFromSource(
-      const KURL&,
-      ResourceRequest::RedirectStatus,
-      ContentSecurityPolicy::ReportingStatus) const;
+  bool allowWorkerFromSource(const KURL&,
+                             ResourceRequest::RedirectStatus,
+                             ContentSecurityPolicy::ReportingStatus) const;
   // |allowAncestors| does not need to know whether the resource was a
   // result of a redirect. After a redirect, source paths are usually
   // ignored to stop a page from learning the path to which the
@@ -191,17 +190,17 @@ class CORE_EXPORT CSPDirectiveList
   SourceListDirective* operativeDirective(SourceListDirective*,
                                           SourceListDirective* override) const;
   void reportViolation(const String& directiveText,
-                       const String& effectiveDirective,
+                       const ContentSecurityPolicy::DirectiveType&,
                        const String& consoleMessage,
                        const KURL& blockedURL,
                        ResourceRequest::RedirectStatus) const;
   void reportViolationWithFrame(const String& directiveText,
-                                const String& effectiveDirective,
+                                const ContentSecurityPolicy::DirectiveType&,
                                 const String& consoleMessage,
                                 const KURL& blockedURL,
                                 LocalFrame*) const;
   void reportViolationWithLocation(const String& directiveText,
-                                   const String& effectiveDirective,
+                                   const ContentSecurityPolicy::DirectiveType&,
                                    const String& consoleMessage,
                                    const KURL& blockedURL,
                                    const String& contextURL,
@@ -209,7 +208,7 @@ class CORE_EXPORT CSPDirectiveList
                                    Element*) const;
   void reportViolationWithState(
       const String& directiveText,
-      const String& effectiveDirective,
+      const ContentSecurityPolicy::DirectiveType&,
       const String& message,
       const KURL& blockedURL,
       ScriptState*,
@@ -248,10 +247,11 @@ class CORE_EXPORT CSPDirectiveList
                                      bool isScript,
                                      const String& hashValue) const;
 
-  bool checkSourceAndReportViolation(SourceListDirective*,
-                                     const KURL&,
-                                     const String& effectiveDirective,
-                                     ResourceRequest::RedirectStatus) const;
+  bool checkSourceAndReportViolation(
+      SourceListDirective*,
+      const KURL&,
+      const ContentSecurityPolicy::DirectiveType&,
+      ResourceRequest::RedirectStatus) const;
   bool checkMediaTypeAndReportViolation(MediaListDirective*,
                                         const String& type,
                                         const String& typeAttribute,
@@ -294,6 +294,7 @@ class CORE_EXPORT CSPDirectiveList
   Member<SourceListDirective> m_objectSrc;
   Member<SourceListDirective> m_scriptSrc;
   Member<SourceListDirective> m_styleSrc;
+  Member<SourceListDirective> m_workerSrc;
 
   uint8_t m_requireSRIFor;
 

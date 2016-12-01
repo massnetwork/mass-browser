@@ -57,6 +57,7 @@
 #include "media/base/audio_capturer_source.h"
 #include "media/base/audio_parameters.h"
 #include "media/capture/video_capturer_source.h"
+#include "media/media_features.h"
 #include "net/base/filename_util.h"
 #include "net/base/net_errors.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
@@ -67,10 +68,8 @@
 #include "third_party/WebKit/public/platform/WebInputEvent.h"
 #include "third_party/WebKit/public/platform/WebPoint.h"
 #include "third_party/WebKit/public/platform/WebRect.h"
-#include "third_party/WebKit/public/platform/WebSecurityOrigin.h"
 #include "third_party/WebKit/public/platform/WebSize.h"
 #include "third_party/WebKit/public/platform/WebString.h"
-#include "third_party/WebKit/public/platform/WebTaskRunner.h"
 #include "third_party/WebKit/public/platform/WebThread.h"
 #include "third_party/WebKit/public/platform/WebTraceLocation.h"
 #include "third_party/WebKit/public/platform/WebURL.h"
@@ -297,16 +296,15 @@ void BlinkTestRunner::PrintMessage(const std::string& message) {
 }
 
 void BlinkTestRunner::PostTask(const base::Closure& task) {
-  Platform::current()
-      ->currentThread()
-      ->getWebTaskRunner()
-      ->toSingleThreadTaskRunner()
-      ->PostTask(BLINK_FROM_HERE, task);
+  Platform::current()->currentThread()->getSingleThreadTaskRunner()->PostTask(
+      FROM_HERE, task);
 }
 
 void BlinkTestRunner::PostDelayedTask(const base::Closure& task, long long ms) {
-  Platform::current()->currentThread()->getWebTaskRunner()->postDelayedTask(
-      BLINK_FROM_HERE, task, ms);
+  Platform::current()
+      ->currentThread()
+      ->getSingleThreadTaskRunner()
+      ->PostDelayedTask(FROM_HERE, task, base::TimeDelta::FromMilliseconds(ms));
 }
 
 WebString BlinkTestRunner::RegisterIsolatedFileSystem(
@@ -747,10 +745,14 @@ void BlinkTestRunner::RunIdleTasks(const base::Closure& callback) {
     SchedulerRunIdleTasks(callback);
 }
 
+void BlinkTestRunner::ForceTextInputStateUpdate(WebFrame* frame) {
+  ForceTextInputStateUpdateForRenderFrame(RenderFrame::FromWebFrame(frame));
+}
+
 bool BlinkTestRunner::AddMediaStreamVideoSourceAndTrack(
     blink::WebMediaStream* stream) {
   DCHECK(stream);
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   return AddVideoTrackToMediaStream(base::MakeUnique<MockVideoCapturerSource>(),
                                     false,  // is_remote
                                     false,  // is_readonly
@@ -763,7 +765,7 @@ bool BlinkTestRunner::AddMediaStreamVideoSourceAndTrack(
 bool BlinkTestRunner::AddMediaStreamAudioSourceAndTrack(
     blink::WebMediaStream* stream) {
   DCHECK(stream);
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   return AddAudioTrackToMediaStream(
       make_scoped_refptr(new MockAudioCapturerSource()),
       48000,  // sample rate
@@ -999,7 +1001,6 @@ void BlinkTestRunner::OnReset() {
   // Navigating to about:blank will make sure that no new loads are initiated
   // by the renderer.
   WebURLRequest request = WebURLRequest(GURL(url::kAboutBlankURL));
-  request.setRequestorOrigin(blink::WebSecurityOrigin::createUnique());
   render_view()->GetWebView()->mainFrame()->loadRequest(request);
   Send(new ShellViewHostMsg_ResetDone(routing_id()));
 }

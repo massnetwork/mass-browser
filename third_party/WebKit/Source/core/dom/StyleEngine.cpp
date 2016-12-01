@@ -38,6 +38,7 @@
 #include "core/css/invalidation/InvalidationSet.h"
 #include "core/css/resolver/ScopedStyleResolver.h"
 #include "core/css/resolver/SharedStyleFinder.h"
+#include "core/css/resolver/StyleRuleUsageTracker.h"
 #include "core/css/resolver/ViewportStyleResolver.h"
 #include "core/dom/DocumentStyleSheetCollector.h"
 #include "core/dom/Element.h"
@@ -81,10 +82,6 @@ StyleEngine::StyleEngine(Document& document)
 
 StyleEngine::~StyleEngine() {}
 
-static bool isStyleElement(Node& node) {
-  return isHTMLStyleElement(node) || isSVGStyleElement(node);
-}
-
 inline Document* StyleEngine::master() {
   if (isMaster())
     return m_document;
@@ -122,6 +119,16 @@ TreeScopeStyleSheetCollection* StyleEngine::styleSheetCollectionFor(
 
 const HeapVector<TraceWrapperMember<StyleSheet>>&
 StyleEngine::styleSheetsForStyleSheetList(TreeScope& treeScope) {
+  // TODO(rune@opera.com): we could split styleSheets and active stylesheet
+  // update to have a lighter update while accessing the styleSheets list.
+  DCHECK(master());
+  if (master()->isActive()) {
+    if (isMaster())
+      updateActiveStyle();
+    else
+      master()->styleEngine().updateActiveStyle();
+  }
+
   if (treeScope == m_document)
     return documentStyleSheetCollection().styleSheetsForStyleSheetList();
 
@@ -159,11 +166,8 @@ void StyleEngine::addPendingSheet(StyleEngineContext& context) {
 // This method is called whenever a top-level stylesheet has finished loading.
 void StyleEngine::removePendingSheet(Node& styleSheetCandidateNode,
                                      const StyleEngineContext& context) {
-  TreeScope* treeScope = isStyleElement(styleSheetCandidateNode)
-                             ? &styleSheetCandidateNode.treeScope()
-                             : m_document.get();
   if (styleSheetCandidateNode.isConnected())
-    markTreeScopeDirty(*treeScope);
+    markTreeScopeDirty(styleSheetCandidateNode.treeScope());
 
   if (context.addedPendingSheetBeforeBody()) {
     DCHECK_GT(m_pendingRenderBlockingStylesheets, 0);
@@ -193,12 +197,8 @@ void StyleEngine::setNeedsActiveStyleUpdate(
 
   if (sheet && document().isActive()) {
     Node* node = sheet->ownerNode();
-    if (node && node->isConnected()) {
-      TreeScope& treeScope =
-          isStyleElement(*node) ? node->treeScope() : *m_document;
-      DCHECK(isStyleElement(*node) || node->treeScope() == m_document);
-      markTreeScopeDirty(treeScope);
-    }
+    if (node && node->isConnected())
+      markTreeScopeDirty(node->treeScope());
   }
 
   resolverChanged(updateMode);
@@ -226,7 +226,6 @@ void StyleEngine::removeStyleSheetCandidateNode(Node& node) {
 
 void StyleEngine::removeStyleSheetCandidateNode(Node& node,
                                                 TreeScope& treeScope) {
-  DCHECK(isStyleElement(node) || treeScope == m_document);
   DCHECK(!isXSLStyleSheet(node));
 
   TreeScopeStyleSheetCollection* collection =
@@ -244,9 +243,7 @@ void StyleEngine::modifiedStyleSheetCandidateNode(Node& node) {
   if (!node.isConnected())
     return;
 
-  TreeScope& treeScope = isStyleElement(node) ? node.treeScope() : *m_document;
-  DCHECK(isStyleElement(node) || treeScope == m_document);
-  markTreeScopeDirty(treeScope);
+  markTreeScopeDirty(node.treeScope());
   resolverChanged(AnalyzedStyleUpdate);
 }
 
@@ -268,7 +265,7 @@ bool StyleEngine::shouldUpdateShadowTreeStyleSheetCollection(
   return !m_dirtyTreeScopes.isEmpty() || updateMode == FullStyleUpdate;
 }
 
-void StyleEngine::clearMediaQueryRuleSetOnTreeScopeStyleSheets(
+void StyleEngine::mediaQueryAffectingValueChanged(
     UnorderedTreeScopeSet& treeScopes) {
   for (TreeScope* treeScope : treeScopes) {
     DCHECK(treeScope != m_document);
@@ -279,10 +276,12 @@ void StyleEngine::clearMediaQueryRuleSetOnTreeScopeStyleSheets(
   }
 }
 
-void StyleEngine::clearMediaQueryRuleSetStyleSheets() {
+void StyleEngine::mediaQueryAffectingValueChanged() {
   resolverChanged(FullStyleUpdate);
   documentStyleSheetCollection().clearMediaQueryRuleSetStyleSheets();
-  clearMediaQueryRuleSetOnTreeScopeStyleSheets(m_activeTreeScopes);
+  mediaQueryAffectingValueChanged(m_activeTreeScopes);
+  if (m_resolver)
+    m_resolver->updateMediaType();
 }
 
 void StyleEngine::updateStyleSheetsInImport(
@@ -344,6 +343,25 @@ void StyleEngine::updateActiveStyleSheets(StyleResolverUpdateMode updateMode) {
 
   m_dirtyTreeScopes.clear();
   m_documentScopeDirty = false;
+}
+
+void StyleEngine::updateActiveStyleSheets() {
+  // TODO(rune@opera.com): collect ActiveStyleSheets here.
+}
+
+void StyleEngine::updateViewport() {
+  if (m_viewportResolver)
+    m_viewportResolver->updateViewport(documentStyleSheetCollection());
+}
+
+bool StyleEngine::needsActiveStyleUpdate() const {
+  return m_viewportResolver && m_viewportResolver->needsUpdate();
+}
+
+void StyleEngine::updateActiveStyle() {
+  updateViewport();
+  updateActiveStyleSheets();
+  m_globalRuleSet.update(document());
 }
 
 const HeapVector<Member<CSSStyleSheet>>
@@ -412,8 +430,6 @@ void StyleEngine::finishAppendAuthorStyleSheets() {
 void StyleEngine::appendActiveAuthorStyleSheets() {
   DCHECK(isMaster());
 
-  viewportRulesChanged();
-
   m_resolver->appendAuthorStyleSheets(
       documentStyleSheetCollection().activeAuthorStyleSheets());
   for (TreeScope* treeScope : m_activeTreeScopes) {
@@ -424,8 +440,27 @@ void StyleEngine::appendActiveAuthorStyleSheets() {
   }
 }
 
+void StyleEngine::setRuleUsageTracker(StyleRuleUsageTracker* tracker) {
+  m_tracker = tracker;
+
+  if (m_resolver)
+    m_resolver->setRuleUsageTracker(m_tracker);
+}
+
+RuleSet* StyleEngine::ruleSetForSheet(CSSStyleSheet& sheet) {
+  if (!sheet.matchesMediaQueries(ensureMediaQueryEvaluator()))
+    return nullptr;
+
+  AddRuleFlags addRuleFlags = RuleHasNoSpecialState;
+  if (m_document->getSecurityOrigin()->canRequest(sheet.baseURL()))
+    addRuleFlags = RuleHasDocumentSecurityOrigin;
+  return &sheet.contents()->ensureRuleSet(*m_mediaQueryEvaluator, addRuleFlags);
+}
+
 void StyleEngine::createResolver() {
   m_resolver = StyleResolver::create(*m_document);
+
+  m_resolver->setRuleUsageTracker(m_tracker);
 
   // A scoped style resolver for document will be created during
   // appendActiveAuthorStyleSheets if needed.
@@ -470,7 +505,8 @@ void StyleEngine::clearMasterResolver() {
 
 void StyleEngine::didDetach() {
   clearResolver();
-  m_viewportResolver.clear();
+  m_viewportResolver = nullptr;
+  m_mediaQueryEvaluator = nullptr;
 }
 
 bool StyleEngine::shouldClearResolver() const {
@@ -540,6 +576,8 @@ void StyleEngine::markTreeScopeDirty(TreeScope& scope) {
 
 void StyleEngine::markDocumentDirty() {
   m_documentScopeDirty = true;
+  if (RuntimeEnabledFeatures::cssViewportEnabled())
+    viewportRulesChanged();
   if (document().importLoader())
     document().importsController()->master()->styleEngine().markDocumentDirty();
 }
@@ -1002,26 +1040,36 @@ bool StyleEngine::hasRulesForId(const AtomicString& id) const {
 }
 
 void StyleEngine::initialViewportChanged() {
-  if (!m_viewportResolver)
-    return;
-
-  m_viewportResolver->initialViewportChanged();
-
-  // TODO(rune@opera.com): for async stylesheet update, updateViewport() should
-  // be called as part of the lifecycle update for active style. Synchronous for
-  // now.
-  m_viewportResolver->updateViewport(documentStyleSheetCollection());
+  if (m_viewportResolver)
+    m_viewportResolver->initialViewportChanged();
 }
 
 void StyleEngine::viewportRulesChanged() {
-  if (!m_viewportResolver)
-    return;
-  m_viewportResolver->setNeedsCollectRules();
+  if (m_viewportResolver)
+    m_viewportResolver->setNeedsCollectRules();
+}
 
-  // TODO(rune@opera.com): for async stylesheet update, updateViewport() should
-  // be called as part of the lifecycle update for active style. Synchronous for
-  // now.
-  m_viewportResolver->updateViewport(documentStyleSheetCollection());
+void StyleEngine::importRemoved() {
+  if (document().importLoader()) {
+    document().importsController()->master()->styleEngine().importRemoved();
+    return;
+  }
+
+  // When we remove an import link and re-insert it into the document, the
+  // import Document and CSSStyleSheet pointers are persisted. That means the
+  // comparison of active stylesheets is not able to figure out that the order
+  // of the stylesheets have changed after insertion.
+  //
+  // Fall back to re-add all sheets to the scoped resolver and recalculate style
+  // for the whole document if we remove an import in case it is re-inserted
+  // into the document. The assumption is that removing html imports is very
+  // rare.
+  if (ScopedStyleResolver* resolver = document().scopedStyleResolver()) {
+    resolver->setNeedsAppendAllSheets();
+    document().setNeedsStyleRecalc(
+        SubtreeStyleChange, StyleChangeReasonForTracing::create(
+                                StyleChangeReason::ActiveStylesheetsUpdate));
+  }
 }
 
 PassRefPtr<ComputedStyle> StyleEngine::findSharedStyle(
@@ -1032,6 +1080,132 @@ PassRefPtr<ComputedStyle> StyleEngine::findSharedStyle(
              m_globalRuleSet.siblingRuleSet(),
              m_globalRuleSet.uncommonAttributeRuleSet(), *m_resolver)
       .findSharedStyle();
+}
+namespace {
+
+enum RuleSetFlags {
+  FontFaceRules = 1 << 0,
+  KeyframesRules = 1 << 1,
+  FullRecalcRules = 1 << 2
+};
+
+unsigned getRuleSetFlags(const HeapVector<Member<RuleSet>> ruleSets) {
+  unsigned flags = 0;
+  for (auto& ruleSet : ruleSets) {
+    ruleSet->compactRulesIfNeeded();
+    if (!ruleSet->keyframesRules().isEmpty())
+      flags |= KeyframesRules;
+    if (!ruleSet->fontFaceRules().isEmpty())
+      flags |= FontFaceRules;
+    if (ruleSet->needsFullRecalcForRuleSetInvalidation())
+      flags |= FullRecalcRules;
+  }
+  return flags;
+}
+
+}  // namespace
+
+void StyleEngine::applyRuleSetChanges(
+    TreeScope& treeScope,
+    const ActiveStyleSheetVector& oldStyleSheets,
+    const ActiveStyleSheetVector& newStyleSheets) {
+  HeapVector<Member<RuleSet>> changedRuleSets;
+
+  ScopedStyleResolver* scopedResolver = treeScope.scopedStyleResolver();
+  bool appendAllSheets =
+      scopedResolver && scopedResolver->needsAppendAllSheets();
+
+  ActiveSheetsChange change =
+      compareActiveStyleSheets(oldStyleSheets, newStyleSheets, changedRuleSets);
+  if (change == NoActiveSheetsChanged && !appendAllSheets)
+    return;
+
+  // With rules added or removed, we need to re-aggregate rule meta data.
+  m_globalRuleSet.markDirty();
+
+  unsigned changedRuleFlags = getRuleSetFlags(changedRuleSets);
+  bool fontsChanged = treeScope.rootNode().isDocumentNode() &&
+                      (changedRuleFlags & FontFaceRules);
+  unsigned appendStartIndex = 0;
+
+  // We don't need to clear the font cache if new sheets are appended.
+  if (fontsChanged && change == ActiveSheetsChanged)
+    clearFontCache();
+
+  // - If all sheets were removed, we remove the ScopedStyleResolver.
+  // - If new sheets were appended to existing ones, start appending after the
+  //   common prefix.
+  // - For other diffs, reset author style and re-add all sheets for the
+  //   TreeScope.
+  if (treeScope.scopedStyleResolver()) {
+    if (newStyleSheets.isEmpty())
+      resetAuthorStyle(treeScope);
+    else if (change == ActiveSheetsAppended && !appendAllSheets)
+      appendStartIndex = oldStyleSheets.size();
+    else
+      treeScope.scopedStyleResolver()->resetAuthorStyle();
+  }
+
+  if (!newStyleSheets.isEmpty()) {
+    treeScope.ensureScopedStyleResolver().appendActiveStyleSheets(
+        appendStartIndex, newStyleSheets);
+  }
+
+  if (treeScope.document().hasPendingForcedStyleRecalc())
+    return;
+
+  if (!treeScope.document().body() ||
+      treeScope.document().hasNodesWithPlaceholderStyle()) {
+    treeScope.document().setNeedsStyleRecalc(
+        SubtreeStyleChange, StyleChangeReasonForTracing::create(
+                                StyleChangeReason::CleanupPlaceholderStyles));
+    return;
+  }
+
+  if (changedRuleFlags & KeyframesRules)
+    ScopedStyleResolver::keyframesRulesAdded(treeScope);
+
+  if (fontsChanged || (changedRuleFlags & FullRecalcRules)) {
+    ScopedStyleResolver::invalidationRootForTreeScope(treeScope)
+        .setNeedsStyleRecalc(SubtreeStyleChange,
+                             StyleChangeReasonForTracing::create(
+                                 StyleChangeReason::ActiveStylesheetsUpdate));
+    return;
+  }
+
+  scheduleInvalidationsForRuleSets(treeScope, changedRuleSets);
+}
+
+const MediaQueryEvaluator& StyleEngine::ensureMediaQueryEvaluator() {
+  if (!m_mediaQueryEvaluator) {
+    if (document().frame())
+      m_mediaQueryEvaluator = new MediaQueryEvaluator(document().frame());
+    else
+      m_mediaQueryEvaluator = new MediaQueryEvaluator("all");
+  }
+  return *m_mediaQueryEvaluator;
+}
+
+bool StyleEngine::mediaQueryAffectedByViewportChange() {
+  const MediaQueryEvaluator& evaluator = ensureMediaQueryEvaluator();
+  const auto& results =
+      m_globalRuleSet.ruleFeatureSet().viewportDependentMediaQueryResults();
+  for (unsigned i = 0; i < results.size(); ++i) {
+    if (evaluator.eval(results[i]->expression()) != results[i]->result())
+      return true;
+  }
+  return false;
+}
+
+bool StyleEngine::mediaQueryAffectedByDeviceChange() {
+  const MediaQueryEvaluator& evaluator = ensureMediaQueryEvaluator();
+  const auto& results =
+      m_globalRuleSet.ruleFeatureSet().deviceDependentMediaQueryResults();
+  for (unsigned i = 0; i < results.size(); ++i) {
+    if (evaluator.eval(results[i]->expression()) != results[i]->result())
+      return true;
+  }
+  return false;
 }
 
 DEFINE_TRACE(StyleEngine) {
@@ -1046,10 +1220,12 @@ DEFINE_TRACE(StyleEngine) {
   visitor->trace(m_globalRuleSet);
   visitor->trace(m_resolver);
   visitor->trace(m_viewportResolver);
+  visitor->trace(m_mediaQueryEvaluator);
   visitor->trace(m_styleInvalidator);
   visitor->trace(m_fontSelector);
   visitor->trace(m_textToSheetCache);
   visitor->trace(m_sheetToTextCache);
+  visitor->trace(m_tracker);
   CSSFontSelectorClient::trace(visitor);
 }
 

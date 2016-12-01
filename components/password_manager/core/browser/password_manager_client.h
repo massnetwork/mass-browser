@@ -24,7 +24,6 @@ namespace password_manager {
 class LogManager;
 class PasswordFormManager;
 class PasswordManager;
-class PasswordManagerDriver;
 class PasswordStore;
 
 enum PasswordSyncState {
@@ -184,9 +183,6 @@ class PasswordManagerClient {
 
   // Returns the main frame URL.
   virtual const GURL& GetMainFrameURL() const;
-
-  // Returns true if the UI for confirmation of update password is enabled.
-  virtual bool IsUpdatePasswordUIEnabled() const;
 
   virtual const GURL& GetLastCommittedEntryURL() const = 0;
 

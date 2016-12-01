@@ -100,9 +100,19 @@ const char kVariationsServiceCheckTimeIntervalSeconds[] =
     "CheckTimeIntervalSeconds";
 const char kVariationsServiceRandomQueryProbability[] =
     "RandomQueryProbability";
-// This parameter must have the value "true" in order for
-// StartTimeFetch() to start time queries on demand.
-const char kVariationsServiceEnableFetchesOnDemand[] = "EnableFetchesOnDemand";
+
+// This parameter can have three values:
+//
+// - "background-only": Time queries will be issued in the background as
+//   needed (when the clock loses sync), but on-demand time queries will
+//   not be issued (i.e. StartTimeFetch() will not start time queries.)
+//
+// - "on-demand-only": Time queries will not be issued except when
+//   StartTimeFetch() is called.
+//
+// - "background-and-on-demand": Time queries will be issued both in the
+//   background as needed and also on-demand.
+const char kVariationsServiceFetchBehavior[] = "FetchBehavior";
 
 // This is an ECDSA prime256v1 named-curve key.
 const int kKeyVersion = 1;
@@ -278,8 +288,29 @@ void NetworkTimeTracker::UpdateNetworkTime(base::Time network_time,
   pref_service_->Set(prefs::kNetworkTimeMapping, time_mapping);
 }
 
+bool NetworkTimeTracker::AreTimeFetchesEnabled() const {
+  return base::FeatureList::IsEnabled(kNetworkTimeServiceQuerying);
+}
+
+NetworkTimeTracker::FetchBehavior NetworkTimeTracker::GetFetchBehavior() const {
+  const std::string param = variations::GetVariationParamValueByFeature(
+      kNetworkTimeServiceQuerying, kVariationsServiceFetchBehavior);
+  if (param == "background-only") {
+    return FETCHES_IN_BACKGROUND_ONLY;
+  } else if (param == "on-demand-only") {
+    return FETCHES_ON_DEMAND_ONLY;
+  } else if (param == "background-and-on-demand") {
+    return FETCHES_IN_BACKGROUND_AND_ON_DEMAND;
+  }
+  return FETCH_BEHAVIOR_UNKNOWN;
+}
+
 void NetworkTimeTracker::SetTimeServerURLForTesting(const GURL& url) {
   server_url_ = url;
+}
+
+GURL NetworkTimeTracker::GetTimeServerURLForTesting() const {
+  return server_url_;
 }
 
 void NetworkTimeTracker::SetMaxResponseSizeForTesting(size_t limit) {
@@ -300,6 +331,10 @@ void NetworkTimeTracker::WaitForFetchForTesting(uint32_t nonce) {
   base::RunLoop run_loop;
   fetch_completion_callbacks_.push_back(run_loop.QuitClosure());
   run_loop.Run();
+}
+
+void NetworkTimeTracker::OverrideNonceForTesting(uint32_t nonce) {
+  query_signer_->OverrideNonceForTesting(kKeyVersion, nonce);
 }
 
 base::TimeDelta NetworkTimeTracker::GetTimerDelayForTesting() const {
@@ -374,10 +409,9 @@ NetworkTimeTracker::NetworkTimeResult NetworkTimeTracker::GetNetworkTime(
 
 bool NetworkTimeTracker::StartTimeFetch(const base::Closure& closure) {
   DCHECK(thread_checker_.CalledOnValidThread());
-  // Check if the user is opted in to on-demand time fetches.
-  const std::string param = variations::GetVariationParamValueByFeature(
-      kNetworkTimeServiceQuerying, kVariationsServiceEnableFetchesOnDemand);
-  if (param != "true") {
+  FetchBehavior behavior = GetFetchBehavior();
+  if (behavior != FETCHES_ON_DEMAND_ONLY &&
+      behavior != FETCHES_IN_BACKGROUND_AND_ON_DEMAND) {
     return false;
   }
 
@@ -536,12 +570,17 @@ void NetworkTimeTracker::OnURLFetchComplete(const net::URLFetcher* source) {
 }
 
 void NetworkTimeTracker::QueueCheckTime(base::TimeDelta delay) {
-  timer_.Start(FROM_HERE, delay, this, &NetworkTimeTracker::CheckTime);
+  // Check if the user is opted in to background time fetches.
+  FetchBehavior behavior = GetFetchBehavior();
+  if (behavior == FETCHES_IN_BACKGROUND_ONLY ||
+      behavior == FETCHES_IN_BACKGROUND_AND_ON_DEMAND) {
+    timer_.Start(FROM_HERE, delay, this, &NetworkTimeTracker::CheckTime);
+  }
 }
 
 bool NetworkTimeTracker::ShouldIssueTimeQuery() {
   // Do not query the time service if not enabled via Variations Service.
-  if (!base::FeatureList::IsEnabled(kNetworkTimeServiceQuerying)) {
+  if (!AreTimeFetchesEnabled()) {
     return false;
   }
 

@@ -35,6 +35,7 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/origin_util.h"
 #include "ipc/ipc_message_macros.h"
+#include "net/http/http_util.h"
 #include "third_party/WebKit/public/platform/modules/serviceworker/WebServiceWorkerError.h"
 #include "url/gurl.h"
 
@@ -55,6 +56,11 @@ const char kEnableNavigationPreloadErrorPrefix[] =
     "Failed to enable or disable navigation preload: ";
 const char kGetNavigationPreloadStateErrorPrefix[] =
     "Failed to get navigation preload state: ";
+const char kSetNavigationPreloadHeaderErrorPrefix[] =
+    "Failed to set navigation preload header: ";
+const char kNoActiveWorkerErrorMessage[] =
+    "The registration does not have an active worker.";
+const char kDatabaseErrorMessage[] = "Failed to access storage.";
 
 const uint32_t kFilteredMessageClasses[] = {
     ServiceWorkerMsgStart, EmbeddedWorkerMsgStart,
@@ -190,6 +196,8 @@ bool ServiceWorkerDispatcherHost::OnMessageReceived(
                         OnEnableNavigationPreload)
     IPC_MESSAGE_HANDLER(ServiceWorkerHostMsg_GetNavigationPreloadState,
                         OnGetNavigationPreloadState)
+    IPC_MESSAGE_HANDLER(ServiceWorkerHostMsg_SetNavigationPreloadHeader,
+                        OnSetNavigationPreloadHeader)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
 
@@ -702,6 +710,16 @@ void ServiceWorkerDispatcherHost::OnEnableNavigationPreload(
         this, bad_message::SWDH_ENABLE_NAVIGATION_PRELOAD_BAD_REGISTRATION_ID);
     return;
   }
+  // The spec discussion consensus is to reject if there is no active worker:
+  // https://github.com/w3c/ServiceWorker/issues/920#issuecomment-262212670
+  // TODO(falken): Remove this comment when the spec is updated.
+  if (!registration->active_version()) {
+    Send(new ServiceWorkerMsg_EnableNavigationPreloadError(
+        thread_id, request_id, WebServiceWorkerError::ErrorTypeState,
+        std::string(kEnableNavigationPreloadErrorPrefix) +
+            std::string(kNoActiveWorkerErrorMessage)));
+    return;
+  }
 
   std::vector<GURL> urls = {provider_host->document_url(),
                             registration->pattern()};
@@ -721,9 +739,11 @@ void ServiceWorkerDispatcherHost::OnEnableNavigationPreload(
     return;
   }
 
-  // TODO(falken): Write to disk before resolving the promise.
-  registration->EnableNavigationPreload(enable);
-  Send(new ServiceWorkerMsg_DidEnableNavigationPreload(thread_id, request_id));
+  GetContext()->storage()->UpdateNavigationPreloadEnabled(
+      registration->id(), registration->pattern().GetOrigin(), enable,
+      base::Bind(
+          &ServiceWorkerDispatcherHost::DidUpdateNavigationPreloadEnabled, this,
+          thread_id, request_id, registration->id(), enable));
 }
 
 void ServiceWorkerDispatcherHost::OnGetNavigationPreloadState(
@@ -786,7 +806,91 @@ void ServiceWorkerDispatcherHost::OnGetNavigationPreloadState(
   }
 
   Send(new ServiceWorkerMsg_DidGetNavigationPreloadState(
-      thread_id, request_id, registration->is_navigation_preload_enabled()));
+      thread_id, request_id, registration->navigation_preload_state()));
+}
+
+void ServiceWorkerDispatcherHost::OnSetNavigationPreloadHeader(
+    int thread_id,
+    int request_id,
+    int provider_id,
+    int64_t registration_id,
+    const std::string& value) {
+  ProviderStatus provider_status;
+  ServiceWorkerProviderHost* provider_host =
+      GetProviderHostForRequest(&provider_status, provider_id);
+  switch (provider_status) {
+    case ProviderStatus::NO_CONTEXT:  // fallthrough
+    case ProviderStatus::DEAD_HOST:
+      Send(new ServiceWorkerMsg_SetNavigationPreloadHeaderError(
+          thread_id, request_id, WebServiceWorkerError::ErrorTypeAbort,
+          std::string(kSetNavigationPreloadHeaderErrorPrefix) +
+              std::string(kShutdownErrorMessage)));
+      return;
+    case ProviderStatus::NO_HOST:
+      bad_message::ReceivedBadMessage(
+          this, bad_message::SWDH_SET_NAVIGATION_PRELOAD_HEADER_NO_HOST);
+      return;
+    case ProviderStatus::NO_URL:
+      Send(new ServiceWorkerMsg_SetNavigationPreloadHeaderError(
+          thread_id, request_id, WebServiceWorkerError::ErrorTypeSecurity,
+          std::string(kSetNavigationPreloadHeaderErrorPrefix) +
+              std::string(kNoDocumentURLErrorMessage)));
+      return;
+    case ProviderStatus::OK:
+      break;
+  }
+
+  ServiceWorkerRegistration* registration =
+      GetContext()->GetLiveRegistration(registration_id);
+  if (!registration) {
+    // |registration| must be alive because a renderer retains a registration
+    // reference at this point.
+    bad_message::ReceivedBadMessage(
+        this,
+        bad_message::SWDH_SET_NAVIGATION_PRELOAD_HEADER_BAD_REGISTRATION_ID);
+    return;
+  }
+  // The spec discussion consensus is to reject if there is no active worker:
+  // https://github.com/w3c/ServiceWorker/issues/920#issuecomment-262212670
+  // TODO(falken): Remove this comment when the spec is updated.
+  if (!registration->active_version()) {
+    Send(new ServiceWorkerMsg_SetNavigationPreloadHeaderError(
+        thread_id, request_id, WebServiceWorkerError::ErrorTypeState,
+        std::string(kSetNavigationPreloadHeaderErrorPrefix) +
+            std::string(kNoActiveWorkerErrorMessage)));
+    return;
+  }
+
+  std::vector<GURL> urls = {provider_host->document_url(),
+                            registration->pattern()};
+  if (!ServiceWorkerUtils::AllOriginsMatchAndCanAccessServiceWorkers(urls)) {
+    bad_message::ReceivedBadMessage(
+        this, bad_message::SWDH_SET_NAVIGATION_PRELOAD_HEADER_INVALID_ORIGIN);
+    return;
+  }
+
+  // TODO(falken): Ideally this would match Blink's isValidHTTPHeaderValue.
+  // Chrome's check is less restrictive: it allows non-latin1 characters.
+  if (!net::HttpUtil::IsValidHeaderValue(value)) {
+    bad_message::ReceivedBadMessage(
+        this, bad_message::SWDH_SET_NAVIGATION_PRELOAD_HEADER_BAD_VALUE);
+    return;
+  }
+
+  if (!GetContentClient()->browser()->AllowServiceWorker(
+          registration->pattern(), provider_host->topmost_frame_url(),
+          resource_context_, render_process_id_, provider_host->frame_id())) {
+    Send(new ServiceWorkerMsg_SetNavigationPreloadHeaderError(
+        thread_id, request_id, WebServiceWorkerError::ErrorTypeDisabled,
+        std::string(kSetNavigationPreloadHeaderErrorPrefix) +
+            std::string(kUserDeniedPermissionMessage)));
+    return;
+  }
+
+  GetContext()->storage()->UpdateNavigationPreloadHeader(
+      registration->id(), registration->pattern().GetOrigin(), value,
+      base::Bind(&ServiceWorkerDispatcherHost::DidUpdateNavigationPreloadHeader,
+                 this, thread_id, request_id, registration->id(), value));
 }
 
 void ServiceWorkerDispatcherHost::OnPostMessageToWorker(
@@ -1568,6 +1672,47 @@ ServiceWorkerDispatcherHost::GetProviderHostForRequest(ProviderStatus* status,
 
   *status = ProviderStatus::OK;
   return provider_host;
+}
+
+void ServiceWorkerDispatcherHost::DidUpdateNavigationPreloadEnabled(
+    int thread_id,
+    int request_id,
+    int registration_id,
+    bool enable,
+    ServiceWorkerStatusCode status) {
+  if (status != SERVICE_WORKER_OK) {
+    Send(new ServiceWorkerMsg_EnableNavigationPreloadError(
+        thread_id, request_id, WebServiceWorkerError::ErrorTypeUnknown,
+        std::string(kEnableNavigationPreloadErrorPrefix) +
+            std::string(kDatabaseErrorMessage)));
+    return;
+  }
+  ServiceWorkerRegistration* registration =
+      GetContext()->GetLiveRegistration(registration_id);
+  if (registration)
+    registration->EnableNavigationPreload(enable);
+  Send(new ServiceWorkerMsg_DidEnableNavigationPreload(thread_id, request_id));
+}
+
+void ServiceWorkerDispatcherHost::DidUpdateNavigationPreloadHeader(
+    int thread_id,
+    int request_id,
+    int registration_id,
+    const std::string& value,
+    ServiceWorkerStatusCode status) {
+  if (status != SERVICE_WORKER_OK) {
+    Send(new ServiceWorkerMsg_SetNavigationPreloadHeaderError(
+        thread_id, request_id, WebServiceWorkerError::ErrorTypeUnknown,
+        std::string(kSetNavigationPreloadHeaderErrorPrefix) +
+            std::string(kDatabaseErrorMessage)));
+    return;
+  }
+  ServiceWorkerRegistration* registration =
+      GetContext()->GetLiveRegistration(registration_id);
+  if (registration)
+    registration->SetNavigationPreloadHeader(value);
+  Send(new ServiceWorkerMsg_DidSetNavigationPreloadHeader(thread_id,
+                                                          request_id));
 }
 
 void ServiceWorkerDispatcherHost::OnTerminateWorker(int handle_id) {

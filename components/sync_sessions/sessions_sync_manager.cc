@@ -11,12 +11,12 @@
 #include "base/metrics/field_trial.h"
 #include "base/metrics/histogram_macros.h"
 #include "build/build_config.h"
+#include "components/sync/base/hash_util.h"
 #include "components/sync/device_info/local_device_info_provider.h"
 #include "components/sync/model/sync_error.h"
 #include "components/sync/model/sync_error_factory.h"
 #include "components/sync/model/sync_merge_result.h"
 #include "components/sync/model/time.h"
-#include "components/sync/syncable/syncable_util.h"
 #include "components/sync_sessions/sync_sessions_client.h"
 #include "components/sync_sessions/synced_tab_delegate.h"
 #include "components/sync_sessions/synced_window_delegate.h"
@@ -245,9 +245,14 @@ void SessionsSyncManager::AssociateWindows(
       if ((*i)->IsTypeTabbed()) {
         window_s.set_browser_type(
             sync_pb::SessionWindow_BrowserType_TYPE_TABBED);
-      } else {
+      } else if ((*i)->IsTypePopup()) {
         window_s.set_browser_type(
             sync_pb::SessionWindow_BrowserType_TYPE_POPUP);
+      } else {
+        // This is a custom tab within an app. These will not be restored on
+        // startup if not present.
+        window_s.set_browser_type(
+            sync_pb::SessionWindow_BrowserType_TYPE_CUSTOM_TAB);
       }
 
       bool found_tabs = false;
@@ -836,6 +841,8 @@ void SessionsSyncManager::BuildSyncedSessionFromSpecifics(
         sync_pb::SessionWindow_BrowserType_TYPE_TABBED) {
       session_window->type = sessions::SessionWindow::TYPE_TABBED;
     } else {
+      // Note: custom tabs are treated like popup windows on restore, as you can
+      // restore a custom tab on a platform that doesn't support them.
       session_window->type = sessions::SessionWindow::TYPE_POPUP;
     }
   }
@@ -1127,8 +1134,8 @@ void SessionsSyncManager::DoGarbageCollection() {
 // static
 std::string SessionsSyncManager::TagHashFromSpecifics(
     const sync_pb::SessionSpecifics& specifics) {
-  return syncer::syncable::GenerateSyncableHash(syncer::SESSIONS,
-                                                TagFromSpecifics(specifics));
+  return syncer::GenerateSyncableHash(syncer::SESSIONS,
+                                      TagFromSpecifics(specifics));
 }
 
 };  // namespace sync_sessions

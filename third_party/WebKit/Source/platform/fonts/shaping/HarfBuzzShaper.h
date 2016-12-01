@@ -31,18 +31,11 @@
 #ifndef HarfBuzzShaper_h
 #define HarfBuzzShaper_h
 
-#include "platform/fonts/FontDescription.h"
-#include "platform/fonts/SmallCapsIterator.h"
 #include "platform/fonts/shaping/ShapeResult.h"
-#include "platform/fonts/shaping/Shaper.h"
-#include "platform/geometry/FloatPoint.h"
-#include "platform/geometry/FloatRect.h"
 #include "platform/text/TextRun.h"
 #include "wtf/Allocator.h"
 #include "wtf/Deque.h"
-#include "wtf/HashSet.h"
 #include "wtf/Vector.h"
-#include "wtf/text/CharacterNames.h"
 #include <hb.h>
 #include <memory>
 #include <unicode/uscript.h>
@@ -136,10 +129,10 @@ class UnicodeRangeSet;
 //
 // Shaping then continues analogously for the remaining Hiragana Japanese
 // sub-run, and the result is inserted into ShapeResult as well.
-class PLATFORM_EXPORT HarfBuzzShaper final : public Shaper {
+class PLATFORM_EXPORT HarfBuzzShaper final {
  public:
-  HarfBuzzShaper(const Font*, const TextRun&);
-  PassRefPtr<ShapeResult> shapeResult();
+  HarfBuzzShaper(const UChar*, unsigned length, TextDirection);
+  PassRefPtr<ShapeResult> shapeResult(const Font*) const;
   ~HarfBuzzShaper() {}
 
   enum HolesQueueItemAction { HolesQueueNextFont, HolesQueueRange };
@@ -153,51 +146,18 @@ class PLATFORM_EXPORT HarfBuzzShaper final : public Shaper {
         : m_action(action), m_startIndex(start), m_numCharacters(num){};
   };
 
- protected:
-  using FeaturesVector = Vector<hb_feature_t, 6>;
-
-  class CapsFeatureSettingsScopedOverlay final {
-    STACK_ALLOCATED()
-
-   public:
-    CapsFeatureSettingsScopedOverlay(FeaturesVector&,
-                                     FontDescription::FontVariantCaps);
-    CapsFeatureSettingsScopedOverlay() = delete;
-    ~CapsFeatureSettingsScopedOverlay();
-
-   private:
-    void overlayCapsFeatures(FontDescription::FontVariantCaps);
-    void prependCounting(const hb_feature_t&);
-    FeaturesVector& m_features;
-    size_t m_countFeatures;
-  };
-
  private:
-  void setFontFeatures();
-
-  void appendToHolesQueue(HolesQueueItemAction,
-                          unsigned startIndex,
-                          unsigned numCharacters);
-  void prependHolesQueue(HolesQueueItemAction,
-                         unsigned startIndex,
-                         unsigned numCharacters);
-  void splitUntilNextCaseChange(HolesQueueItem& currentQueueItem,
-                                SmallCapsIterator::SmallCapsBehavior&);
-  inline bool shapeRange(hb_buffer_t* harfBuzzBuffer,
-                         unsigned startIndex,
-                         unsigned numCharacters,
-                         const SimpleFontData* currentFont,
-                         PassRefPtr<UnicodeRangeSet> currentFontRangeSet,
-                         UScriptCode currentRunScript,
-                         hb_language_t);
-  bool extractShapeResults(hb_buffer_t* harfBuzzBuffer,
+  bool extractShapeResults(hb_buffer_t*,
                            ShapeResult*,
                            bool& fontCycleQueued,
-                           const HolesQueueItem& currentQueueItem,
-                           const SimpleFontData* currentFont,
-                           UScriptCode currentRunScript,
-                           bool isLastResort);
-  bool collectFallbackHintChars(Vector<UChar32>& hint);
+                           Deque<HolesQueueItem>*,
+                           const HolesQueueItem&,
+                           const Font*,
+                           const SimpleFontData*,
+                           UScriptCode,
+                           bool isLastResort) const;
+  bool collectFallbackHintChars(const Deque<HolesQueueItem>&,
+                                Vector<UChar32>& hint) const;
 
   void insertRunIntoShapeResult(
       ShapeResult*,
@@ -206,11 +166,9 @@ class PLATFORM_EXPORT HarfBuzzShaper final : public Shaper {
       unsigned numGlyphs,
       hb_buffer_t*);
 
-  std::unique_ptr<UChar[]> m_normalizedBuffer;
+  const UChar* m_normalizedBuffer;
   unsigned m_normalizedBufferLength;
-
-  FeaturesVector m_features;
-  Deque<HolesQueueItem> m_holesQueue;
+  TextDirection m_textDirection;
 };
 
 }  // namespace blink

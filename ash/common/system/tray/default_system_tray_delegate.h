@@ -21,12 +21,14 @@ class ASH_EXPORT DefaultSystemTrayDelegate : public SystemTrayDelegate {
   std::string GetSupervisedUserManager() const override;
   bool IsUserSupervised() const override;
   void GetSystemUpdateInfo(UpdateInfo* info) const override;
-  bool ShouldShowSettings() override;
+  bool ShouldShowSettings() const override;
+  bool ShouldShowNotificationTray() const override;
   void ToggleBluetooth() override;
-  bool IsBluetoothDiscovering() override;
+  bool IsBluetoothDiscovering() const override;
   bool GetBluetoothAvailable() override;
   bool GetBluetoothEnabled() override;
   bool GetBluetoothDiscovering() override;
+  int GetSystemTrayMenuWidth() override;
 
  private:
   bool bluetooth_enabled_;

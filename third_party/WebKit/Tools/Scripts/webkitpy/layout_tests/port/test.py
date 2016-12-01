@@ -29,12 +29,11 @@
 import base64
 import time
 
+from webkitpy.common.system.crashlogs import CrashLogs
+from webkitpy.layout_tests.models import test_run_results
+from webkitpy.layout_tests.models.test_configuration import TestConfiguration
 from webkitpy.layout_tests.port.base import Port, VirtualTestSuite
 from webkitpy.layout_tests.port.driver import DeviceFailure, Driver, DriverOutput
-from webkitpy.layout_tests.models.test_configuration import TestConfiguration
-from webkitpy.layout_tests.models import test_run_results
-from webkitpy.common.system.filesystem_mock import MockFileSystem
-from webkitpy.common.system.crashlogs import CrashLogs
 
 
 # This sets basic expectations for a test. Each individual expectation
@@ -507,7 +506,7 @@ class TestPort(Port):
         return "/usr/sbin/httpd"
 
     def path_to_apache_config_file(self):
-        return self._filesystem.join(self.layout_tests_dir(), 'http', 'conf', 'httpd.conf')
+        return self._filesystem.join(self.apache_config_directory(), 'httpd.conf')
 
     def path_to_generic_test_expectations_file(self):
         return self._generic_expectations_path

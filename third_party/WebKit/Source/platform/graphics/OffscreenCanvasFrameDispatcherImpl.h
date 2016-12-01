@@ -6,24 +6,28 @@
 #define OffscreenCanvasFrameDispatcherImpl_h
 
 #include "cc/ipc/mojo_compositor_frame_sink.mojom-blink.h"
+#include "cc/output/begin_frame_args.h"
 #include "cc/resources/shared_bitmap.h"
 #include "cc/surfaces/surface_id.h"
 #include "mojo/public/cpp/bindings/binding.h"
 #include "platform/graphics/OffscreenCanvasFrameDispatcher.h"
 #include "platform/graphics/StaticBitmapImage.h"
+#include "wtf/Compiler.h"
 #include <memory>
 
 namespace blink {
 
 class PLATFORM_EXPORT OffscreenCanvasFrameDispatcherImpl final
     : public OffscreenCanvasFrameDispatcher,
-      WTF_NON_EXPORTED_BASE(
+      NON_EXPORTED_BASE(
           public cc::mojom::blink::MojoCompositorFrameSinkClient) {
  public:
   OffscreenCanvasFrameDispatcherImpl(uint32_t clientId,
                                      uint32_t sinkId,
                                      uint32_t localId,
-                                     uint64_t nonce,
+                                     uint64_t nonceHigh,
+                                     uint64_t nonceLow,
+                                     int canvasId,
                                      int width,
                                      int height);
 
@@ -32,9 +36,11 @@ class PLATFORM_EXPORT OffscreenCanvasFrameDispatcherImpl final
   void dispatchFrame(RefPtr<StaticBitmapImage>,
                      double commitStartTime,
                      bool isWebGLSoftwareRendering = false) override;
+  void reclaimResource(unsigned resourceId) override;
 
   // cc::mojom::blink::MojoCompositorFrameSinkClient implementation.
   void DidReceiveCompositorFrameAck() override;
+  void OnBeginFrame(const cc::BeginFrameArgs&) override;
   void ReclaimResources(const cc::ReturnedResourceArray& resources) override;
 
   // This enum is used in histogram, so it should be append-only.
@@ -46,20 +52,26 @@ class PLATFORM_EXPORT OffscreenCanvasFrameDispatcherImpl final
     OffscreenCanvasCommitTypeCount,
   };
 
+  void reshape(int width, int height) override;
+
  private:
-  const cc::SurfaceId m_surfaceId;
-  const int m_width;
-  const int m_height;
+  const cc::FrameSinkId m_frameSinkId;
+  cc::LocalFrameId m_currentLocalFrameId;
+  int m_width;
+  int m_height;
 
   unsigned m_nextResourceId;
   HashMap<unsigned, RefPtr<StaticBitmapImage>> m_cachedImages;
   HashMap<unsigned, std::unique_ptr<cc::SharedBitmap>> m_sharedBitmaps;
   HashMap<unsigned, GLuint> m_cachedTextureIds;
+  HashSet<unsigned> m_spareResourceLocks;
 
-  bool verifyImageSize(const sk_sp<SkImage>&);
+  bool verifyImageSize(const IntSize);
 
   cc::mojom::blink::MojoCompositorFrameSinkPtr m_sink;
   mojo::Binding<cc::mojom::blink::MojoCompositorFrameSinkClient> m_binding;
+
+  int m_placeholderCanvasId;
 
   void setTransferableResourceToSharedBitmap(cc::TransferableResource&,
                                              RefPtr<StaticBitmapImage>);

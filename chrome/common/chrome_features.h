@@ -9,15 +9,28 @@
 #define CHROME_COMMON_CHROME_FEATURES_H_
 
 #include "base/feature_list.h"
+#include "extensions/features/features.h"
+#include "ppapi/features/features.h"
+#include "printing/features/features.h"
 
 namespace features {
 
 // All features in alphabetical order. The features should be documented
 // alongside the definition of their values in the .cc file.
 
+#if defined(OS_MACOSX)
+extern const base::Feature kAppleScriptExecuteJavaScript;
+#endif  // defined(OS_MACOSX)
+
 #if defined(OS_CHROMEOS)
 extern const base::Feature kArcMemoryManagement;
 #endif  // defined(OS_CHROMEOS)
+
+extern const base::Feature kAssetDownloadSuggestionsFeature;
+
+#if !defined(OS_ANDROID) && !defined(OS_IOS)
+extern const base::Feature kAutoDismissingDialogs;
+#endif
 
 #if defined(OS_WIN) || defined(OS_MACOSX)
 extern const base::Feature kAutomaticTabDiscarding;
@@ -30,8 +43,6 @@ extern const base::Feature kBackgroundModeAllowRestart;
 extern const base::Feature kBackspaceGoesBackFeature;
 
 extern const base::Feature kBlockPromptsIfDismissedOften;
-
-extern const base::Feature kBlockSmallContent;
 
 extern const base::Feature kBrowserHangFixesExperiment;
 
@@ -59,7 +70,7 @@ extern const base::Feature kLinuxObsoleteSystemIsEndOfTheLine;
 
 extern const base::Feature kMaterialDesignBookmarks;
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 extern const base::Feature kMaterialDesignExtensions;
 #endif
 
@@ -67,19 +78,26 @@ extern const base::Feature kMaterialDesignHistory;
 
 extern const base::Feature kMaterialDesignSettings;
 
+#if !defined(OS_ANDROID) && !defined(OS_IOS)
+extern const base::Feature kMediaRemoting;
+extern const base::Feature kMediaRemotingEncrypted;
+#endif  // !defined(OS_ANDROID) && !defined(OS_IOS)
+
 extern const base::Feature kModalPermissionPrompts;
 
 #if defined(OS_MACOSX)
 extern const base::Feature kNativeNotifications;
 #endif  // defined(OS_MACOSX)
 
+extern const base::Feature kOfflinePageDownloadSuggestionsFeature;
+
 extern const base::Feature kOverrideYouTubeFlashEmbed;
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 extern const base::Feature kPreferHtmlOverPlugins;
 #endif
 
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 extern const base::Feature kPrintScaling;
 #endif
 
@@ -89,7 +107,7 @@ extern const base::Feature kPushMessagingBackgroundMode;
 extern const base::Feature kRuntimeMemoryLeakDetector;
 #endif  // defined(OS_CHROMEOS)
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 extern const base::Feature kRunAllFlashInAllowMode;
 #endif
 

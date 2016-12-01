@@ -30,8 +30,6 @@ class FontList;
 
 namespace views {
 class BubbleDialogDelegateView;
-class ImageView;
-class Label;
 }
 
 // The ContentSettingImageView displays an icon and optional text label for
@@ -64,7 +62,7 @@ class ContentSettingImageView : public IconLabelBubbleView,
   bool GetTooltipText(const gfx::Point& p,
                       base::string16* tooltip) const override;
   void OnNativeThemeChanged(const ui::NativeTheme* native_theme) override;
-  bool ShouldShowInkDropForFocus() const override;
+  std::unique_ptr<views::InkDrop> CreateInkDrop() override;
   SkColor GetTextColor() const override;
   bool ShouldShowLabel() const override;
   double WidthMultiplier() const override;

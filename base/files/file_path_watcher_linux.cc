@@ -335,7 +335,7 @@ void FilePathWatcherImpl::OnFilePathChanged(InotifyReader::Watch fired_watch,
     return;
   }
 
-  DCHECK(MessageLoopForIO::current());
+  DCHECK(task_runner()->BelongsToCurrentThread());
   DCHECK(HasValidWatchVector());
 
   // Used below to avoid multiple recursive updates.
@@ -420,7 +420,6 @@ bool FilePathWatcherImpl::Watch(const FilePath& path,
                                 bool recursive,
                                 const FilePathWatcher::Callback& callback) {
   DCHECK(target_.empty());
-  DCHECK(MessageLoopForIO::current());
 
   set_task_runner(ThreadTaskRunnerHandle::Get());
   callback_ = callback;
@@ -657,6 +656,7 @@ bool FilePathWatcherImpl::HasValidWatchVector() const {
 }  // namespace
 
 FilePathWatcher::FilePathWatcher() {
+  sequence_checker_.DetachFromSequence();
   impl_ = new FilePathWatcherImpl();
 }
 

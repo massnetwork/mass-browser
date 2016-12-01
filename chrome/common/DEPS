@@ -26,6 +26,7 @@ include_rules = [
   "+components/url_formatter",
   "+components/version_info",
   "+extensions/common",
+  "+extensions/features",
   "+gin/public",  # For profiling.cc
   "+google_apis/gaia",  # For gaia_switches.h
   "+media",
@@ -40,7 +41,7 @@ include_rules = [
   "+chrome/installer",
 ]
 specific_include_rules = {
-  "service_process_util\.h": [
+  "service_process_util.*": [
     "+mojo/edk/embedder",
   ],
 }

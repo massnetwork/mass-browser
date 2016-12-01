@@ -1,15 +1,6 @@
 CONSOLE WARNING: line 94: 'webkitOfflineAudioContext' is deprecated. Please use 'OfflineAudioContext' instead.
 CONSOLE WARNING: line 94: 'webkitAudioContext' is deprecated. Please use 'AudioContext' instead.
 CONSOLE WARNING: line 94: 'window.webkitStorageInfo' is deprecated. Please use 'navigator.webkitTemporaryStorage' or 'navigator.webkitPersistentStorage' instead.
-CONSOLE WARNING: line 94: 'webkitIDBTransaction' is deprecated. Please use 'IDBTransaction' instead.
-CONSOLE WARNING: line 94: 'webkitIDBRequest' is deprecated. Please use 'IDBRequest' instead.
-CONSOLE WARNING: line 94: 'webkitIDBObjectStore' is deprecated. Please use 'IDBObjectStore' instead.
-CONSOLE WARNING: line 94: 'webkitIDBKeyRange' is deprecated. Please use 'IDBKeyRange' instead.
-CONSOLE WARNING: line 94: 'webkitIDBIndex' is deprecated. Please use 'IDBIndex' instead.
-CONSOLE WARNING: line 94: 'webkitIDBFactory' is deprecated. Please use 'IDBFactory' instead.
-CONSOLE WARNING: line 94: 'webkitIDBDatabase' is deprecated. Please use 'IDBDatabase' instead.
-CONSOLE WARNING: line 94: 'webkitIDBCursor' is deprecated. Please use 'IDBCursor' instead.
-CONSOLE WARNING: line 94: 'webkitIndexedDB' is deprecated. Please use 'indexedDB' instead.
 CONSOLE WARNING: line 94: 'webkitURL' is deprecated. Please use 'URL' instead.
 This test documents all interface attributes and methods on the global window object and element instances.
 
@@ -17,6 +8,17 @@ On success, you will see a series of "PASS" messages, followed by "TEST COMPLETE
 
 
 [INTERFACES]
+interface Accelerometer : Sensor
+    attribute @@toStringTag
+    getter includesGravity
+    getter reading
+    method constructor
+interface AccelerometerReading : SensorReading
+    attribute @@toStringTag
+    getter x
+    getter y
+    getter z
+    method constructor
 interface AmbientLightSensor : Sensor
     attribute @@toStringTag
     getter reading
@@ -138,15 +140,11 @@ interface Attr : Node
     getter localName
     getter name
     getter namespaceURI
-    getter nodeValue
     getter ownerElement
     getter prefix
     getter specified
-    getter textContent
     getter value
     method constructor
-    setter nodeValue
-    setter textContent
     setter value
 interface Audio
     method constructor
@@ -181,6 +179,7 @@ interface AudioContext : BaseAudioContext
     attribute @@toStringTag
     method close
     method constructor
+    method suspend
 interface AudioDestinationNode : AudioNode
     attribute @@toStringTag
     getter maxChannelCount
@@ -259,6 +258,43 @@ interface BarProp
     attribute @@toStringTag
     getter visible
     method constructor
+interface BarcodeDetector
+    attribute @@toStringTag
+    method constructor
+    method detect
+interface BaseAudioContext : EventTarget
+    attribute @@toStringTag
+    getter currentTime
+    getter destination
+    getter listener
+    getter onstatechange
+    getter sampleRate
+    getter state
+    method constructor
+    method createAnalyser
+    method createBiquadFilter
+    method createBuffer
+    method createBufferSource
+    method createChannelMerger
+    method createChannelSplitter
+    method createConstantSource
+    method createConvolver
+    method createDelay
+    method createDynamicsCompressor
+    method createGain
+    method createIIRFilter
+    method createMediaElementSource
+    method createMediaStreamDestination
+    method createMediaStreamSource
+    method createOscillator
+    method createPanner
+    method createPeriodicWave
+    method createScriptProcessor
+    method createStereoPanner
+    method createWaveShaper
+    method decodeAudioData
+    method resume
+    setter onstatechange
 interface BatteryManager : EventTarget
     attribute @@toStringTag
     getter charging
@@ -1062,7 +1098,9 @@ interface DOMMatrixReadOnly
     method skewY
     method toFloat32Array
     method toFloat64Array
+    method toJSON
     method toString
+    method transformPoint
     method translate
 interface DOMParser
     attribute @@toStringTag
@@ -1191,6 +1229,11 @@ interface DataView
 interface DelayNode : AudioNode
     attribute @@toStringTag
     getter delayTime
+    method constructor
+interface DetectedBarcode
+    attribute @@toStringTag
+    getter boundingBox
+    getter rawValue
     method constructor
 interface DetectedFace
     attribute @@toStringTag
@@ -1857,6 +1900,16 @@ interface GamepadButton
 interface GamepadEvent : Event
     attribute @@toStringTag
     getter gamepad
+    method constructor
+interface Gyroscope : Sensor
+    attribute @@toStringTag
+    getter reading
+    method constructor
+interface GyroscopeReading : SensorReading
+    attribute @@toStringTag
+    getter x
+    getter y
+    getter z
     method constructor
 interface HTMLAllCollection
     attribute @@toStringTag
@@ -3705,7 +3758,6 @@ interface MIDIInputMap
 interface MIDIMessageEvent : Event
     attribute @@toStringTag
     getter data
-    getter receivedTime
     method constructor
 interface MIDIOutput : MIDIPort
     attribute @@toStringTag
@@ -3736,6 +3788,16 @@ interface MIDIPort : EventTarget
     method constructor
     method open
     setter onstatechange
+interface Magnetometer : Sensor
+    attribute @@toStringTag
+    getter reading
+    method constructor
+interface MagnetometerReading : SensorReading
+    attribute @@toStringTag
+    getter x
+    getter y
+    getter z
+    method constructor
 interface MediaDeviceInfo
     attribute @@toStringTag
     getter deviceId
@@ -3956,7 +4018,6 @@ interface MediaStreamEvent : Event
     getter stream
     method constructor
 interface MediaStreamTrack : EventTarget
-    static method getSources
     attribute @@toStringTag
     getter enabled
     getter id
@@ -4289,11 +4350,10 @@ interface OfflineAudioContext : BaseAudioContext
     getter length
     getter oncomplete
     method constructor
-    method resume
     method startRendering
     method suspend
     setter oncomplete
-interface OffscreenCanvas
+interface OffscreenCanvas : EventTarget
     attribute @@toStringTag
     getter height
     getter width
@@ -4308,6 +4368,7 @@ interface OffscreenCanvasRenderingContext2D
     getter canvas
     getter fillStyle
     getter filter
+    getter globalCompositeOperation
     getter imageSmoothingEnabled
     getter imageSmoothingQuality
     getter lineCap
@@ -4357,6 +4418,7 @@ interface OffscreenCanvasRenderingContext2D
     method translate
     setter fillStyle
     setter filter
+    setter globalCompositeOperation
     setter imageSmoothingEnabled
     setter imageSmoothingQuality
     setter lineCap
@@ -4451,6 +4513,11 @@ interface PaymentAddress
     getter sortingCode
     method constructor
     method toJSON
+interface PaymentAppManager
+    attribute @@toStringTag
+    method constructor
+    method getManifest
+    method setManifest
 interface PaymentRequest : EventTarget
     attribute @@toStringTag
     getter onshippingaddresschange
@@ -4459,6 +4526,7 @@ interface PaymentRequest : EventTarget
     getter shippingOption
     getter shippingType
     method abort
+    method canMakeActivePayment
     method constructor
     method show
     setter onshippingaddresschange
@@ -4528,6 +4596,20 @@ interface PerformanceNavigation
     attribute TYPE_RESERVED
     getter redirectCount
     getter type
+    method constructor
+    method toJSON
+interface PerformanceNavigationTiming : PerformanceResourceTiming
+    attribute @@toStringTag
+    getter domComplete
+    getter domContentLoadedEventEnd
+    getter domContentLoadedEventStart
+    getter domInteractive
+    getter loadEventEnd
+    getter loadEventStart
+    getter redirectCount
+    getter type
+    getter unloadEventEnd
+    getter unloadEventStart
     method constructor
     method toJSON
 interface PerformanceObserver
@@ -4748,6 +4830,39 @@ interface RTCCertificate
     attribute @@toStringTag
     getter expires
     method constructor
+interface RTCDataChannel : EventTarget
+    attribute @@toStringTag
+    getter binaryType
+    getter bufferedAmount
+    getter bufferedAmountLowThreshold
+    getter id
+    getter label
+    getter maxRetransmitTime
+    getter maxRetransmits
+    getter negotiated
+    getter onbufferedamountlow
+    getter onclose
+    getter onerror
+    getter onmessage
+    getter onopen
+    getter ordered
+    getter protocol
+    getter readyState
+    getter reliable
+    method close
+    method constructor
+    method send
+    setter binaryType
+    setter bufferedAmountLowThreshold
+    setter onbufferedamountlow
+    setter onclose
+    setter onerror
+    setter onmessage
+    setter onopen
+interface RTCDataChannelEvent : Event
+    attribute @@toStringTag
+    getter channel
+    method constructor
 interface RTCIceCandidate
     attribute @@toStringTag
     getter candidate
@@ -4796,6 +4911,10 @@ interface RTCPeerConnection : EventTarget
     setter onnegotiationneeded
     setter onremovestream
     setter onsignalingstatechange
+interface RTCPeerConnectionIceEvent : Event
+    attribute @@toStringTag
+    getter candidate
+    method constructor
 interface RTCSessionDescription
     attribute @@toStringTag
     getter sdp
@@ -5836,10 +5955,8 @@ interface SVGSVGElement : SVGGraphicsElement
     attribute SVG_ZOOMANDPAN_UNKNOWN
     getter currentScale
     getter currentTranslate
-    getter currentView
     getter height
     getter preserveAspectRatio
-    getter useCurrentView
     getter viewBox
     getter width
     getter x
@@ -6019,23 +6136,6 @@ interface SVGViewElement : SVGElement
     attribute SVG_ZOOMANDPAN_UNKNOWN
     getter preserveAspectRatio
     getter viewBox
-    getter viewTarget
-    getter zoomAndPan
-    method constructor
-    setter zoomAndPan
-interface SVGViewSpec
-    attribute @@toStringTag
-    attribute SVG_ZOOMANDPAN_DISABLE
-    attribute SVG_ZOOMANDPAN_MAGNIFY
-    attribute SVG_ZOOMANDPAN_UNKNOWN
-    getter preserveAspectRatio
-    getter preserveAspectRatioString
-    getter transform
-    getter transformString
-    getter viewBox
-    getter viewBoxString
-    getter viewTarget
-    getter viewTargetString
     getter zoomAndPan
     method constructor
     setter zoomAndPan
@@ -6113,17 +6213,17 @@ interface Selection
     method toString
 interface Sensor : EventTarget
     attribute @@toStringTag
+    getter onactivate
     getter onchange
     getter onerror
-    getter onstatechange
     getter reading
     getter state
     method constructor
     method start
     method stop
+    setter onactivate
     setter onchange
     setter onerror
-    setter onstatechange
 interface SensorErrorEvent : Event
     attribute @@toStringTag
     getter error
@@ -6131,10 +6231,6 @@ interface SensorErrorEvent : Event
 interface SensorReading
     attribute @@toStringTag
     getter timeStamp
-    method constructor
-interface SensorReadingEvent : Event
-    attribute @@toStringTag
-    getter reading
     method constructor
 interface ServiceWorker : EventTarget
     attribute @@toStringTag
@@ -6171,6 +6267,7 @@ interface ServiceWorkerRegistration : EventTarget
     getter active
     getter installing
     getter onupdatefound
+    getter paymentAppManager
     getter pushManager
     getter scope
     getter sync
@@ -6228,7 +6325,6 @@ interface SourceBuffer : EventTarget
     getter videoTracks
     method abort
     method appendBuffer
-    method appendStream
     method constructor
     method remove
     setter appendWindowEnd
@@ -6329,10 +6425,6 @@ interface StorageManager
     method estimate
     method persist
     method persisted
-interface Stream
-    attribute @@toStringTag
-    getter type
-    method constructor
 interface StylePropertyMap
     attribute @@toStringTag
     method @@iterator
@@ -6834,7 +6926,6 @@ interface WebGL2RenderingContext
     attribute BLEND_EQUATION_RGB
     attribute BLEND_SRC_ALPHA
     attribute BLEND_SRC_RGB
-    attribute BLUE
     attribute BLUE_BITS
     attribute BOOL
     attribute BOOL_VEC2
@@ -6979,7 +7070,6 @@ interface WebGL2RenderingContext
     attribute GENERATE_MIPMAP_HINT
     attribute GEQUAL
     attribute GREATER
-    attribute GREEN
     attribute GREEN_BITS
     attribute HALF_FLOAT
     attribute HIGH_FLOAT
@@ -7071,7 +7161,6 @@ interface WebGL2RenderingContext
     attribute NONE
     attribute NOTEQUAL
     attribute NO_ERROR
-    attribute NUM_SAMPLE_COUNTS
     attribute OBJECT_TYPE
     attribute ONE
     attribute ONE_MINUS_CONSTANT_ALPHA
@@ -7474,7 +7563,6 @@ interface WebGL2RenderingContext
     method getAttribLocation
     method getBufferParameter
     method getBufferSubData
-    method getBufferSubDataAsync
     method getContextAttributes
     method getError
     method getExtension
@@ -8223,6 +8311,11 @@ interface Worklet
     attribute @@toStringTag
     method constructor
     method import
+interface WritableStream
+    getter locked
+    method abort
+    method constructor
+    method getWriter
 interface XMLDocument : Document
     attribute @@toStringTag
     method constructor
@@ -8328,121 +8421,7 @@ interface webkitAudioContext : BaseAudioContext
     attribute @@toStringTag
     method close
     method constructor
-interface webkitIDBCursor
-    attribute @@toStringTag
-    getter direction
-    getter key
-    getter primaryKey
-    getter source
-    method advance
-    method constructor
-    method continue
-    method continuePrimaryKey
-    method delete
-    method update
-interface webkitIDBDatabase : EventTarget
-    attribute @@toStringTag
-    getter name
-    getter objectStoreNames
-    getter onabort
-    getter onclose
-    getter onerror
-    getter onversionchange
-    getter version
-    method close
-    method constructor
-    method createObjectStore
-    method deleteObjectStore
-    method transaction
-    setter onabort
-    setter onclose
-    setter onerror
-    setter onversionchange
-interface webkitIDBFactory
-    attribute @@toStringTag
-    method cmp
-    method constructor
-    method deleteDatabase
-    method open
-    method webkitGetDatabaseNames
-interface webkitIDBIndex
-    attribute @@toStringTag
-    getter keyPath
-    getter multiEntry
-    getter name
-    getter objectStore
-    getter unique
-    method constructor
-    method count
-    method get
-    method getAll
-    method getAllKeys
-    method getKey
-    method openCursor
-    method openKeyCursor
-    setter name
-interface webkitIDBKeyRange
-    static method bound
-    static method lowerBound
-    static method only
-    static method upperBound
-    attribute @@toStringTag
-    getter lower
-    getter lowerOpen
-    getter upper
-    getter upperOpen
-    method constructor
-    method includes
-interface webkitIDBObjectStore
-    attribute @@toStringTag
-    getter autoIncrement
-    getter indexNames
-    getter keyPath
-    getter name
-    getter transaction
-    method add
-    method clear
-    method constructor
-    method count
-    method createIndex
-    method delete
-    method deleteIndex
-    method get
-    method getAll
-    method getAllKeys
-    method getKey
-    method index
-    method openCursor
-    method openKeyCursor
-    method put
-    setter name
-interface webkitIDBRequest : EventTarget
-    attribute @@toStringTag
-    getter error
-    getter onerror
-    getter onsuccess
-    getter readyState
-    getter result
-    getter source
-    getter transaction
-    method constructor
-    setter onerror
-    setter onsuccess
-interface webkitIDBTransaction : EventTarget
-    attribute @@toStringTag
-    getter db
-    getter error
-    getter mode
-    getter objectStoreNames
-    getter onabort
-    getter oncomplete
-    getter onerror
-    method abort
-    method constructor
-    method objectStore
-    setter onabort
-    setter oncomplete
-    setter onerror
+    method suspend
 interface webkitMediaStream : EventTarget
     attribute @@toStringTag
     getter active
@@ -8468,7 +8447,6 @@ interface webkitOfflineAudioContext : BaseAudioContext
     getter length
     getter oncomplete
     method constructor
-    method resume
     method startRendering
     method suspend
     setter oncomplete
@@ -8621,7 +8599,6 @@ interface webkitURL
     attribute defaultStatus
     attribute defaultstatus
     attribute devicePixelRatio
-    attribute document
     attribute event
     attribute eventSender
     attribute external
@@ -8771,9 +8748,9 @@ interface webkitURL
     attribute toolbar
     attribute top
     attribute visualViewport
-    attribute webkitIndexedDB
     attribute webkitStorageInfo
     attribute window
+    getter document
     method alert
     method atob
     method blur
@@ -8815,7 +8792,6 @@ interface webkitURL
     method setTimeout
     method stop
     method webkitCancelAnimationFrame
-    method webkitCancelRequestAnimationFrame
     method webkitRequestAnimationFrame
     method webkitRequestFileSystem
     method webkitResolveLocalFileSystemURL

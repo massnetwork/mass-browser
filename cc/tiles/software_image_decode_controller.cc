@@ -28,6 +28,9 @@
 #include "third_party/skia/include/core/SkPixmap.h"
 #include "ui/gfx/skia_util.h"
 
+using base::trace_event::MemoryAllocatorDump;
+using base::trace_event::MemoryDumpLevelOfDetail;
+
 namespace cc {
 namespace {
 
@@ -591,10 +594,14 @@ SoftwareImageDecodeController::GetSubrectImageDecode(
     TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("cc.debug"),
                  "SoftwareImageDecodeController::GetSubrectImageDecode - "
                  "allocate subrect pixels");
+    // TODO(vmpstr): This is using checked math to diagnose a problem reported
+    // in crbug.com/662217. If this is causing crashes, then it should be fixed
+    // elsewhere by skipping images that are too large.
+    base::CheckedNumeric<size_t> byte_size = subrect_info.minRowBytes();
+    byte_size *= subrect_info.height();
     subrect_pixels =
         base::DiscardableMemoryAllocator::GetInstance()
-            ->AllocateLockedDiscardableMemory(subrect_info.minRowBytes() *
-                                              subrect_info.height());
+            ->AllocateLockedDiscardableMemory(byte_size.ValueOrDie());
   }
   {
     TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("cc.debug"),
@@ -778,9 +785,18 @@ bool SoftwareImageDecodeController::OnMemoryDump(
     base::trace_event::ProcessMemoryDump* pmd) {
   base::AutoLock lock(lock_);
 
-  // Dump each of our caches.
-  DumpImageMemoryForCache(decoded_images_, "cached", pmd);
-  DumpImageMemoryForCache(at_raster_decoded_images_, "at_raster", pmd);
+  if (args.level_of_detail == MemoryDumpLevelOfDetail::BACKGROUND) {
+    std::string dump_name =
+        base::StringPrintf("cc/image_memory/controller_0x%" PRIXPTR,
+                           reinterpret_cast<uintptr_t>(this));
+    MemoryAllocatorDump* dump = pmd->CreateAllocatorDump(dump_name);
+    dump->AddScalar("locked_size", MemoryAllocatorDump::kUnitsBytes,
+                    locked_images_budget_.GetCurrentUsageSafe());
+  } else {
+    // Dump each of our caches.
+    DumpImageMemoryForCache(decoded_images_, "cached", pmd);
+    DumpImageMemoryForCache(at_raster_decoded_images_, "at_raster", pmd);
+  }
 
   // Memory dump can't fail, always return true.
   return true;
@@ -797,13 +813,14 @@ void SoftwareImageDecodeController::DumpImageMemoryForCache(
         "cc/image_memory/controller_0x%" PRIXPTR "/%s/image_%" PRIu64 "_id_%d",
         reinterpret_cast<uintptr_t>(this), cache_name,
         image_pair.second->tracing_id(), image_pair.first.image_id());
-    base::trace_event::MemoryAllocatorDump* dump =
+    // CreateMemoryAllocatorDump will automatically add tracking values for the
+    // total size. If locked, we also add a "locked_size" below.
+    MemoryAllocatorDump* dump =
         image_pair.second->memory()->CreateMemoryAllocatorDump(
             dump_name.c_str(), pmd);
     DCHECK(dump);
     if (image_pair.second->is_locked()) {
-      dump->AddScalar("locked_size",
-                      base::trace_event::MemoryAllocatorDump::kUnitsBytes,
+      dump->AddScalar("locked_size", MemoryAllocatorDump::kUnitsBytes,
                       image_pair.first.locked_bytes());
     }
   }

@@ -24,6 +24,11 @@ const base::Feature kBrotliEncoding{"brotli-encoding",
 const base::Feature kCanvas2DImageChromium{"Canvas2DImageChromium",
                                            base::FEATURE_ENABLED_BY_DEFAULT};
 
+// Enables the compositing of fixed position content that is opaque and can
+// preserve LCD text.
+const base::Feature kCompositeOpaqueFixedPosition{
+    "CompositeOpaqueFixedPosition", base::FEATURE_ENABLED_BY_DEFAULT};
+
 // Enables the compositing of scrolling content that supports painting the
 // background with the foreground, such that LCD text will still be enabled.
 const base::Feature kCompositeOpaqueScrollers{"CompositeOpaqueScrollers",
@@ -82,6 +87,14 @@ const base::Feature kGamepadExtensions{"GamepadExtensions",
 const base::Feature kGenericSensor{"GenericSensor",
                                    base::FEATURE_DISABLED_BY_DEFAULT};
 
+// Causes the implementations of guests (inner WebContents) to use
+// out-of-process iframes.
+const base::Feature kGuestViewCrossProcessFrames{
+    "GuestViewCrossProcessFrames", base::FEATURE_DISABLED_BY_DEFAULT};
+
+// Enables lazily parsing css properties for performance.
+const base::Feature kLazyParseCSS{"LazyParseCSS",
+                                  base::FEATURE_DISABLED_BY_DEFAULT};
 
 // FeatureList definition for trials to enable the download button on
 // MediaDocument.
@@ -103,6 +116,10 @@ const base::Feature kMemoryCoordinator {
 const base::Feature kNonValidatingReloadOnNormalReload{
     "NonValidatingReloadOnNormalReload", base::FEATURE_ENABLED_BY_DEFAULT};
 
+// Kill switch for Web Notification content images.
+const base::Feature kNotificationContentImage{"NotificationContentImage",
+                                              base::FEATURE_ENABLED_BY_DEFAULT};
+
 // An experiment to optimize resource loading IPC for small resources.
 // http://crbug.com/580928
 const base::Feature kOptimizeLoadingIPCForSmallResources{
@@ -119,7 +136,7 @@ const base::Feature kParseHTMLOnMainThread{"ParseHTMLOnMainThread",
 
 // Whether document level event listeners should default 'passive' to true.
 const base::Feature kPassiveDocumentEventListeners{
-    "PassiveDocumentEventListeners", base::FEATURE_DISABLED_BY_DEFAULT};
+    "PassiveDocumentEventListeners", base::FEATURE_ENABLED_BY_DEFAULT};
 
 // Whether we should force a touchstart and first touchmove per scroll event
 // listeners to be 'passive' during fling.
@@ -134,6 +151,10 @@ const base::Feature kPointerEvents{"PointerEvent",
 // See https://rawgit.com/w3c/pointerevents/reduce-hit-tests/index.html.
 const base::Feature kPointerEventV1SpecCapturing{
     "PointerEventV1SpecCapturing", base::FEATURE_DISABLED_BY_DEFAULT};
+
+// Enables purge and suspend.
+const base::Feature kPurgeAndSuspend{"PurgeAndSuspend",
+                                     base::FEATURE_DISABLED_BY_DEFAULT};
 
 // RAF aligned mouse input events support.
 const base::Feature kRafAlignedMouseInputEvents{
@@ -189,6 +210,9 @@ const base::Feature kTokenBinding{"token-binding",
 const base::Feature kTouchpadAndWheelScrollLatching{
     "TouchpadAndWheelScrollLatching", base::FEATURE_DISABLED_BY_DEFAULT};
 
+// Enables VR UI.
+const base::Feature kVrShell{"VrShell", base::FEATURE_DISABLED_BY_DEFAULT};
+
 // Enable WebAssembly.
 // http://webassembly.org/
 const base::Feature kWebAssembly{"WebAssembly",
@@ -219,10 +243,6 @@ const base::Feature kSendBeaconThrowForBlobWithNonSimpleType{
     base::FEATURE_DISABLED_BY_DEFAULT};
 
 #if defined(OS_ANDROID)
-// Allow videos to autoplay without a user gesture if muted.
-const base::Feature kAutoplayMutedVideos{"AutoplayMutedVideos",
-                                         base::FEATURE_ENABLED_BY_DEFAULT};
-
 // Use IME's own thread instead of using main UI thread. It also means that
 // we will not use replica editor and do a round trip to renderer to synchronize
 // with Blink data.

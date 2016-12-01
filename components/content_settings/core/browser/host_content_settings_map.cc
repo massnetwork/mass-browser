@@ -36,6 +36,7 @@
 #include "url/gurl.h"
 
 using content_settings::WebsiteSettingsInfo;
+using content_settings::ContentSettingsInfo;
 
 namespace {
 
@@ -97,30 +98,37 @@ std::unique_ptr<base::Value> ProcessIncognitoInheritanceBehavior(
     ContentSettingsType content_type,
     std::unique_ptr<base::Value> value) {
   // Website setting inheritance can be completely disallowed.
-  const content_settings::WebsiteSettingsInfo* website_settings_info =
+  const WebsiteSettingsInfo* website_settings_info =
       content_settings::WebsiteSettingsRegistry::GetInstance()->Get(
           content_type);
   if (website_settings_info &&
       website_settings_info->incognito_behavior() ==
-          content_settings::WebsiteSettingsInfo::DONT_INHERIT_IN_INCOGNITO) {
+          WebsiteSettingsInfo::DONT_INHERIT_IN_INCOGNITO) {
     return nullptr;
   }
 
-  // Content setting inheritance can be disabled for CONTENT_SETTING_ALLOW.
-  const content_settings::ContentSettingsInfo* content_settings_info =
+  // Content setting inheritance can be for settings, that are more permissive
+  // than the initial value of a content setting.
+  const ContentSettingsInfo* content_settings_info =
       content_settings::ContentSettingsRegistry::GetInstance()->Get(
           content_type);
   if (content_settings_info) {
-    if (content_settings_info->incognito_behavior() !=
-        content_settings::ContentSettingsInfo::
-            INHERIT_IN_INCOGNITO_EXCEPT_ALLOW)
-      return value;
-    ContentSetting setting =
-        content_settings::ValueToContentSetting(value.get());
-    if (setting != CONTENT_SETTING_ALLOW)
-      return value;
-    DCHECK(content_settings_info->IsSettingValid(CONTENT_SETTING_ASK));
-    return content_settings::ContentSettingToValue(CONTENT_SETTING_ASK);
+    ContentSettingsInfo::IncognitoBehavior behaviour =
+        content_settings_info->incognito_behavior();
+    switch (behaviour) {
+      case ContentSettingsInfo::INHERIT_IN_INCOGNITO:
+        return value;
+      case ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE:
+        ContentSetting setting =
+            content_settings::ValueToContentSetting(value.get());
+        const base::Value* initial_value = content_settings_info
+            ->website_settings_info()->initial_default_value();
+        ContentSetting initial_setting =
+            content_settings::ValueToContentSetting(initial_value);
+        if (content_settings::IsMorePermissive(setting, initial_setting))
+          return content_settings::ContentSettingToValue(initial_setting);
+        return value;
+    }
   }
 
   return value;
@@ -163,7 +171,7 @@ HostContentSettingsMap::HostContentSettingsMap(PrefService* prefs,
       used_from_thread_id_(base::PlatformThread::CurrentId()),
 #endif
       prefs_(prefs),
-      is_off_the_record_(is_incognito_profile || is_guest_profile),
+      is_incognito_(is_incognito_profile || is_guest_profile),
       weak_ptr_factory_(this) {
   DCHECK(!(is_incognito_profile && is_guest_profile));
 
@@ -174,7 +182,7 @@ HostContentSettingsMap::HostContentSettingsMap(PrefService* prefs,
   policy_provider->AddObserver(this);
 
   pref_provider_ =
-      new content_settings::PrefProvider(prefs_, is_off_the_record_);
+      new content_settings::PrefProvider(prefs_, is_incognito_);
   content_settings_providers_[PREF_PROVIDER] = base::WrapUnique(pref_provider_);
   pref_provider_->AddObserver(this);
 
@@ -185,7 +193,7 @@ HostContentSettingsMap::HostContentSettingsMap(PrefService* prefs,
     pref_provider_->ClearPrefs();
 
   auto default_provider = base::MakeUnique<content_settings::DefaultProvider>(
-      prefs_, is_off_the_record_);
+      prefs_, is_incognito_);
   default_provider->AddObserver(this);
   content_settings_providers_[DEFAULT_PROVIDER] = std::move(default_provider);
 
@@ -260,7 +268,7 @@ ContentSetting HostContentSettingsMap::GetDefaultContentSettingInternal(
       continue;
     ContentSetting default_setting = GetDefaultContentSettingFromProvider(
         content_type, provider_pair.second.get());
-    if (is_off_the_record_) {
+    if (is_incognito_) {
       default_setting = content_settings::ValueToContentSetting(
           ProcessIncognitoInheritanceBehavior(
               content_type,
@@ -312,7 +320,7 @@ void HostContentSettingsMap::GetSettingsForOneType(
   for (const auto& provider_pair : content_settings_providers_) {
     // For each provider, iterate first the incognito-specific rules, then the
     // normal rules.
-    if (is_off_the_record_) {
+    if (is_incognito_) {
       AddSettingsForOneType(provider_pair.second.get(), provider_pair.first,
                             content_type, resource_identifier, settings, true);
     }
@@ -450,7 +458,6 @@ void HostContentSettingsMap::SetContentSettingDefaultScope(
     ContentSettingsType content_type,
     const std::string& resource_identifier,
     ContentSetting setting) {
-  using content_settings::ContentSettingsInfo;
   const ContentSettingsInfo* info =
       content_settings::ContentSettingsRegistry::GetInstance()->Get(
           content_type);
@@ -919,7 +926,7 @@ std::unique_ptr<base::Value> HostContentSettingsMap::GetWebsiteSettingInternal(
   for (const auto& provider_pair : content_settings_providers_) {
     std::unique_ptr<base::Value> value = GetContentSettingValueAndPatterns(
         provider_pair.second.get(), primary_url, secondary_url, content_type,
-        resource_identifier, is_off_the_record_, primary_pattern,
+        resource_identifier, is_incognito_, primary_pattern,
         secondary_pattern);
     if (value) {
       if (info)

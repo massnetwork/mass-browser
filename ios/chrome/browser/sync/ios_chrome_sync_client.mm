@@ -25,16 +25,18 @@
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/password_manager/core/browser/password_store.h"
 #include "components/password_manager/sync/browser/password_model_worker.h"
+#include "components/reading_list/core/reading_list_switches.h"
+#include "components/reading_list/ios/reading_list_model.h"
 #include "components/search_engines/search_engine_data_type_controller.h"
 #include "components/signin/core/browser/profile_oauth2_token_service.h"
 #include "components/sync/base/extensions_activity.h"
 #include "components/sync/base/report_unrecoverable_error.h"
-#include "components/sync/driver/glue/browser_thread_model_worker.h"
-#include "components/sync/driver/glue/ui_model_worker.h"
 #include "components/sync/driver/sync_api_component_factory.h"
 #include "components/sync/driver/sync_util.h"
 #include "components/sync/driver/ui_data_type_controller.h"
+#include "components/sync/engine/browser_thread_model_worker.h"
 #include "components/sync/engine/passive_model_worker.h"
+#include "components/sync/engine/ui_model_worker.h"
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "components/sync_sessions/favicon_cache.h"
 #include "components/sync_sessions/local_session_event_router.h"
@@ -52,6 +54,7 @@
 #include "ios/chrome/browser/invalidation/ios_chrome_profile_invalidation_provider_factory.h"
 #include "ios/chrome/browser/passwords/ios_chrome_password_store_factory.h"
 #include "ios/chrome/browser/pref_names.h"
+#include "ios/chrome/browser/reading_list/reading_list_model_factory.h"
 #include "ios/chrome/browser/signin/oauth2_token_service_factory.h"
 #include "ios/chrome/browser/sync/glue/sync_start_util.h"
 #include "ios/chrome/browser/sync/ios_chrome_profile_sync_service_factory.h"
@@ -62,6 +65,10 @@
 #include "ios/public/provider/chrome/browser/chrome_browser_provider.h"
 #include "ios/web/public/web_thread.h"
 #include "ui/base/device_form_factor.h"
+
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "This file requires ARC support."
+#endif
 
 namespace {
 
@@ -335,6 +342,12 @@ IOSChromeSyncClient::GetSyncBridgeForModelType(syncer::ModelType type) {
                  browser_state_)
           ->GetDeviceInfoSyncBridge()
           ->AsWeakPtr();
+    case syncer::READING_LIST: {
+      DCHECK(reading_list::switches::IsReadingListEnabled());
+      ReadingListModel* reading_list_model =
+          ReadingListModelFactory::GetForBrowserState(browser_state_);
+      return reading_list_model->GetModelTypeSyncBridge()->AsWeakPtr();
+    }
     default:
       NOTREACHED();
       return base::WeakPtr<syncer::ModelTypeSyncBridge>();
@@ -342,36 +355,34 @@ IOSChromeSyncClient::GetSyncBridgeForModelType(syncer::ModelType type) {
 }
 
 scoped_refptr<syncer::ModelSafeWorker>
-IOSChromeSyncClient::CreateModelWorkerForGroup(
-    syncer::ModelSafeGroup group,
-    syncer::WorkerLoopDestructionObserver* observer) {
+IOSChromeSyncClient::CreateModelWorkerForGroup(syncer::ModelSafeGroup group) {
   DCHECK_CURRENTLY_ON(web::WebThread::UI);
   switch (group) {
     case syncer::GROUP_DB:
       return new syncer::BrowserThreadModelWorker(
           web::WebThread::GetTaskRunnerForThread(web::WebThread::DB),
-          syncer::GROUP_DB, observer);
+          syncer::GROUP_DB);
     case syncer::GROUP_FILE:
       return new syncer::BrowserThreadModelWorker(
           web::WebThread::GetTaskRunnerForThread(web::WebThread::FILE),
-          syncer::GROUP_FILE, observer);
+          syncer::GROUP_FILE);
     case syncer::GROUP_UI:
       return new syncer::UIModelWorker(
-          web::WebThread::GetTaskRunnerForThread(web::WebThread::UI), observer);
+          web::WebThread::GetTaskRunnerForThread(web::WebThread::UI));
     case syncer::GROUP_PASSIVE:
-      return new syncer::PassiveModelWorker(observer);
+      return new syncer::PassiveModelWorker();
     case syncer::GROUP_HISTORY: {
       history::HistoryService* history_service = GetHistoryService();
       if (!history_service)
         return nullptr;
       return new browser_sync::HistoryModelWorker(
           history_service->AsWeakPtr(),
-          web::WebThread::GetTaskRunnerForThread(web::WebThread::UI), observer);
+          web::WebThread::GetTaskRunnerForThread(web::WebThread::UI));
     }
     case syncer::GROUP_PASSWORD: {
       if (!password_store_)
         return nullptr;
-      return new browser_sync::PasswordModelWorker(password_store_, observer);
+      return new browser_sync::PasswordModelWorker(password_store_);
     }
     default:
       return nullptr;

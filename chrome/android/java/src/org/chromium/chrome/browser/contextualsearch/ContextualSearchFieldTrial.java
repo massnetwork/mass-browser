@@ -52,12 +52,16 @@ public class ContextualSearchFieldTrial {
     private static final String DISABLE_ACCEPT_LANGUAGES_FOR_TRANSLATION =
             "disable_accept_languages_for_translation";
     // Enables usage of English as the target language even when it's the primary UI language.
-    private static final String ENABLE_ENGLISH_TARGET_TRANSLATION =
+    @VisibleForTesting
+    static final String ENABLE_ENGLISH_TARGET_TRANSLATION =
             "enable_english_target_translation";
     // Enables relying on the server to control whether the onebox is actually shown, rather
     // than checking if translation is needed client-side based on source/target languages.
     @VisibleForTesting
     static final String ENABLE_SERVER_CONTROLLED_ONEBOX = "enable_server_controlled_onebox";
+
+    /** Hide Contextual Cards data.*/
+    private static final String HIDE_CONTEXTUAL_CARDS_DATA = "hide_contextual_cards_data";
 
     // Quick Answers.
     private static final String ENABLE_QUICK_ANSWERS = "enable_quick_answers";
@@ -102,6 +106,7 @@ public class ContextualSearchFieldTrial {
     private static Boolean sIsBarOverlapCollectionEnabled;
     private static Boolean sIsBarOverlapSuppressionEnabled;
     private static Integer sSuppressionTaps;
+    private static Boolean sShouldHideContextualCardsData;
     private static Boolean sIsContextualCardsBarIntegrationEnabled;
     private static Boolean sIsOnlineDetectionDisabled;
     private static Boolean sIsAmpAsSeparateTabEnabled;
@@ -394,6 +399,13 @@ public class ContextualSearchFieldTrial {
                     ChromeSwitches.CONTEXTUAL_SEARCH_CONTEXTUAL_CARDS_BAR_INTEGRATION);
         }
         return sIsContextualCardsBarIntegrationEnabled;
+    }
+
+    static boolean shouldHideContextualCardsData() {
+        if (sShouldHideContextualCardsData == null) {
+            sShouldHideContextualCardsData = getBooleanParam(HIDE_CONTEXTUAL_CARDS_DATA);
+        }
+        return sShouldHideContextualCardsData;
     }
 
     /**

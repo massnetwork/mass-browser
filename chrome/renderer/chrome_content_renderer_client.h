@@ -17,8 +17,13 @@
 #include "base/gtest_prod_util.h"
 #include "base/strings/string16.h"
 #include "components/rappor/public/interfaces/rappor_recorder.mojom.h"
+#include "components/spellcheck/spellcheck_build_features.h"
 #include "content/public/renderer/content_renderer_client.h"
+#include "extensions/features/features.h"
 #include "ipc/ipc_channel_proxy.h"
+#include "media/media_features.h"
+#include "ppapi/features/features.h"
+#include "printing/features/features.h"
 #include "v8/include/v8.h"
 
 #if defined (OS_CHROMEOS)
@@ -26,13 +31,12 @@
 #endif
 
 class ChromeRenderThreadObserver;
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 class ChromePDFPrintClient;
 #endif
 class PrescientNetworkingDispatcher;
-#if defined(ENABLE_SPELLCHECK)
+#if BUILDFLAG(ENABLE_SPELLCHECK)
 class SpellCheck;
-class SpellCheckProvider;
 #endif
 
 struct ChromeViewHostMsg_GetPluginInfo_Output;
@@ -47,7 +51,6 @@ class PrescientNetworkingDispatcher;
 }
 
 namespace extensions {
-class Dispatcher;
 class Extension;
 }
 
@@ -67,11 +70,7 @@ namespace web_cache {
 class WebCacheImpl;
 }
 
-namespace blink {
-class WebSecurityOrigin;
-}
-
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 class WebRtcLoggingMessageFilter;
 #endif
 
@@ -184,13 +183,13 @@ class ChromeContentRendererClient : public content::ContentRendererClient {
   bool ShouldEnforceWebRTCRoutingPreferences() override;
   GURL OverrideFlashEmbedWithHTML(const GURL& url) override;
 
-#if defined(ENABLE_SPELLCHECK)
+#if BUILDFLAG(ENABLE_SPELLCHECK)
   // Sets a new |spellcheck|. Used for testing only.
   // Takes ownership of |spellcheck|.
   void SetSpellcheck(SpellCheck* spellcheck);
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   static blink::WebPlugin* CreatePlugin(
       content::RenderFrame* render_frame,
       blink::WebLocalFrame* frame,
@@ -198,7 +197,7 @@ class ChromeContentRendererClient : public content::ContentRendererClient {
       const ChromeViewHostMsg_GetPluginInfo_Output& output);
 #endif
 
-#if defined(ENABLE_PLUGINS) && defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_PLUGINS) && BUILDFLAG(ENABLE_EXTENSIONS)
   static bool IsExtensionOrSharedModuleWhitelisted(
       const GURL& url, const std::set<std::string>& whitelist);
 #endif
@@ -233,20 +232,20 @@ class ChromeContentRendererClient : public content::ContentRendererClient {
   std::unique_ptr<network_hints::PrescientNetworkingDispatcher>
       prescient_networking_dispatcher_;
 
-#if defined(ENABLE_SPELLCHECK)
+#if BUILDFLAG(ENABLE_SPELLCHECK)
   std::unique_ptr<SpellCheck> spellcheck_;
 #endif
   std::unique_ptr<safe_browsing::PhishingClassifierFilter> phishing_classifier_;
   std::unique_ptr<subresource_filter::RulesetDealer>
       subresource_filter_ruleset_dealer_;
   std::unique_ptr<prerender::PrerenderDispatcher> prerender_dispatcher_;
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   scoped_refptr<WebRtcLoggingMessageFilter> webrtc_logging_message_filter_;
 #endif
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   std::unique_ptr<ChromePDFPrintClient> pdf_print_client_;
 #endif
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   std::set<std::string> allowed_camera_device_origins_;
   std::set<std::string> allowed_compositor_origins_;
 #endif

@@ -12,10 +12,10 @@
 #include "base/memory/ref_counted.h"
 #include "base/observer_list.h"
 #include "base/time/time.h"
-#include "cc/animation/element_id.h"
-#include "cc/animation/property_animation_state.h"
-#include "cc/animation/target_property.h"
-#include "cc/base/cc_export.h"
+#include "cc/animation/animation_export.h"
+#include "cc/trees/element_id.h"
+#include "cc/trees/property_animation_state.h"
+#include "cc/trees/target_property.h"
 #include "ui/gfx/geometry/scroll_offset.h"
 #include "ui/gfx/transform.h"
 
@@ -25,7 +25,6 @@ class BoxF;
 
 namespace cc {
 
-class AnimationDelegate;
 class AnimationEvents;
 class AnimationHost;
 class AnimationPlayer;
@@ -37,7 +36,8 @@ struct AnimationEvent;
 // the element.
 // This is a CC counterpart for blink::ElementAnimations (in 1:1 relationship).
 // No pointer to/from respective blink::ElementAnimations object for now.
-class CC_EXPORT ElementAnimations : public base::RefCounted<ElementAnimations> {
+class CC_ANIMATION_EXPORT ElementAnimations
+    : public base::RefCounted<ElementAnimations> {
  public:
   static scoped_refptr<ElementAnimations> Create();
 
@@ -66,7 +66,7 @@ class CC_EXPORT ElementAnimations : public base::RefCounted<ElementAnimations> {
   // thread are kept in sync. This function does not take ownership of the impl
   // thread ElementAnimations.
   void PushPropertiesTo(
-      scoped_refptr<ElementAnimations> element_animations_impl);
+      scoped_refptr<ElementAnimations> element_animations_impl) const;
 
   void Animate(base::TimeTicks monotonic_time);
 
@@ -211,14 +211,14 @@ class CC_EXPORT ElementAnimations : public base::RefCounted<ElementAnimations> {
   bool has_element_in_active_list_;
   bool has_element_in_pending_list_;
 
-  bool scroll_offset_animation_was_interrupted_;
+  mutable bool scroll_offset_animation_was_interrupted_;
 
-  bool needs_push_properties_;
+  mutable bool needs_push_properties_;
 
   PropertyAnimationState active_state_;
   PropertyAnimationState pending_state_;
 
-  bool needs_update_impl_client_state_;
+  mutable bool needs_update_impl_client_state_;
 
   DISALLOW_COPY_AND_ASSIGN(ElementAnimations);
 };

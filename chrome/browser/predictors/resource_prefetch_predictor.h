@@ -119,6 +119,10 @@ class ResourcePrefetchPredictor
                             Profile* profile);
   ~ResourcePrefetchPredictor() override;
 
+  // Starts initialization by posting a task to the DB thread to read the
+  // predictor database.
+  void StartInitialization();
+
   // Thread safe.
   static bool ShouldRecordRequest(net::URLRequest* request,
                                   content::ResourceType resource_type);
@@ -163,6 +167,7 @@ class ResourcePrefetchPredictor
  private:
   friend class ::PredictorsHandler;
   friend class ResourcePrefetchPredictorTest;
+  friend class ResourcePrefetchPredictorBrowserTest;
 
   FRIEND_TEST_ALL_PREFIXES(ResourcePrefetchPredictorTest, DeleteUrls);
   FRIEND_TEST_ALL_PREFIXES(ResourcePrefetchPredictorTest,
@@ -246,10 +251,6 @@ class ResourcePrefetchPredictor
   bool PopulatePrefetcherRequest(const std::string& main_frame_key,
                                  const PrefetchDataMap& data_map,
                                  std::vector<GURL>* urls);
-
-  // Starts initialization by posting a task to the DB thread to read the
-  // predictor database.
-  void StartInitialization();
 
   // Callback for task to read predictor database. Takes ownership of
   // all arguments.
@@ -364,6 +365,8 @@ class TestObserver {
   virtual void OnNavigationLearned(
       size_t url_visit_count,
       const ResourcePrefetchPredictor::PageRequestSummary& summary) {}
+
+  virtual void OnPredictorInitialized() {}
 
  protected:
   // |predictor| must be non-NULL and has to outlive the TestObserver.

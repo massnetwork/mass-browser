@@ -16,6 +16,7 @@
 #include "base/metrics/field_trial.h"
 #include "base/strings/string_util.h"
 #include "components/autofill/core/common/autofill_switches.h"
+#include "components/reading_list/core/reading_list_switches.h"
 #include "components/variations/variations_associated_data.h"
 #include "ios/chrome/browser/chrome_switches.h"
 #include "ios/web/public/web_view_creation_util.h"
@@ -26,10 +27,10 @@ NSString* const kEnableAlertOnBackgroundUpload =
 NSString* const kEnableViewCopyPasswords = @"EnableViewCopyPasswords";
 NSString* const kHeuristicsForPasswordGeneration =
     @"HeuristicsForPasswordGeneration";
-NSString* const kEnableReadingList = @"EnableReadingList";
-NSString* const kUpdatePasswordUIDisabled = @"UpdatePasswordUIDisabled";
 NSString* const kEnableNewClearBrowsingDataUI = @"EnableNewClearBrowsingDataUI";
 NSString* const kMDMIntegrationDisabled = @"MDMIntegrationDisabled";
+NSString* const kPendingIndexNavigationEnabled =
+    @"PendingIndexNavigationEnabled";
 }  // namespace
 
 namespace experimental_flags {
@@ -87,20 +88,22 @@ bool UseOnlyLocalHeuristicsForPasswordGeneration() {
 }
 
 bool IsTabSwitcherEnabled() {
-  // Check if the experimental flag is forced off.
+  // Check if the experimental flag is forced on or off.
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  if (command_line->HasSwitch(switches::kDisableTabSwitcher)) {
+  if (command_line->HasSwitch(switches::kEnableTabSwitcher)) {
+    return true;
+  } else if (command_line->HasSwitch(switches::kDisableTabSwitcher)) {
     return false;
   }
 
-  // Check if the finch experiment is turned off.
+  // Check if the finch experiment is turned on.
   std::string group_name = base::FieldTrialList::FindFullName("IOSTabSwitcher");
-  return !base::StartsWith(group_name, "Disabled",
-                           base::CompareCase::INSENSITIVE_ASCII);
+  return base::StartsWith(group_name, "Enabled",
+                          base::CompareCase::INSENSITIVE_ASCII);
 }
 
 bool IsReadingListEnabled() {
-  return [[NSUserDefaults standardUserDefaults] boolForKey:kEnableReadingList];
+  return reading_list::switches::IsReadingListEnabled();
 }
 
 bool IsAllBookmarksEnabled() {
@@ -135,11 +138,6 @@ bool IsPhysicalWebEnabled() {
       base::FieldTrialList::FindFullName("PhysicalWebEnabled");
   return base::StartsWith(group_name, "Enabled",
                           base::CompareCase::INSENSITIVE_ASCII);
-}
-
-bool IsUpdatePasswordUIEnabled() {
-  return ![[NSUserDefaults standardUserDefaults]
-      boolForKey:kUpdatePasswordUIDisabled];
 }
 
 bool IsQRCodeReaderEnabled() {
@@ -182,6 +180,11 @@ bool IsSpotlightActionsEnabled() {
 bool IsMDMIntegrationEnabled() {
   return ![[NSUserDefaults standardUserDefaults]
       boolForKey:kMDMIntegrationDisabled];
+}
+
+bool IsPendingIndexNavigationEnabled() {
+  return [[NSUserDefaults standardUserDefaults]
+      boolForKey:kPendingIndexNavigationEnabled];
 }
 
 }  // namespace experimental_flags

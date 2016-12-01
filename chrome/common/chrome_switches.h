@@ -9,6 +9,8 @@
 #define CHROME_COMMON_CHROME_SWITCHES_H_
 
 #include "build/build_config.h"
+#include "ppapi/features/features.h"
+#include "printing/features/features.h"
 
 // Don't add more switch files here. This is linked into some places like the
 // installer where dependencies should be limited. Instead, have files
@@ -70,7 +72,6 @@ extern const char kDisableAddToShelf[];
 extern const char kDisableBackgroundNetworking[];
 extern const char kDisableBundledPpapiFlash[];
 extern const char kDisableCastStreamingHWEncoding[];
-extern const char kDisableChildAccountDetection[];
 extern const char kDisableClearBrowsingDataCounters[];
 extern const char kDisableClientSidePhishingDetection[];
 extern const char kDisableComponentExtensionsWithBackgroundPages[];
@@ -82,7 +83,6 @@ extern const char kDisableExtensions[];
 extern const char kDisableExtensionsExcept[];
 extern const char kDisableExtensionsFileAccessCheck[];
 extern const char kDisableExtensionsHttpThrottling[];
-extern const char kDisableFieldTrialTestingConfig[];
 extern const char kDisableHttp2[];
 extern const char kDisableMinimizeOnSecondLauncherItemClick[];
 extern const char kDisableNewBookmarkApps[];
@@ -98,7 +98,6 @@ extern const char kDisablePushApiBackgroundMode[];
 extern const char kDisableQuic[];
 extern const char kDisableQuicPortSelection[];
 extern const char kDisableSettingsWindow[];
-extern const char kDisableSiteEngagementService[];
 extern const char kDisableWebNotificationCustomLayouts[];
 extern const char kDisableWebUsbSecurity[];
 extern const char kDisableZeroBrowsersOpenForTests[];
@@ -112,7 +111,6 @@ extern const char kEnableAppsFileAssociations[];
 extern const char kEnableAudioDebugRecordingsFromExtension[];
 extern const char kEnableBenchmarking[];
 extern const char kEnableBookmarkUndo[];
-extern const char kEnableChildAccountDetection[];
 extern const char kEnableClearBrowsingDataCounters[];
 extern const char kEnableCloudPrintProxy[];
 extern const char kEnableDeviceDiscoveryNotifications[];
@@ -143,7 +141,6 @@ extern const char kEnableSaveAsMenuLabelExperiment[];
 extern const char kEnableSettingsWindow[];
 extern const char kEnableSiteEngagementAppBanner[];
 extern const char kEnableSiteEngagementEvictionPolicy[];
-extern const char kEnableSiteEngagementService[];
 extern const char kEnableSiteSettings[];
 extern const char kEnableSupervisedUserManagedBookmarksFolder[];
 extern const char kEnableTabAudioMuting[];
@@ -160,8 +157,8 @@ extern const char kExtensionsInstallVerification[];
 extern const char kExtensionsNotWebstore[];
 extern const char kExtensionsUpdateFrequency[];
 extern const char kFastStart[];
+extern const char kForceAndroidAppMode[];
 extern const char kForceAppMode[];
-extern const char kForceFieldTrialParams[];
 extern const char kForceFirstRun[];
 extern const char kForceLocalNtp[];
 extern const char kForceVariationIds[];
@@ -222,6 +219,7 @@ extern const char kPrerenderMode[];
 extern const char kPrerenderModeSwitchValueDisabled[];
 extern const char kPrerenderModeSwitchValueEnabled[];
 extern const char kPrerenderModeSwitchValuePrefetch[];
+extern const char kPrerenderModeSwitchValueSimpleLoad[];
 extern const char kPrivetIPv6Only[];
 extern const char kProductVersion[];
 extern const char kProfileDirectory[];
@@ -358,6 +356,7 @@ extern const char kMakeChromeDefault[];
 extern const char kDisableGDITextPrinting[];
 extern const char kDisablePerMonitorDpi[];
 extern const char kEnableCloudPrintXps[];
+extern const char kEnableGDITextPrinting[];
 extern const char kEnablePerMonitorDpi[];
 extern const char kEnableProfileShortcutManager[];
 extern const char kHideIcons[];
@@ -372,11 +371,11 @@ extern const char kWindows10CustomTitlebar[];
 extern const char kWindows8Search[];
 #endif  // defined(OS_WIN)
 
-#if defined(ENABLE_PRINT_PREVIEW) && !defined(OFFICIAL_BUILD)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW) && !defined(OFFICIAL_BUILD)
 extern const char kDebugPrint[];
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 extern const char kAllowNaClCrxFsAPI[];
 extern const char kAllowNaClFileHandleAPI[];
 extern const char kAllowNaClSocketAPI[];
@@ -395,11 +394,14 @@ bool AboutInSettingsEnabled();
 bool ExtensionsDisabled(const base::CommandLine& command_line);
 bool MdFeedbackEnabled();
 bool MdPolicyPageEnabled();
-bool PdfMaterialUIEnabled();
 bool SettingsWindowEnabled();
 
 #if defined(OS_CHROMEOS)
 bool PowerOverlayEnabled();
+#endif
+
+#if defined(OS_WIN)
+bool GDITextPrintingEnabled();
 #endif
 
 // DON'T ADD RANDOM STUFF HERE. Put it in the main section above in

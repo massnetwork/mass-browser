@@ -9,7 +9,7 @@
 
 #include "ash/common/material_design/material_design_controller.h"
 #include "ash/common/system/chromeos/session/logout_confirmation_controller.h"
-#include "ash/common/system/tray/system_tray_delegate.h"
+#include "ash/common/system/tray/system_tray_controller.h"
 #include "ash/common/system/tray/system_tray_notifier.h"
 #include "ash/common/system/tray/tray_constants.h"
 #include "ash/common/system/tray/tray_utils.h"
@@ -120,7 +120,7 @@ LogoutButtonTray::LogoutButtonTray(WmShelf* wm_shelf)
   }
   tray_container()->AddChildView(button_);
   if (!MaterialDesignController::IsShelfMaterial())
-    tray_container()->SetBorder(views::Border::NullBorder());
+    tray_container()->SetBorder(views::NullBorder());
   WmShell::Get()->system_tray_notifier()->AddLogoutButtonObserver(this);
 }
 
@@ -134,7 +134,7 @@ void LogoutButtonTray::SetShelfAlignment(ShelfAlignment alignment) {
   UpdateButtonTextAndImage(login_status_, alignment);
   TrayBackgroundView::SetShelfAlignment(alignment);
   if (!MaterialDesignController::IsShelfMaterial())
-    tray_container()->SetBorder(views::Border::NullBorder());
+    tray_container()->SetBorder(views::NullBorder());
 }
 
 base::string16 LogoutButtonTray::GetAccessibleNameForTray() {
@@ -155,7 +155,7 @@ void LogoutButtonTray::ButtonPressed(views::Button* sender,
 
   if (dialog_duration_ <= base::TimeDelta()) {
     // Sign out immediately if |dialog_duration_| is non-positive.
-    WmShell::Get()->system_tray_delegate()->SignOut();
+    WmShell::Get()->system_tray_controller()->SignOut();
   } else if (WmShell::Get()->logout_confirmation_controller()) {
     WmShell::Get()->logout_confirmation_controller()->ConfirmLogout(
         base::TimeTicks::Now() + dialog_duration_);

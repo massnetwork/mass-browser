@@ -16,14 +16,12 @@
 #include "base/timer/timer.h"
 #include "net/base/ip_address.h"
 #include "net/log/net_log_source.h"
-#include "net/udp/udp_socket.h"
+#include "net/socket/udp_socket.h"
 
 namespace net {
-class IOBuffer;
 class IPEndPoint;
 class StringIOBuffer;
 class NetLog;
-struct NetworkInterface;
 }
 
 namespace extensions {

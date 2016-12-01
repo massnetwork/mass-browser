@@ -8,12 +8,11 @@ import android.content.Context;
 import android.os.Handler;
 import android.text.TextUtils;
 
-import org.json.JSONObject;
-
 import org.chromium.chrome.browser.autofill.PersonalDataManager;
 import org.chromium.chrome.browser.autofill.PersonalDataManager.AutofillProfile;
 import org.chromium.chrome.browser.autofill.PersonalDataManager.CreditCard;
 import org.chromium.content_public.browser.WebContents;
+import org.chromium.payments.mojom.PaymentMethodData;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -41,7 +40,7 @@ public class AutofillPaymentApp implements PaymentApp {
 
     @Override
     public void getInstruments(
-            Map<String, JSONObject> unusedMethodData, final InstrumentsCallback callback) {
+            Map<String, PaymentMethodData> unusedMethodData, final InstrumentsCallback callback) {
         PersonalDataManager pdm = PersonalDataManager.getInstance();
         List<CreditCard> cards = pdm.getCreditCardsToSuggest();
         final List<PaymentInstrument> instruments = new ArrayList<>(cards.size());
@@ -50,6 +49,13 @@ public class AutofillPaymentApp implements PaymentApp {
             CreditCard card = cards.get(i);
             AutofillProfile billingAddress = TextUtils.isEmpty(card.getBillingAddressId())
                     ? null : pdm.getProfile(card.getBillingAddressId());
+
+            if (billingAddress != null
+                    && AutofillAddress.checkAddressCompletionStatus(billingAddress)
+                            != AutofillAddress.COMPLETE) {
+                billingAddress = null;
+            }
+
             instruments.add(new AutofillPaymentInstrument(mContext, mWebContents, card,
                     billingAddress));
         }
@@ -83,6 +89,14 @@ public class AutofillPaymentApp implements PaymentApp {
         methods.add("generic");
 
         return methods;
+    }
+
+    @Override
+    public boolean supportsMethodsAndData(Map<String, PaymentMethodData> methodsAndData) {
+        assert methodsAndData != null;
+        Set<String> methodNames = new HashSet<>(methodsAndData.keySet());
+        methodNames.retainAll(getAppMethodNames());
+        return !methodNames.isEmpty();
     }
 
     @Override

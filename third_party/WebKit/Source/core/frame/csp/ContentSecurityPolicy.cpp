@@ -48,6 +48,7 @@
 #include "core/loader/DocumentLoader.h"
 #include "core/loader/FrameLoaderClient.h"
 #include "core/loader/PingLoader.h"
+#include "core/workers/WorkerGlobalScope.h"
 #include "platform/RuntimeEnabledFeatures.h"
 #include "platform/json/JSONValues.h"
 #include "platform/network/ContentSecurityPolicyParsers.h"
@@ -72,65 +73,6 @@
 
 namespace blink {
 
-// CSP Level 1 Directives
-const char ContentSecurityPolicy::ConnectSrc[] = "connect-src";
-const char ContentSecurityPolicy::DefaultSrc[] = "default-src";
-const char ContentSecurityPolicy::FontSrc[] = "font-src";
-const char ContentSecurityPolicy::FrameSrc[] = "frame-src";
-const char ContentSecurityPolicy::ImgSrc[] = "img-src";
-const char ContentSecurityPolicy::MediaSrc[] = "media-src";
-const char ContentSecurityPolicy::ObjectSrc[] = "object-src";
-const char ContentSecurityPolicy::ReportURI[] = "report-uri";
-const char ContentSecurityPolicy::Sandbox[] = "sandbox";
-const char ContentSecurityPolicy::ScriptSrc[] = "script-src";
-const char ContentSecurityPolicy::StyleSrc[] = "style-src";
-
-// CSP Level 2 Directives
-const char ContentSecurityPolicy::BaseURI[] = "base-uri";
-const char ContentSecurityPolicy::ChildSrc[] = "child-src";
-const char ContentSecurityPolicy::FormAction[] = "form-action";
-const char ContentSecurityPolicy::FrameAncestors[] = "frame-ancestors";
-const char ContentSecurityPolicy::PluginTypes[] = "plugin-types";
-
-// CSP Editor's Draft:
-// https://w3c.github.io/webappsec/specs/content-security-policy
-const char ContentSecurityPolicy::ManifestSrc[] = "manifest-src";
-
-// Mixed Content Directive
-// https://w3c.github.io/webappsec/specs/mixedcontent/#strict-mode
-const char ContentSecurityPolicy::BlockAllMixedContent[] =
-    "block-all-mixed-content";
-
-// https://w3c.github.io/webappsec/specs/upgrade/
-const char ContentSecurityPolicy::UpgradeInsecureRequests[] =
-    "upgrade-insecure-requests";
-
-// https://mikewest.github.io/cors-rfc1918/#csp
-const char ContentSecurityPolicy::TreatAsPublicAddress[] =
-    "treat-as-public-address";
-
-// https://w3c.github.io/webappsec-subresource-integrity/#require-sri-for
-const char ContentSecurityPolicy::RequireSRIFor[] = "require-sri-for";
-
-bool ContentSecurityPolicy::isDirectiveName(const String& name) {
-  return (
-      equalIgnoringCase(name, ConnectSrc) ||
-      equalIgnoringCase(name, DefaultSrc) || equalIgnoringCase(name, FontSrc) ||
-      equalIgnoringCase(name, FrameSrc) || equalIgnoringCase(name, ImgSrc) ||
-      equalIgnoringCase(name, MediaSrc) || equalIgnoringCase(name, ObjectSrc) ||
-      equalIgnoringCase(name, ReportURI) || equalIgnoringCase(name, Sandbox) ||
-      equalIgnoringCase(name, ScriptSrc) || equalIgnoringCase(name, StyleSrc) ||
-      equalIgnoringCase(name, BaseURI) || equalIgnoringCase(name, ChildSrc) ||
-      equalIgnoringCase(name, FormAction) ||
-      equalIgnoringCase(name, FrameAncestors) ||
-      equalIgnoringCase(name, PluginTypes) ||
-      equalIgnoringCase(name, ManifestSrc) ||
-      equalIgnoringCase(name, BlockAllMixedContent) ||
-      equalIgnoringCase(name, UpgradeInsecureRequests) ||
-      equalIgnoringCase(name, TreatAsPublicAddress) ||
-      equalIgnoringCase(name, RequireSRIFor));
-}
-
 bool ContentSecurityPolicy::isNonceableElement(const Element* element) {
   if (!element->fastHasAttribute(HTMLNames::nonceAttr))
     return false;
@@ -144,8 +86,8 @@ bool ContentSecurityPolicy::isNonceableElement(const Element* element) {
   //
   // See http://blog.innerht.ml/csp-2015/#danglingmarkupinjection for an example
   // of the kind of attack this is aimed at mitigating.
-  DEFINE_STATIC_LOCAL(AtomicString, scriptString, ("<script"));
-  DEFINE_STATIC_LOCAL(AtomicString, styleString, ("<style"));
+  static const char scriptString[] = "<script";
+  static const char styleString[] = "<style";
   for (const Attribute& attr : element->attributes()) {
     AtomicString name = attr.localName().lowerASCII();
     AtomicString value = attr.value().lowerASCII();
@@ -830,6 +772,7 @@ bool ContentSecurityPolicy::allowRequest(
     case WebURLRequest::RequestContextEventSource:
     case WebURLRequest::RequestContextFetch:
     case WebURLRequest::RequestContextXMLHttpRequest:
+    case WebURLRequest::RequestContextSubresource:
       return allowConnectToSource(url, redirectStatus, reportingStatus);
     case WebURLRequest::RequestContextEmbed:
     case WebURLRequest::RequestContextObject:
@@ -844,7 +787,7 @@ bool ContentSecurityPolicy::allowRequest(
       return allowFormAction(url, redirectStatus, reportingStatus);
     case WebURLRequest::RequestContextFrame:
     case WebURLRequest::RequestContextIframe:
-      return allowChildFrameFromSource(url, redirectStatus, reportingStatus);
+      return allowFrameFromSource(url, redirectStatus, reportingStatus);
     case WebURLRequest::RequestContextImport:
     case WebURLRequest::RequestContextScript:
       return allowScriptFromSource(url, nonce, parserDisposition,
@@ -868,7 +811,6 @@ bool ContentSecurityPolicy::allowRequest(
     case WebURLRequest::RequestContextPing:
     case WebURLRequest::RequestContextPlugin:
     case WebURLRequest::RequestContextPrefetch:
-    case WebURLRequest::RequestContextSubresource:
     case WebURLRequest::RequestContextUnspecified:
       return true;
   }
@@ -892,11 +834,11 @@ bool ContentSecurityPolicy::allowObjectFromSource(
       m_policies, url, redirectStatus, reportingStatus);
 }
 
-bool ContentSecurityPolicy::allowChildFrameFromSource(
+bool ContentSecurityPolicy::allowFrameFromSource(
     const KURL& url,
     RedirectStatus redirectStatus,
     ContentSecurityPolicy::ReportingStatus reportingStatus) const {
-  return isAllowedByAll<&CSPDirectiveList::allowChildFrameFromSource>(
+  return isAllowedByAll<&CSPDirectiveList::allowFrameFromSource>(
       m_policies, url, redirectStatus, reportingStatus);
 }
 
@@ -971,7 +913,7 @@ bool ContentSecurityPolicy::allowWorkerContextFromSource(
   // impact of this backwards-incompatible change.
   if (Document* document = this->document()) {
     UseCounter::count(*document, UseCounter::WorkerSubjectToCSP);
-    if (isAllowedByAll<&CSPDirectiveList::allowChildContextFromSource>(
+    if (isAllowedByAll<&CSPDirectiveList::allowWorkerFromSource>(
             m_policies, url, redirectStatus, SuppressReport) &&
         !isAllowedByAll<&CSPDirectiveList::allowScriptFromSource>(
             m_policies, url, AtomicString(), NotParserInserted, redirectStatus,
@@ -981,7 +923,7 @@ bool ContentSecurityPolicy::allowWorkerContextFromSource(
     }
   }
 
-  return isAllowedByAll<&CSPDirectiveList::allowChildContextFromSource>(
+  return isAllowedByAll<&CSPDirectiveList::allowWorkerFromSource>(
       m_policies, url, redirectStatus, reportingStatus);
 }
 
@@ -1039,10 +981,11 @@ void ContentSecurityPolicy::upgradeInsecureRequests() {
   m_insecureRequestPolicy |= kUpgradeInsecureRequests;
 }
 
-static String stripURLForUseInReport(Document* document,
-                                     const KURL& url,
-                                     RedirectStatus redirectStatus,
-                                     const String& effectiveDirective) {
+static String stripURLForUseInReport(
+    ExecutionContext* context,
+    const KURL& url,
+    RedirectStatus redirectStatus,
+    const ContentSecurityPolicy::DirectiveType& effectiveType) {
   if (!url.isValid())
     return String();
   if (!url.isHierarchical() || url.protocolIs("file"))
@@ -1052,12 +995,10 @@ static String stripURLForUseInReport(Document* document,
   // (and, by extension, in plugin documents), strip cross-origin 'frame-src'
   // and 'object-src' violations down to an origin. https://crbug.com/633306
   bool canSafelyExposeURL =
-      document->getSecurityOrigin()->canRequest(url) ||
+      context->getSecurityOrigin()->canRequest(url) ||
       (redirectStatus == RedirectStatus::NoRedirect &&
-       !equalIgnoringCase(effectiveDirective,
-                          ContentSecurityPolicy::FrameSrc) &&
-       !equalIgnoringCase(effectiveDirective,
-                          ContentSecurityPolicy::ObjectSrc));
+       effectiveType != ContentSecurityPolicy::DirectiveType::FrameSrc &&
+       effectiveType != ContentSecurityPolicy::DirectiveType::ObjectSrc);
 
   if (canSafelyExposeURL) {
     // 'KURL::strippedForUseAsReferrer()' dumps 'String()' for non-webby URLs.
@@ -1071,24 +1012,23 @@ static String stripURLForUseInReport(Document* document,
 
 static void gatherSecurityPolicyViolationEventData(
     SecurityPolicyViolationEventInit& init,
-    Document* document,
+    ExecutionContext* context,
     const String& directiveText,
-    const String& effectiveDirective,
+    const ContentSecurityPolicy::DirectiveType& effectiveType,
     const KURL& blockedURL,
     const String& header,
     RedirectStatus redirectStatus,
     ContentSecurityPolicyHeaderType headerType,
     ContentSecurityPolicy::ViolationType violationType,
     int contextLine) {
-  if (equalIgnoringCase(effectiveDirective,
-                        ContentSecurityPolicy::FrameAncestors)) {
+  if (effectiveType == ContentSecurityPolicy::DirectiveType::FrameAncestors) {
     // If this load was blocked via 'frame-ancestors', then the URL of
     // |document| has not yet been initialized. In this case, we'll set both
     // 'documentURI' and 'blockedURI' to the blocked document's URL.
     init.setDocumentURI(blockedURL.getString());
     init.setBlockedURI(blockedURL.getString());
   } else {
-    init.setDocumentURI(document->url().getString());
+    init.setDocumentURI(context->url().getString());
     switch (violationType) {
       case ContentSecurityPolicy::InlineViolation:
         init.setBlockedURI("inline");
@@ -1098,11 +1038,13 @@ static void gatherSecurityPolicyViolationEventData(
         break;
       case ContentSecurityPolicy::URLViolation:
         init.setBlockedURI(stripURLForUseInReport(
-            document, blockedURL, redirectStatus, effectiveDirective));
+            context, blockedURL, redirectStatus, effectiveType));
         break;
     }
   }
-  init.setReferrer(document->referrer());
+
+  String effectiveDirective =
+      ContentSecurityPolicy::getDirectiveName(effectiveType);
   init.setViolatedDirective(effectiveDirective);
   init.setEffectiveDirective(effectiveDirective);
   init.setOriginalPolicy(header);
@@ -1114,14 +1056,21 @@ static void gatherSecurityPolicyViolationEventData(
   init.setColumnNumber(0);
   init.setStatusCode(0);
 
-  if (!SecurityOrigin::isSecure(document->url()) && document->loader())
-    init.setStatusCode(document->loader()->response().httpStatusCode());
+  // TODO(mkwst): We only have referrer and status code information for
+  // Documents. It would be nice to get them for Workers as well.
+  if (context->isDocument()) {
+    Document* document = toDocument(context);
+    DCHECK(document);
+    init.setReferrer(document->referrer());
+    if (!SecurityOrigin::isSecure(context->url()) && document->loader())
+      init.setStatusCode(document->loader()->response().httpStatusCode());
+  }
 
-  std::unique_ptr<SourceLocation> location = SourceLocation::capture(document);
+  std::unique_ptr<SourceLocation> location = SourceLocation::capture(context);
   if (location->lineNumber()) {
     KURL source = KURL(ParsedURLString, location->url());
-    init.setSourceFile(stripURLForUseInReport(document, source, redirectStatus,
-                                              effectiveDirective));
+    init.setSourceFile(
+        stripURLForUseInReport(context, source, redirectStatus, effectiveType));
     init.setLineNumber(location->lineNumber());
     init.setColumnNumber(location->columnNumber());
   }
@@ -1129,7 +1078,7 @@ static void gatherSecurityPolicyViolationEventData(
 
 void ContentSecurityPolicy::reportViolation(
     const String& directiveText,
-    const String& effectiveDirective,
+    const DirectiveType& effectiveType,
     const String& consoleMessage,
     const KURL& blockedURL,
     const Vector<String>& reportEndpoints,
@@ -1146,29 +1095,24 @@ void ContentSecurityPolicy::reportViolation(
   // https://crbug.com/611232 (or move CSP child-src and frame-src checks to the
   // browser process - see https://crbug.com/376522).
   if (!m_executionContext && !contextFrame) {
-    DCHECK(equalIgnoringCase(effectiveDirective,
-                             ContentSecurityPolicy::ChildSrc) ||
-           equalIgnoringCase(effectiveDirective,
-                             ContentSecurityPolicy::FrameSrc) ||
-           equalIgnoringCase(effectiveDirective,
-                             ContentSecurityPolicy::PluginTypes));
+    DCHECK(effectiveType == DirectiveType::ChildSrc ||
+           effectiveType == DirectiveType::FrameSrc ||
+           effectiveType == DirectiveType::PluginTypes);
     return;
   }
 
-  ASSERT((m_executionContext && !contextFrame) ||
-         (equalIgnoringCase(effectiveDirective,
-                            ContentSecurityPolicy::FrameAncestors) &&
-          contextFrame));
-
-  // FIXME: Support sending reports from worker.
-  Document* document =
-      contextFrame ? contextFrame->document() : this->document();
-  if (!document)
-    return;
+  DCHECK((m_executionContext && !contextFrame) ||
+         ((effectiveType == DirectiveType::FrameAncestors) && contextFrame));
 
   SecurityPolicyViolationEventInit violationData;
+
+  // If we're processing 'frame-ancestors', use |contextFrame|'s execution
+  // context to gather data. Otherwise, use the policy's execution context.
+  ExecutionContext* relevantContext =
+      contextFrame ? contextFrame->document() : m_executionContext;
+  DCHECK(relevantContext);
   gatherSecurityPolicyViolationEventData(
-      violationData, document, directiveText, effectiveDirective, blockedURL,
+      violationData, relevantContext, directiveText, effectiveType, blockedURL,
       header, redirectStatus, headerType, violationType, contextLine);
 
   // TODO(mkwst): Obviously, we shouldn't hit this check, as extension-loaded
@@ -1177,7 +1121,31 @@ void ContentSecurityPolicy::reportViolation(
   // https://crbug.com/524356 for detail.
   if (!violationData.sourceFile().isEmpty() &&
       SchemeRegistry::schemeShouldBypassContentSecurityPolicy(
-          KURL(ParsedURLString, violationData.sourceFile()).protocol()))
+          KURL(ParsedURLString, violationData.sourceFile()).protocol())) {
+    return;
+  }
+
+  postViolationReport(violationData, contextFrame, reportEndpoints);
+
+  // Fire a violation event if we're working within an execution context (e.g.
+  // we're not processing 'frame-ancestors').
+  if (m_executionContext) {
+    m_executionContext->postTask(
+        BLINK_FROM_HERE,
+        createSameThreadTask(&ContentSecurityPolicy::dispatchViolationEvents,
+                             wrapPersistent(this), violationData,
+                             wrapPersistent(element)));
+  }
+}
+
+void ContentSecurityPolicy::postViolationReport(
+    const SecurityPolicyViolationEventInit& violationData,
+    LocalFrame* contextFrame,
+    const Vector<String>& reportEndpoints) {
+  // TODO(mkwst): Support POSTing violation reports from a Worker.
+  Document* document =
+      contextFrame ? contextFrame->document() : this->document();
+  if (!document)
     return;
 
   // We need to be careful here when deciding what information to send to the
@@ -1211,58 +1179,63 @@ void ContentSecurityPolicy::reportViolation(
   reportObject->setObject("csp-report", std::move(cspReport));
   String stringifiedReport = reportObject->toJSONString();
 
-  if (!shouldSendViolationReport(stringifiedReport))
-    return;
-  didSendViolationReport(stringifiedReport);
+  // Only POST unique reports to the external endpoint; repeated reports add no
+  // value on the server side, as they're indistinguishable. Note that we'll
+  // fire the DOM event for every violation, as the page has enough context to
+  // react in some reasonable way to each violation as it occurs.
+  if (shouldSendViolationReport(stringifiedReport)) {
+    didSendViolationReport(stringifiedReport);
 
-  RefPtr<EncodedFormData> report =
-      EncodedFormData::create(stringifiedReport.utf8());
+    RefPtr<EncodedFormData> report =
+        EncodedFormData::create(stringifiedReport.utf8());
 
-  LocalFrame* frame = document->frame();
-  if (!frame)
-    return;
+    LocalFrame* frame = document->frame();
+    if (!frame)
+      return;
 
-  for (const String& endpoint : reportEndpoints) {
-    // If we have a context frame we're dealing with 'frame-ancestors' and we
-    // don't have our own execution context. Use the frame's document to
-    // complete the endpoint URL, overriding its URL with the blocked document's
-    // URL.
-    DCHECK(!contextFrame || !m_executionContext);
-    DCHECK(!contextFrame ||
-           equalIgnoringCase(effectiveDirective, FrameAncestors));
-    KURL url =
-        contextFrame
-            ? frame->document()->completeURLWithOverride(endpoint, blockedURL)
-            : completeURL(endpoint);
-    PingLoader::sendViolationReport(
-        frame, url, report, PingLoader::ContentSecurityPolicyViolationReport);
+    for (const String& endpoint : reportEndpoints) {
+      // If we have a context frame we're dealing with 'frame-ancestors' and we
+      // don't have our own execution context. Use the frame's document to
+      // complete the endpoint URL, overriding its URL with the blocked
+      // document's URL.
+      DCHECK(!contextFrame || !m_executionContext);
+      DCHECK(!contextFrame ||
+             getDirectiveType(violationData.effectiveDirective()) ==
+                 DirectiveType::FrameAncestors);
+      KURL url =
+          contextFrame
+              ? frame->document()->completeURLWithOverride(
+                    endpoint, KURL(ParsedURLString, violationData.blockedURI()))
+              : completeURL(endpoint);
+      PingLoader::sendViolationReport(
+          frame, url, report, PingLoader::ContentSecurityPolicyViolationReport);
+    }
   }
-
-  document->postTask(
-      BLINK_FROM_HERE,
-      createSameThreadTask(&ContentSecurityPolicy::dispatchViolationEvents,
-                           wrapPersistent(this), violationData,
-                           wrapPersistent(element), wrapPersistent(document)));
 }
 
 void ContentSecurityPolicy::dispatchViolationEvents(
     const SecurityPolicyViolationEventInit& violationData,
-    Element* element,
-    Document* document) {
-  // If the document is detached or closed (thus clearing its event queue)
+    Element* element) {
+  // If the context is detached or closed (thus clearing its event queue)
   // between the violation occuring and this event dispatch, exit early.
-  if (!document->domWindow() || !document->domWindow()->getEventQueue())
+  EventQueue* queue = m_executionContext->getEventQueue();
+  if (!queue)
     return;
 
   SecurityPolicyViolationEvent* event = SecurityPolicyViolationEvent::create(
       EventTypeNames::securitypolicyviolation, violationData);
   DCHECK(event->bubbles());
-  if (element && element->isConnected() && element->document() == document) {
-    event->setTarget(element);
-    document->domWindow()->getEventQueue()->enqueueEvent(event);
-  } else {
-    document->domWindow()->enqueueDocumentEvent(event);
+
+  if (m_executionContext->isDocument()) {
+    Document* document = toDocument(m_executionContext);
+    if (element && element->isConnected() && element->document() == document)
+      event->setTarget(element);
+    else
+      event->setTarget(document);
+  } else if (m_executionContext->isWorkerGlobalScope()) {
+    event->setTarget(toWorkerGlobalScope(m_executionContext));
   }
+  queue->enqueueEvent(event);
 }
 
 void ContentSecurityPolicy::reportMixedContent(const KURL& mixedURL,
@@ -1305,23 +1278,21 @@ void ContentSecurityPolicy::reportInvalidDirectiveInMeta(
 }
 
 void ContentSecurityPolicy::reportUnsupportedDirective(const String& name) {
-  DEFINE_STATIC_LOCAL(String, allow, ("allow"));
-  DEFINE_STATIC_LOCAL(String, options, ("options"));
-  DEFINE_STATIC_LOCAL(String, policyURI, ("policy-uri"));
-  DEFINE_STATIC_LOCAL(
-      String, allowMessage,
-      ("The 'allow' directive has been replaced with 'default-src'. Please use "
-       "that directive instead, as 'allow' has no effect."));
-  DEFINE_STATIC_LOCAL(
-      String, optionsMessage,
-      ("The 'options' directive has been replaced with 'unsafe-inline' and "
-       "'unsafe-eval' source expressions for the 'script-src' and 'style-src' "
-       "directives. Please use those directives instead, as 'options' has no "
-       "effect."));
-  DEFINE_STATIC_LOCAL(String, policyURIMessage,
-                      ("The 'policy-uri' directive has been removed from the "
-                       "specification. Please specify a complete policy via "
-                       "the Content-Security-Policy header."));
+  static const char allow[] = "allow";
+  static const char options[] = "options";
+  static const char policyURI[] = "policy-uri";
+  static const char allowMessage[] =
+      "The 'allow' directive has been replaced with 'default-src'. Please use "
+      "that directive instead, as 'allow' has no effect.";
+  static const char optionsMessage[] =
+      "The 'options' directive has been replaced with 'unsafe-inline' and "
+      "'unsafe-eval' source expressions for the 'script-src' and 'style-src' "
+      "directives. Please use those directives instead, as 'options' has no "
+      "effect.";
+  static const char policyURIMessage[] =
+      "The 'policy-uri' directive has been removed from the "
+      "specification. Please specify a complete policy via "
+      "the Content-Security-Policy header.";
 
   String message =
       "Unrecognized Content-Security-Policy directive '" + name + "'.\n";
@@ -1332,7 +1303,7 @@ void ContentSecurityPolicy::reportUnsupportedDirective(const String& name) {
     message = optionsMessage;
   } else if (equalIgnoringCase(name, policyURI)) {
     message = policyURIMessage;
-  } else if (isDirectiveName(name)) {
+  } else if (getDirectiveType(name) != DirectiveType::Undefined) {
     message = "The Content-Security-Policy directive '" + name +
               "' is implemented behind a flag which is currently disabled.\n";
     level = InfoMessageLevel;
@@ -1517,6 +1488,111 @@ bool ContentSecurityPolicy::shouldSendViolationReport(
 
 void ContentSecurityPolicy::didSendViolationReport(const String& report) {
   m_violationReportsSent.add(report.impl()->hash());
+}
+
+const char* ContentSecurityPolicy::getDirectiveName(const DirectiveType& type) {
+  switch (type) {
+    case DirectiveType::BaseURI:
+      return "base-uri";
+    case DirectiveType::BlockAllMixedContent:
+      return "block-all-mixed-content";
+    case DirectiveType::ChildSrc:
+      return "child-src";
+    case DirectiveType::ConnectSrc:
+      return "connect-src";
+    case DirectiveType::DefaultSrc:
+      return "default-src";
+    case DirectiveType::FrameAncestors:
+      return "frame-ancestors";
+    case DirectiveType::FrameSrc:
+      return "frame-src";
+    case DirectiveType::FontSrc:
+      return "font-src";
+    case DirectiveType::FormAction:
+      return "form-action";
+    case DirectiveType::ImgSrc:
+      return "img-src";
+    case DirectiveType::ManifestSrc:
+      return "manifest-src";
+    case DirectiveType::MediaSrc:
+      return "media-src";
+    case DirectiveType::ObjectSrc:
+      return "object-src";
+    case DirectiveType::PluginTypes:
+      return "plugin-types";
+    case DirectiveType::ReportURI:
+      return "report-uri";
+    case DirectiveType::RequireSRIFor:
+      return "require-sri-for";
+    case DirectiveType::Sandbox:
+      return "sandbox";
+    case DirectiveType::ScriptSrc:
+      return "script-src";
+    case DirectiveType::StyleSrc:
+      return "style-src";
+    case DirectiveType::TreatAsPublicAddress:
+      return "treat-as-public-address";
+    case DirectiveType::UpgradeInsecureRequests:
+      return "upgrade-insecure-requests";
+    case DirectiveType::WorkerSrc:
+      return "worker-src";
+    case DirectiveType::Undefined:
+      NOTREACHED();
+      return "";
+  }
+
+  NOTREACHED();
+  return "";
+}
+
+ContentSecurityPolicy::DirectiveType ContentSecurityPolicy::getDirectiveType(
+    const String& name) {
+  if (name == "base-uri")
+    return DirectiveType::BaseURI;
+  if (name == "block-all-mixed-content")
+    return DirectiveType::BlockAllMixedContent;
+  if (name == "child-src")
+    return DirectiveType::ChildSrc;
+  if (name == "connect-src")
+    return DirectiveType::ConnectSrc;
+  if (name == "default-src")
+    return DirectiveType::DefaultSrc;
+  if (name == "frame-ancestors")
+    return DirectiveType::FrameAncestors;
+  if (name == "frame-src")
+    return DirectiveType::FrameSrc;
+  if (name == "font-src")
+    return DirectiveType::FontSrc;
+  if (name == "form-action")
+    return DirectiveType::FormAction;
+  if (name == "img-src")
+    return DirectiveType::ImgSrc;
+  if (name == "manifest-src")
+    return DirectiveType::ManifestSrc;
+  if (name == "media-src")
+    return DirectiveType::MediaSrc;
+  if (name == "object-src")
+    return DirectiveType::ObjectSrc;
+  if (name == "plugin-types")
+    return DirectiveType::PluginTypes;
+  if (name == "report-uri")
+    return DirectiveType::ReportURI;
+  if (name == "require-sri-for")
+    return DirectiveType::RequireSRIFor;
+  if (name == "sandbox")
+    return DirectiveType::Sandbox;
+  if (name == "script-src")
+    return DirectiveType::ScriptSrc;
+  if (name == "style-src")
+    return DirectiveType::StyleSrc;
+  if (name == "treat-as-public-address")
+    return DirectiveType::TreatAsPublicAddress;
+  if (name == "upgrade-insecure-requests")
+    return DirectiveType::UpgradeInsecureRequests;
+  if (name == "worker-src")
+    return DirectiveType::WorkerSrc;
+
+  return DirectiveType::Undefined;
 }
 
 }  // namespace blink

@@ -124,7 +124,7 @@
 #include "content/public/browser/user_metrics.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_switches.h"
-#include "ui/accessibility/ax_view_state.h"
+#include "ui/accessibility/ax_node_data.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/hit_test.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -138,6 +138,7 @@
 #include "ui/gfx/color_utils.h"
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/scoped_canvas.h"
+#include "ui/native_theme/native_theme_dark_aura.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "ui/views/controls/button/menu_button.h"
 #include "ui/views/controls/textfield/textfield.h"
@@ -169,7 +170,7 @@
 #include "chrome/browser/win/jumplist.h"
 #include "chrome/browser/win/jumplist_factory.h"
 #include "ui/gfx/color_palette.h"
-#include "ui/native_theme/native_theme_dark_win.h"
+#include "ui/native_theme/native_theme_win.h"
 #include "ui/views/win/scoped_fullscreen_visibility.h"
 #endif
 
@@ -179,7 +180,6 @@
 #endif
 
 #if defined(OS_LINUX)
-#include "ui/native_theme/native_theme_dark_aura.h"
 #endif
 
 using base::TimeDelta;
@@ -567,7 +567,7 @@ bool BrowserView::GetAccelerator(int cmd_id,
                                  ui::Accelerator* accelerator) const {
   // We retrieve the accelerator information for standard accelerators
   // for cut, copy and paste.
-  if (chrome::GetStandardAcceleratorForCommandId(cmd_id, accelerator))
+  if (GetStandardAcceleratorForCommandId(cmd_id, accelerator))
     return true;
   // Else, we retrieve the accelerator information from the accelerator table.
   for (std::map<ui::Accelerator, int>::const_iterator it =
@@ -578,7 +578,7 @@ bool BrowserView::GetAccelerator(int cmd_id,
     }
   }
   // Else, we retrieve the accelerator information from Ash (if applicable).
-  return chrome::GetAshAcceleratorForCommandId(cmd_id, accelerator);
+  return GetAshAcceleratorForCommandId(cmd_id, accelerator);
 }
 
 bool BrowserView::IsAcceleratorRegistered(const ui::Accelerator& accelerator) {
@@ -1206,7 +1206,7 @@ autofill::SaveCardBubbleView* BrowserView::ShowSaveCreditCardBubble(
                                             is_user_gesture);
 }
 
-void BrowserView::ShowTranslateBubble(
+ShowTranslateBubbleResult BrowserView::ShowTranslateBubble(
     content::WebContents* web_contents,
     translate::TranslateStep step,
     translate::TranslateErrors::Type error_type,
@@ -1215,17 +1215,19 @@ void BrowserView::ShowTranslateBubble(
       !GetLocationBarView()->IsMouseHovered()) {
     content::RenderViewHost* rvh = web_contents->GetRenderViewHost();
     if (rvh->IsFocusedElementEditable())
-      return;
+      return ShowTranslateBubbleResult::EDITABLE_FIELD_IS_ACTIVE;
   }
 
   translate::LanguageState& language_state =
       ChromeTranslateClient::FromWebContents(web_contents)->GetLanguageState();
   language_state.SetTranslateEnabled(true);
 
-  if (!IsMinimized()) {
-    toolbar_->ShowTranslateBubble(web_contents, step, error_type,
-                                  is_user_gesture);
-  }
+  if (IsMinimized())
+    return ShowTranslateBubbleResult::BROWSER_WINDOW_MINIMIZED;
+
+  toolbar_->ShowTranslateBubble(web_contents, step, error_type,
+                                is_user_gesture);
+  return ShowTranslateBubbleResult::SUCCESS;
 }
 
 #if BUILDFLAG(ENABLE_ONE_CLICK_SIGNIN)
@@ -1280,7 +1282,7 @@ void BrowserView::ShowWebsiteSettings(
     Profile* profile,
     content::WebContents* web_contents,
     const GURL& virtual_url,
-    const security_state::SecurityStateModel::SecurityInfo& security_info) {
+    const security_state::SecurityInfo& security_info) {
   // Some browser windows have a location icon embedded in the frame. Try to
   // use that if it exists. If it doesn't exist, use the location icon from
   // the location bar.
@@ -1352,6 +1354,9 @@ bool BrowserView::PreHandleKeyboardEvent(const NativeWebKeyboardEvent& event,
   }
 #endif  // defined(OS_CHROMEOS)
 
+  if (frame_->PreHandleKeyboardEvent(event))
+    return true;
+
   chrome::BrowserCommandController* controller = browser_->command_controller();
 
   // Here we need to retrieve the command id (if any) associated to the
@@ -1389,6 +1394,9 @@ bool BrowserView::PreHandleKeyboardEvent(const NativeWebKeyboardEvent& event,
 }
 
 void BrowserView::HandleKeyboardEvent(const NativeWebKeyboardEvent& event) {
+  if (frame_->HandleKeyboardEvent(event))
+    return;
+
   unhandled_keyboard_event_handler_.HandleKeyboardEvent(event,
                                                         GetFocusManager());
 }
@@ -1896,8 +1904,8 @@ void BrowserView::ChildPreferredSizeChanged(View* child) {
   Layout();
 }
 
-void BrowserView::GetAccessibleState(ui::AXViewState* state) {
-  state->role = ui::AX_ROLE_CLIENT;
+void BrowserView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
+  node_data->role = ui::AX_ROLE_CLIENT;
 }
 
 void BrowserView::OnThemeChanged() {
@@ -1906,11 +1914,12 @@ void BrowserView::OnThemeChanged() {
     // the usage of dark or normal hinges on the browser theme), so we have to
     // propagate both kinds of change.
     base::AutoReset<bool> reset(&handling_theme_changed_, true);
+#if defined(USE_AURA)
+    ui::NativeThemeDarkAura::instance()->NotifyObservers();
+#endif
 #if defined(OS_WIN)
-    ui::NativeThemeDarkWin::instance()->NotifyObservers();
     ui::NativeThemeWin::instance()->NotifyObservers();
 #elif defined(OS_LINUX)
-    ui::NativeThemeDarkAura::instance()->NotifyObservers();
     ui::NativeThemeAura::instance()->NotifyObservers();
 #endif
   }
@@ -1938,7 +1947,7 @@ bool BrowserView::AcceleratorPressed(const ui::Accelerator& accelerator) {
   DCHECK(iter != accelerator_table_.end());
   int command_id = iter->second;
 
-  if (accelerator.IsRepeat() && !chrome::IsCommandRepeatable(command_id))
+  if (accelerator.IsRepeat() && !IsCommandRepeatable(command_id))
     return false;
 
   chrome::BrowserCommandController* controller = browser_->command_controller();
@@ -2314,17 +2323,15 @@ void BrowserView::LoadAccelerators() {
 
   // Let's fill our own accelerator table.
   const bool is_app_mode = chrome::IsRunningInForcedAppMode();
-  const std::vector<chrome::AcceleratorMapping> accelerator_list(
-      chrome::GetAcceleratorList());
-  for (std::vector<chrome::AcceleratorMapping>::const_iterator it =
-           accelerator_list.begin(); it != accelerator_list.end(); ++it) {
+  const std::vector<AcceleratorMapping> accelerator_list(GetAcceleratorList());
+  for (const auto& entry : accelerator_list) {
     // In app mode, only allow accelerators of white listed commands to pass
     // through.
-    if (is_app_mode && !chrome::IsCommandAllowedInAppMode(it->command_id))
+    if (is_app_mode && !chrome::IsCommandAllowedInAppMode(entry.command_id))
       continue;
 
-    ui::Accelerator accelerator(it->keycode, it->modifiers);
-    accelerator_table_[accelerator] = it->command_id;
+    ui::Accelerator accelerator(entry.keycode, entry.modifiers);
+    accelerator_table_[accelerator] = entry.command_id;
 
     // Also register with the focus manager.
     focus_manager->RegisterAccelerator(

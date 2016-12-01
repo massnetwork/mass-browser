@@ -23,7 +23,11 @@
 #include "base/single_thread_task_runner.h"
 #include "base/strings/string_util.h"
 #include "base/sys_info.h"
+#include "base/test/simple_test_clock.h"
+#include "base/test/simple_test_tick_clock.h"
 #include "base/threading/thread_task_runner_handle.h"
+#include "base/time/default_clock.h"
+#include "base/time/default_tick_clock.h"
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
 #include "base/values.h"
@@ -64,11 +68,11 @@
 #include "net/http/http_request_headers.h"
 #include "ui/gfx/geometry/rect.h"
 
+using chrome_browser_net::NetworkPredictionStatus;
 using content::BrowserThread;
 using content::RenderViewHost;
 using content::SessionStorageNamespace;
 using content::WebContents;
-using namespace chrome_browser_net;
 
 namespace prerender {
 
@@ -169,25 +173,14 @@ PrerenderManager::PrerenderManager(Profile* profile)
       histograms_(new PrerenderHistograms()),
       profile_network_bytes_(0),
       last_recorded_profile_network_bytes_(0),
+      clock_(new base::DefaultClock()),
+      tick_clock_(new base::DefaultTickClock()),
       weak_factory_(this) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
   last_prerender_start_time_ =
       GetCurrentTimeTicks() -
       base::TimeDelta::FromMilliseconds(kMinTimeBetweenPrerendersMs);
-
-  // Certain experiments override our default config_ values.
-  switch (PrerenderManager::GetMode()) {
-    case PrerenderManager::PRERENDER_MODE_EXPERIMENT_MULTI_PRERENDER_GROUP:
-      config_.max_link_concurrency = 4;
-      config_.max_link_concurrency_per_launcher = 2;
-      break;
-    case PrerenderManager::PRERENDER_MODE_EXPERIMENT_15MIN_TTL_GROUP:
-      config_.time_to_live = base::TimeDelta::FromMinutes(15);
-      break;
-    default:
-      break;
-  }
 
   notification_registrar_.Add(
       this, chrome::NOTIFICATION_PROFILE_DESTROYED,
@@ -441,15 +434,6 @@ std::unique_ptr<WebContents> PrerenderManager::SwapInternal(
     return nullptr;
   }
 
-  // For bookkeeping purposes, we need to mark this WebContents to
-  // reflect that it would have been prerendered.
-  if (GetMode() == PRERENDER_MODE_EXPERIMENT_NO_USE_GROUP) {
-    target_tab_helper->WouldHavePrerenderedNextLoad(
-        prerender_data->contents()->origin());
-    prerender_data->contents()->Destroy(FINAL_STATUS_WOULD_HAVE_BEEN_USED);
-    return nullptr;
-  }
-
   // At this point, we've determined that we will use the prerender.
   content::RenderProcessHost* process_host =
       prerender_data->contents()->GetRenderViewHost()->GetProcess();
@@ -625,23 +609,13 @@ bool PrerenderManager::IsPrerenderingPossible() {
 }
 
 // static
-bool PrerenderManager::ActuallyPrerendering() {
-  return IsPrerenderingPossible() && !IsControlGroup();
-}
-
-// static
-bool PrerenderManager::IsControlGroup() {
-  return GetMode() == PRERENDER_MODE_EXPERIMENT_CONTROL_GROUP;
-}
-
-// static
-bool PrerenderManager::IsNoUseGroup() {
-  return GetMode() == PRERENDER_MODE_EXPERIMENT_NO_USE_GROUP;
-}
-
-// static
 bool PrerenderManager::IsNoStatePrefetch() {
   return GetMode() == PRERENDER_MODE_NOSTATE_PREFETCH;
+}
+
+// static
+bool PrerenderManager::IsSimpleLoadExperiment() {
+  return GetMode() == PRERENDER_MODE_SIMPLE_LOAD_EXPERIMENT;
 }
 
 bool PrerenderManager::IsWebContentsPrerendering(
@@ -790,14 +764,6 @@ std::unique_ptr<base::DictionaryValue> PrerenderManager::GetAsValue() const {
   dict_value->SetBoolean("omnibox_enabled", IsOmniboxEnabled(profile_));
   // If prerender is disabled via a flag this method is not even called.
   std::string enabled_note;
-  if (IsControlGroup())
-    enabled_note += "(Control group: Not actually prerendering) ";
-  if (IsNoUseGroup())
-    enabled_note += "(No-use group: Not swapping in prerendered pages) ";
-  if (GetMode() == PRERENDER_MODE_EXPERIMENT_15MIN_TTL_GROUP) {
-    enabled_note +=
-        "(15 min TTL group: Extended prerender eviction to 15 mins) ";
-  }
   dict_value->SetString("enabled_note", enabled_note);
   return dict_value;
 }
@@ -922,8 +888,6 @@ std::unique_ptr<PrerenderHandle> PrerenderManager::AddPrerender(
 
   GURL url = url_arg;
   GURL alias_url;
-  if (IsControlGroup() && MaybeGetQueryStringBasedAliasURL(url, &alias_url))
-    url = alias_url;
 
   // From here on, we will record a FinalStatus so we need to register with the
   // histogram tracking.
@@ -984,6 +948,16 @@ std::unique_ptr<PrerenderHandle> PrerenderManager::AddPrerender(
     return nullptr;
   }
 
+  // Record the URL in the prefetch list, even when in full prerender mode, to
+  // enable metrics comparisons.
+  prefetches_.emplace_back(url, GetCurrentTimeTicks(), origin);
+
+  if (IsSimpleLoadExperiment()) {
+    // Exit after adding the url to prefetches_, so that no prefetching occurs
+    // but the page is still tracked as "would have been prefetched".
+    return nullptr;
+  }
+
   std::unique_ptr<PrerenderContents> prerender_contents =
       CreatePrerenderContents(url, referrer, origin);
   DCHECK(prerender_contents);
@@ -1002,9 +976,6 @@ std::unique_ptr<PrerenderHandle> PrerenderManager::AddPrerender(
   histograms_->RecordPrerenderStarted(origin);
   DCHECK(!prerender_contents_ptr->prerendering_has_started());
 
-  if (prerender_contents_ptr->prerender_mode() == PREFETCH_ONLY)
-    prefetches_.emplace_back(url, GetCurrentTimeTicks(), origin);
-
   std::unique_ptr<PrerenderHandle> prerender_handle =
       base::WrapUnique(new PrerenderHandle(active_prerenders_.back().get()));
   SortActivePrerenders();
@@ -1017,11 +988,7 @@ std::unique_ptr<PrerenderHandle> PrerenderManager::AddPrerender(
   prerender_contents_ptr->StartPrerendering(contents_bounds,
                                             session_storage_namespace);
 
-  DCHECK(IsControlGroup() ||
-         prerender_contents_ptr->prerendering_has_started());
-
-  if (GetMode() == PRERENDER_MODE_EXPERIMENT_MULTI_PRERENDER_GROUP)
-    histograms_->RecordConcurrency(active_prerenders_.size());
+  DCHECK(prerender_contents_ptr->prerendering_has_started());
 
   StartSchedulingPeriodicCleanups();
   return prerender_handle;
@@ -1108,21 +1075,21 @@ void PrerenderManager::DeleteOldEntries() {
 }
 
 base::Time PrerenderManager::GetCurrentTime() const {
-  if (time_override_) {
-    return time_override_->GetCurrentTime();
-  }
-  return base::Time::Now();
+  return clock_->Now();
 }
 
 base::TimeTicks PrerenderManager::GetCurrentTimeTicks() const {
-  if (time_override_) {
-    return time_override_->GetCurrentTimeTicks();
-  }
-  return base::TimeTicks::Now();
+  return tick_clock_->NowTicks();
 }
 
-void PrerenderManager::SetTimeOverride(std::unique_ptr<TimeOverride> override) {
-  time_override_ = std::move(override);
+void PrerenderManager::SetClockForTesting(
+    std::unique_ptr<base::SimpleTestClock> clock) {
+  clock_ = std::move(clock);
+}
+
+void PrerenderManager::SetTickClockForTesting(
+    std::unique_ptr<base::SimpleTestTickClock> tick_clock) {
+  tick_clock_ = std::move(tick_clock);
 }
 
 std::unique_ptr<PrerenderContents> PrerenderManager::CreatePrerenderContents(
@@ -1283,7 +1250,7 @@ void PrerenderManager::OnCreatingAudioStream(int render_process_id,
 void PrerenderManager::RecordNetworkBytes(Origin origin,
                                           bool used,
                                           int64_t prerender_bytes) {
-  if (!ActuallyPrerendering())
+  if (!IsPrerenderingPossible())
     return;
   int64_t recent_profile_bytes =
       profile_network_bytes_ - last_recorded_profile_network_bytes_;
@@ -1325,7 +1292,7 @@ bool PrerenderManager::IsPrerenderSilenceExperiment(Origin origin) const {
 
 NetworkPredictionStatus PrerenderManager::GetPredictionStatus() const {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  return CanPrefetchAndPrerenderUI(profile_->GetPrefs());
+  return chrome_browser_net::CanPrefetchAndPrerenderUI(profile_->GetPrefs());
 }
 
 NetworkPredictionStatus PrerenderManager::GetPredictionStatusForOrigin(
@@ -1350,7 +1317,7 @@ NetworkPredictionStatus PrerenderManager::GetPredictionStatusForOrigin(
   // Prerendering forced for cellular networks still prevents navigation with
   // the DISABLED_ALWAYS selected via privacy settings.
   NetworkPredictionStatus prediction_status =
-      CanPrefetchAndPrerenderUI(profile_->GetPrefs());
+      chrome_browser_net::CanPrefetchAndPrerenderUI(profile_->GetPrefs());
   if (origin == ORIGIN_EXTERNAL_REQUEST_FORCED_CELLULAR &&
       prediction_status == NetworkPredictionStatus::DISABLED_DUE_TO_NETWORK) {
     return NetworkPredictionStatus::ENABLED;
@@ -1361,7 +1328,7 @@ NetworkPredictionStatus PrerenderManager::GetPredictionStatusForOrigin(
 void PrerenderManager::AddProfileNetworkBytesIfEnabled(int64_t bytes) {
   DCHECK_GE(bytes, 0);
   if (GetPredictionStatus() == NetworkPredictionStatus::ENABLED &&
-      ActuallyPrerendering())
+      IsPrerenderingPossible())
     profile_network_bytes_ += bytes;
 }
 
@@ -1388,6 +1355,10 @@ void PrerenderManager::RenderProcessHostDestroyed(
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   size_t erased = prerender_process_hosts_.erase(host);
   DCHECK_EQ(1u, erased);
+}
+
+base::WeakPtr<PrerenderManager> PrerenderManager::AsWeakPtr() {
+  return weak_factory_.GetWeakPtr();
 }
 
 void PrerenderManager::SetPrerenderContentsFactoryForTest(

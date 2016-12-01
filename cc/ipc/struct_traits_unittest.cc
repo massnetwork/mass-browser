@@ -150,7 +150,7 @@ TEST_F(StructTraitsTest, CompositorFrame) {
   const gfx::Rect sqs_clip_rect(123, 456, 789, 101112);
   const bool sqs_is_clipped = true;
   const float sqs_opacity = 0.9f;
-  const SkXfermode::Mode sqs_blend_mode = SkXfermode::kSrcOver_Mode;
+  const SkBlendMode sqs_blend_mode = SkBlendMode::kSrcOver;
   const int sqs_sorting_context_id = 1337;
   SharedQuadState* sqs = render_pass->CreateAndAppendSharedQuadState();
   sqs->SetAll(sqs_quad_to_target_transform, sqs_layer_bounds,
@@ -281,7 +281,8 @@ TEST_F(StructTraitsTest, CompositorFrameMetadata) {
   std::vector<ui::LatencyInfo> latency_infos = {latency_info};
   std::vector<uint32_t> satisfies_sequences = {1234, 1337};
   std::vector<SurfaceId> referenced_surfaces;
-  SurfaceId id(FrameSinkId(1234, 4321), LocalFrameId(5678, 9101112));
+  SurfaceId id(FrameSinkId(1234, 4321),
+               LocalFrameId(5678, base::UnguessableToken::Create()));
   referenced_surfaces.push_back(id);
 
   CompositorFrameMetadata input;
@@ -433,7 +434,9 @@ TEST_F(StructTraitsTest, QuadListBasic) {
   solid_quad->SetNew(sqs, rect2, rect2, color2, force_anti_aliasing_off);
 
   const gfx::Rect rect3(1029, 3847, 5610, 2938);
-  const SurfaceId surface_id(FrameSinkId(1234, 4321), LocalFrameId(5678, 2468));
+  const SurfaceId surface_id(
+      FrameSinkId(1234, 4321),
+      LocalFrameId(5678, base::UnguessableToken::Create()));
   SurfaceDrawQuad* surface_quad =
       render_pass->CreateAndAppendDrawQuad<SurfaceDrawQuad>();
   surface_quad->SetNew(sqs, rect3, rect3, surface_id);
@@ -576,16 +579,14 @@ TEST_F(StructTraitsTest, RenderPass) {
       gfx::Transform(16.1f, 15.3f, 14.3f, 13.7f, 12.2f, 11.4f, 10.4f, 9.8f,
                      8.1f, 7.3f, 6.3f, 5.7f, 4.8f, 3.4f, 2.4f, 1.2f),
       gfx::Size(1, 2), gfx::Rect(1337, 5679, 9101112, 131415),
-      gfx::Rect(1357, 2468, 121314, 1337), true, 2, SkXfermode::kSrcOver_Mode,
-      1);
+      gfx::Rect(1357, 2468, 121314, 1337), true, 2, SkBlendMode::kSrcOver, 1);
 
   SharedQuadState* shared_state_2 = input->CreateAndAppendSharedQuadState();
   shared_state_2->SetAll(
       gfx::Transform(1.1f, 2.3f, 3.3f, 4.7f, 5.2f, 6.4f, 7.4f, 8.8f, 9.1f,
                      10.3f, 11.3f, 12.7f, 13.8f, 14.4f, 15.4f, 16.2f),
       gfx::Size(1337, 1234), gfx::Rect(1234, 5678, 9101112, 13141516),
-      gfx::Rect(1357, 2468, 121314, 1337), true, 2, SkXfermode::kSrcOver_Mode,
-      1);
+      gfx::Rect(1357, 2468, 121314, 1337), true, 2, SkBlendMode::kSrcOver, 1);
 
   // This quad uses the first shared quad state. The next two quads use the
   // second shared quad state.
@@ -606,7 +607,8 @@ TEST_F(StructTraitsTest, RenderPass) {
   const gfx::Rect surface_quad_rect(1337, 2448, 1234, 5678);
   surface_quad->SetNew(
       shared_state_2, surface_quad_rect, surface_quad_rect,
-      SurfaceId(FrameSinkId(1337, 1234), LocalFrameId(1234, 2468)));
+      SurfaceId(FrameSinkId(1337, 1234),
+                LocalFrameId(1234, base::UnguessableToken::Create())));
 
   std::unique_ptr<RenderPass> output;
   mojom::TraitsTestServicePtr proxy = GetTraitsTestProxy();
@@ -761,7 +763,8 @@ TEST_F(StructTraitsTest, Selection) {
 
 TEST_F(StructTraitsTest, SurfaceId) {
   static constexpr FrameSinkId frame_sink_id(1337, 1234);
-  static constexpr LocalFrameId local_frame_id(0xfbadbeef, 0xdeadbeef);
+  static LocalFrameId local_frame_id(0xfbadbeef,
+                                     base::UnguessableToken::Create());
   SurfaceId input(frame_sink_id, local_frame_id);
   mojom::TraitsTestServicePtr proxy = GetTraitsTestProxy();
   SurfaceId output;
@@ -790,7 +793,7 @@ TEST_F(StructTraitsTest, SharedQuadState) {
   const gfx::Rect clip_rect(123, 456, 789, 101112);
   const bool is_clipped = true;
   const float opacity = 0.9f;
-  const SkXfermode::Mode blend_mode = SkXfermode::kSrcOver_Mode;
+  const SkBlendMode blend_mode = SkBlendMode::kSrcOver;
   const int sorting_context_id = 1337;
   SharedQuadState input_sqs;
   input_sqs.SetAll(quad_to_target_transform, layer_bounds, visible_layer_rect,

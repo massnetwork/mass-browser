@@ -152,6 +152,19 @@ void ParseConfigurationArguments(const base::ListValue* args,
     NOTREACHED();
 }
 
+std::string GetSyncErrorAction(sync_ui_util::ActionType action_type) {
+  switch (action_type) {
+    case sync_ui_util::REAUTHENTICATE:
+      return "reauthenticate";
+    case sync_ui_util::UPGRADE_CLIENT:
+      return "upgradeClient";
+    case sync_ui_util::ENTER_PASSPHRASE:
+      return "enterPassphrase";
+    default:
+      return "noAction";
+  }
+}
+
 }  // namespace
 
 namespace settings {
@@ -200,8 +213,8 @@ void PeopleHandler::RegisterMessages() {
                  base::Unretained(this)));
 #if defined(OS_CHROMEOS)
   web_ui()->RegisterMessageCallback(
-      "SyncSetupDoSignOutOnAuthError",
-      base::Bind(&PeopleHandler::HandleDoSignOutOnAuthError,
+      "AttemptUserExit",
+      base::Bind(&PeopleHandler::HandleAttemptUserExit,
                  base::Unretained(this)));
 #else
   web_ui()->RegisterMessageCallback(
@@ -498,7 +511,7 @@ void PeopleHandler::HandleShowSetupUI(const base::ListValue* args) {
 #if defined(OS_CHROMEOS)
 // On ChromeOS, we need to sign out the user session to fix an auth error, so
 // the user goes through the real signin flow to generate a new auth token.
-void PeopleHandler::HandleDoSignOutOnAuthError(const base::ListValue* args) {
+void PeopleHandler::HandleAttemptUserExit(const base::ListValue* args) {
   DVLOG(1) << "Signing out the user to fix a sync error.";
   chrome::AttemptUserExit();
 }
@@ -731,13 +744,15 @@ PeopleHandler::GetSyncStatusDictionary() {
 
   base::string16 status_label;
   base::string16 link_label;
+  sync_ui_util::ActionType action_type = sync_ui_util::NO_ACTION;
   bool status_has_error =
       sync_ui_util::GetStatusLabels(profile_, service, *signin,
                                     sync_ui_util::PLAIN_TEXT, &status_label,
-                                    &link_label) == sync_ui_util::SYNC_ERROR;
+                                    &link_label, &action_type) ==
+      sync_ui_util::SYNC_ERROR;
   sync_status->SetString("statusText", status_label);
-  sync_status->SetString("actionLinkText", link_label);
   sync_status->SetBoolean("hasError", status_has_error);
+  sync_status->SetString("statusAction", GetSyncErrorAction(action_type));
 
   sync_status->SetBoolean("managed", service && service->IsManaged());
   sync_status->SetBoolean("signedIn", signin->IsAuthenticated());

@@ -118,8 +118,8 @@ void constructBidiRunsForLine(InlineBidiResolver& topResolver,
   while (!topResolver.isolatedRuns().isEmpty()) {
     // It does not matter which order we resolve the runs as long as we
     // resolve them all.
-    BidiIsolatedRun isolatedRun = topResolver.isolatedRuns().last();
-    topResolver.isolatedRuns().removeLast();
+    BidiIsolatedRun isolatedRun = topResolver.isolatedRuns().back();
+    topResolver.isolatedRuns().pop_back();
     currentRoot = isolatedRun.root;
 
     LineLayoutItem startObj = isolatedRun.object;
@@ -178,8 +178,8 @@ void constructBidiRunsForLine(InlineBidiResolver& topResolver,
     // If we encountered any nested isolate runs, save them for later
     // processing.
     while (!isolatedResolver.isolatedRuns().isEmpty()) {
-      BidiIsolatedRun runWithContext = isolatedResolver.isolatedRuns().last();
-      isolatedResolver.isolatedRuns().removeLast();
+      BidiIsolatedRun runWithContext = isolatedResolver.isolatedRuns().back();
+      isolatedResolver.isolatedRuns().pop_back();
       topResolver.setMidpointStateForIsolatedRun(
           runWithContext.runToReplace,
           isolatedResolver.midpointStateForIsolatedRun(

@@ -187,7 +187,14 @@ TEST(UseCounterTest, RecordingCSSProperties) {
   histogramTester.expectTotalCount(kSVGCSSHistogramName, 0);
 }
 
-TEST(UseCounterTest, SVGImageContext) {
+// Failing on Android: crbug.com/667913
+#if OS(ANDROID)
+#define MAYBE_SVGImageContext DISABLED_SVGImageContext
+#else
+#define MAYBE_SVGImageContext SVGImageContext
+#endif
+
+TEST(UseCounterTest, MAYBE_SVGImageContext) {
   UseCounter useCounter(UseCounter::SVGImageContext);
   HistogramTester histogramTester;
 
@@ -236,7 +243,14 @@ TEST(UseCounterTest, SVGImageContext) {
   histogramTester.expectTotalCount(kFeaturesHistogramName, 0);
 }
 
-TEST(UseCounterTest, InspectorDisablesMeasurement) {
+// Failing on Android: crbug.com/667913
+#if OS(ANDROID)
+#define MAYBE_InspectorDisablesMeasurement DISABLED_InspectorDisablesMeasurement
+#else
+#define MAYBE_InspectorDisablesMeasurement InspectorDisablesMeasurement
+#endif
+
+TEST(UseCounterTest, MAYBE_InspectorDisablesMeasurement) {
   UseCounter useCounter;
   HistogramTester histogramTester;
 

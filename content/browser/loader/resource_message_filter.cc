@@ -27,6 +27,7 @@ ResourceMessageFilter::ResourceMessageFilter(
       BrowserAssociatedInterface<mojom::URLLoaderFactory>(this, this),
       child_id_(child_id),
       process_type_(process_type),
+      is_channel_closed_(false),
       appcache_service_(appcache_service),
       blob_storage_context_(blob_storage_context),
       file_system_context_(file_system_context),
@@ -34,12 +35,21 @@ ResourceMessageFilter::ResourceMessageFilter(
       get_contexts_callback_(get_contexts_callback),
       weak_ptr_factory_(this) {}
 
-ResourceMessageFilter::~ResourceMessageFilter() {}
+ResourceMessageFilter::~ResourceMessageFilter() {
+  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  DCHECK(is_channel_closed_);
+  DCHECK(!weak_ptr_factory_.HasWeakPtrs());
+}
 
 void ResourceMessageFilter::OnChannelClosing() {
+  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+
   // Unhook us from all pending network requests so they don't get sent to a
   // deleted object.
   ResourceDispatcherHostImpl::Get()->CancelRequestsForProcess(child_id_);
+
+  weak_ptr_factory_.InvalidateWeakPtrs();
+  is_channel_closed_ = true;
 }
 
 bool ResourceMessageFilter::OnMessageReceived(const IPC::Message& message) {
@@ -62,18 +72,18 @@ void ResourceMessageFilter::GetContexts(
 
 base::WeakPtr<ResourceMessageFilter> ResourceMessageFilter::GetWeakPtr() {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
-  return weak_ptr_factory_.GetWeakPtr();
+  return is_channel_closed_ ? nullptr : weak_ptr_factory_.GetWeakPtr();
 }
 
 void ResourceMessageFilter::CreateLoaderAndStart(
-    mojom::URLLoaderRequest request,
+    mojom::URLLoaderAssociatedRequest request,
     int32_t routing_id,
     int32_t request_id,
     const ResourceRequest& url_request,
-    mojom::URLLoaderClientPtr client) {
+    mojom::URLLoaderClientAssociatedPtrInfo client_ptr_info) {
   URLLoaderFactoryImpl::CreateLoaderAndStart(std::move(request), routing_id,
                                              request_id, url_request,
-                                             std::move(client), this);
+                                             std::move(client_ptr_info), this);
 }
 
 void ResourceMessageFilter::SyncLoad(int32_t routing_id,

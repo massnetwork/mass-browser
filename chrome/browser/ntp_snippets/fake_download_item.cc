@@ -10,7 +10,7 @@ using content::DownloadItem;
 
 namespace test {
 
-FakeDownloadItem::FakeDownloadItem() {}
+FakeDownloadItem::FakeDownloadItem() = default;
 
 FakeDownloadItem::~FakeDownloadItem() {
   NotifyDownloadRemoved();
@@ -26,13 +26,15 @@ void FakeDownloadItem::RemoveObserver(Observer* observer) {
 }
 
 void FakeDownloadItem::NotifyDownloadDestroyed() {
-  for (auto& observer : observers_)
+  for (auto& observer : observers_) {
     observer.OnDownloadDestroyed(this);
+  }
 }
 
 void FakeDownloadItem::NotifyDownloadRemoved() {
-  for (auto& observer : observers_)
+  for (auto& observer : observers_) {
     observer.OnDownloadRemoved(this);
+  }
 }
 
 void FakeDownloadItem::NotifyDownloadUpdated() {
@@ -40,8 +42,9 @@ void FakeDownloadItem::NotifyDownloadUpdated() {
 }
 
 void FakeDownloadItem::UpdateObservers() {
-  for (auto& observer : observers_)
+  for (auto& observer : observers_) {
     observer.OnDownloadUpdated(this);
+  }
 }
 
 void FakeDownloadItem::SetId(uint32_t id) {
@@ -52,7 +55,7 @@ uint32_t FakeDownloadItem::GetId() const {
   return id_;
 }
 
-void FakeDownloadItem::SetURL(GURL url) {
+void FakeDownloadItem::SetURL(const GURL& url) {
   url_ = url;
 }
 
@@ -77,6 +80,14 @@ bool FakeDownloadItem::GetFileExternallyRemoved() const {
   return is_file_externally_removed_;
 }
 
+void FakeDownloadItem::SetStartTime(const base::Time& start_time) {
+  start_time_ = start_time;
+}
+
+base::Time FakeDownloadItem::GetStartTime() const {
+  return start_time_;
+}
+
 void FakeDownloadItem::SetEndTime(const base::Time& end_time) {
   end_time_ = end_time;
 }
@@ -93,12 +104,29 @@ DownloadItem::DownloadState FakeDownloadItem::GetState() const {
   return download_state_;
 }
 
+void FakeDownloadItem::SetMimeType(const std::string& mime_type) {
+  mime_type_ = mime_type;
+}
+
+std::string FakeDownloadItem::GetMimeType() const {
+  return mime_type_;
+}
+
+void FakeDownloadItem::SetOriginalUrl(const GURL& url) {
+  original_url_ = url;
+}
+
+const GURL& FakeDownloadItem::GetOriginalUrl() const {
+  return original_url_;
+}
+
 // The methods below are not supported and are not expected to be called.
 void FakeDownloadItem::ValidateDangerousDownload() {
   NOTREACHED();
 }
 
 void FakeDownloadItem::StealDangerousDownload(
+    bool delete_file_afterward,
     const AcquireFileCallback& callback) {
   NOTREACHED();
   callback.Run(base::FilePath());
@@ -163,11 +191,6 @@ const std::vector<GURL>& FakeDownloadItem::GetUrlChain() const {
   return dummy_url_vector;
 }
 
-const GURL& FakeDownloadItem::GetOriginalUrl() const {
-  NOTREACHED();
-  return dummy_url;
-}
-
 const GURL& FakeDownloadItem::GetReferrerUrl() const {
   NOTREACHED();
   return dummy_url;
@@ -194,11 +217,6 @@ std::string FakeDownloadItem::GetSuggestedFilename() const {
 }
 
 std::string FakeDownloadItem::GetContentDisposition() const {
-  NOTREACHED();
-  return std::string();
-}
-
-std::string FakeDownloadItem::GetMimeType() const {
   NOTREACHED();
   return std::string();
 }
@@ -306,11 +324,6 @@ int64_t FakeDownloadItem::GetTotalBytes() const {
 int64_t FakeDownloadItem::GetReceivedBytes() const {
   NOTREACHED();
   return 1;
-}
-
-base::Time FakeDownloadItem::GetStartTime() const {
-  NOTREACHED();
-  return base::Time();
 }
 
 bool FakeDownloadItem::CanShowInFolder() {

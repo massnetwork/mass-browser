@@ -18,31 +18,48 @@ namespace aura {
 class Env;
 }
 
+namespace base {
+class SingleThreadTaskRunner;
+}
+
 namespace font_service {
 class FontLoader;
 }
 
 namespace service_manager {
 class Connector;
+class Identity;
 }
 
 namespace views {
+class MusClient;
 class ViewsDelegate;
 
 // Sets up necessary state for aura when run with the viewmanager.
 // |resource_file| is the path to the apk file containing the resources.
 class VIEWS_MUS_EXPORT AuraInit {
  public:
+  enum class Mode {
+    // Indicates AuraInit should target using aura with mus.
+    AURA_MUS,
+
+    // Indicates AuraInit should target using ui::Window.
+    UI,
+  };
+
   // |resource_file| is the file to load strings and 1x icons from.
   // |resource_file_200| can be an empty string, otherwise it is the file to
   // load 2x icons from.
   AuraInit(service_manager::Connector* connector,
+           const service_manager::Identity& identity,
            const std::string& resource_file,
            const std::string& resource_file_200 = std::string(),
-           const aura::Env::WindowPortFactory& window_port_factory =
-               aura::Env::WindowPortFactory());
-
+           scoped_refptr<base::SingleThreadTaskRunner> io_task_runner = nullptr,
+           Mode mode = Mode::UI);
   ~AuraInit();
+
+  // Only valid if Mode::AURA_MUS was passed to constructor.
+  MusClient* mus_client() { return mus_client_.get(); }
 
  private:
   void InitializeResources(service_manager::Connector* connector);
@@ -54,6 +71,7 @@ class VIEWS_MUS_EXPORT AuraInit {
   const std::string resource_file_;
   const std::string resource_file_200_;
 
+  std::unique_ptr<MusClient> mus_client_;
   std::unique_ptr<aura::Env> env_;
   std::unique_ptr<ViewsDelegate> views_delegate_;
 

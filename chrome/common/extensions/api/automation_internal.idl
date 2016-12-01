@@ -21,12 +21,17 @@ namespace automationInternal {
 
     // The source of this event.
     DOMString eventFrom;
+
+    // The mouse coordinates when this event fired.
+    double mouseX;
+    double mouseY;
   };
 
   // All possible actions that can be performed on automation nodes.
   enum ActionType {
     focus,
     doDefault,
+    getImageData,
     makeVisible,
     setAccessibilityFocus,
     setSequentialFocusNavigationStartingPoint,
@@ -61,6 +66,12 @@ namespace automationInternal {
   dictionary EnableTabParams {
     long routingID;
     long? tabID;
+  };
+
+  // Arguments for the getImageData function.
+  dictionary GetImageDataParams {
+    long maxWidth;
+    long maxHeight;
   };
 
   // Returns the accessibility tree id of the web contents who's accessibility
@@ -110,5 +121,7 @@ namespace automationInternal {
     static void onChildTreeID(long treeID, long nodeID);
 
     static void onNodesRemoved(long treeID, long[] nodeIDs);
+
+    static void onAccessibilityTreeSerializationError(long treeID);
   };
 };

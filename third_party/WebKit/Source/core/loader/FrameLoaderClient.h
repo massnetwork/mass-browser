@@ -69,6 +69,7 @@ class LocalFrame;
 class ResourceError;
 class ResourceRequest;
 class ResourceResponse;
+class ScriptState;
 class SecurityOrigin;
 class SharedWorkerRepositoryClient;
 class SubstituteData;
@@ -78,6 +79,7 @@ class WebCookieJar;
 class WebMediaPlayer;
 class WebMediaPlayerClient;
 class WebMediaPlayerSource;
+class WebRemotePlaybackClient;
 class WebRTCPeerConnectionHandler;
 class WebServiceWorkerProvider;
 class Widget;
@@ -100,7 +102,7 @@ class CORE_EXPORT FrameLoaderClient : public FrameClient {
                                              HistoryCommitType,
                                              bool contentInitiated) {}
   virtual void dispatchWillCommitProvisionalLoad() = 0;
-  virtual void dispatchDidStartProvisionalLoad(double triggeringEventTime) = 0;
+  virtual void dispatchDidStartProvisionalLoad() = 0;
   virtual void dispatchDidReceiveTitle(const String&) = 0;
   virtual void dispatchDidChangeIcons(IconType) = 0;
   virtual void dispatchDidCommitLoad(HistoryItem*, HistoryCommitType) = 0;
@@ -117,7 +119,8 @@ class CORE_EXPORT FrameLoaderClient : public FrameClient {
       NavigationType,
       NavigationPolicy,
       bool shouldReplaceCurrentEntry,
-      bool isClientRedirect) = 0;
+      bool isClientRedirect,
+      HTMLFormElement*) = 0;
 
   virtual void dispatchWillSendSubmitEvent(HTMLFormElement*) = 0;
   virtual void dispatchWillSubmitForm(HTMLFormElement*) = 0;
@@ -130,6 +133,7 @@ class CORE_EXPORT FrameLoaderClient : public FrameClient {
                                  NavigationPolicy,
                                  const String& suggestedName,
                                  bool replacesCurrentHistoryItem) = 0;
+  virtual void loadErrorPage(int reason) = 0;
 
   virtual bool navigateBackForward(int offset) const = 0;
 
@@ -199,6 +203,8 @@ class CORE_EXPORT FrameLoaderClient : public FrameClient {
       HTMLMediaElement&,
       const WebMediaPlayerSource&,
       WebMediaPlayerClient*) = 0;
+  virtual WebRemotePlaybackClient* createWebRemotePlaybackClient(
+      HTMLMediaElement&) = 0;
 
   virtual ObjectContentType getObjectContentType(
       const KURL&,
@@ -269,6 +275,8 @@ class CORE_EXPORT FrameLoaderClient : public FrameClient {
   virtual void didUpdateToUniqueOrigin() {}
 
   virtual void didChangeSandboxFlags(Frame* childFrame, SandboxFlags) {}
+
+  virtual void didSetFeaturePolicyHeader(const String& headerValue) {}
 
   // Called when a new Content Security Policy is added to the frame's document.
   // This can be triggered by handling of HTTP headers, handling of <meta>

@@ -216,7 +216,7 @@ uint32_t BrowserGpuMemoryBufferManager::GetImageTextureTarget(
 }
 
 std::unique_ptr<gfx::GpuMemoryBuffer>
-BrowserGpuMemoryBufferManager::AllocateGpuMemoryBuffer(
+BrowserGpuMemoryBufferManager::CreateGpuMemoryBuffer(
     const gfx::Size& size,
     gfx::BufferFormat format,
     gfx::BufferUsage usage,
@@ -254,7 +254,6 @@ void BrowserGpuMemoryBufferManager::AllocateGpuMemoryBufferForChildProcess(
     const gfx::Size& size,
     gfx::BufferFormat format,
     gfx::BufferUsage usage,
-    base::ProcessHandle child_process_handle,
     int child_client_id,
     const AllocationCallback& callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
@@ -287,14 +286,8 @@ void BrowserGpuMemoryBufferManager::AllocateGpuMemoryBufferForChildProcess(
     return;
   }
 
-  callback.Run(gpu::GpuMemoryBufferImplSharedMemory::AllocateForChildProcess(
-      id, size, format, child_process_handle));
-}
-
-gfx::GpuMemoryBuffer*
-BrowserGpuMemoryBufferManager::GpuMemoryBufferFromClientBuffer(
-    ClientBuffer buffer) {
-  return gpu::GpuMemoryBufferImpl::FromClientBuffer(buffer);
+  callback.Run(gpu::GpuMemoryBufferImplSharedMemory::CreateGpuMemoryBuffer(
+      id, size, format));
 }
 
 void BrowserGpuMemoryBufferManager::SetDestructionSyncToken(
@@ -349,7 +342,6 @@ bool BrowserGpuMemoryBufferManager::OnMemoryDump(
 
 void BrowserGpuMemoryBufferManager::ChildProcessDeletedGpuMemoryBuffer(
     gfx::GpuMemoryBufferId id,
-    base::ProcessHandle child_process_handle,
     int child_client_id,
     const gpu::SyncToken& sync_token) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
@@ -358,7 +350,6 @@ void BrowserGpuMemoryBufferManager::ChildProcessDeletedGpuMemoryBuffer(
 }
 
 void BrowserGpuMemoryBufferManager::ProcessRemoved(
-    base::ProcessHandle process_handle,
     int client_id) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
 

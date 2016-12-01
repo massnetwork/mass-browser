@@ -16,15 +16,10 @@
 #include "chrome/browser/ui/webui/signin/login_ui_service.h"
 
 class LoginUIService;
-class SigninManagerBase;
 
 namespace browser_sync {
 class ProfileSyncService;
 }  // namespace browser_sync
-
-namespace content {
-class WebContents;
-}  // namespace content
 
 namespace signin_metrics {
 enum class AccessPoint;
@@ -112,7 +107,7 @@ class SyncSetupHandler : public options::OptionsPageUIHandler,
   void HandlePassphraseEntry(const base::ListValue* args);
   void HandlePassphraseCancel(const base::ListValue* args);
   void HandleShowSetupUI(const base::ListValue* args);
-  void HandleDoSignOutOnAuthError(const base::ListValue* args);
+  void HandleAttemptUserExit(const base::ListValue* args);
   void HandleStartSignin(const base::ListValue* args);
   void HandleStopSyncing(const base::ListValue* args);
   void HandleCloseTimeout(const base::ListValue* args);

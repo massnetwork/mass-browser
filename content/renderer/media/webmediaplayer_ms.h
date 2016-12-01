@@ -48,7 +48,6 @@ class MediaStreamAudioRenderer;
 class MediaStreamRendererFactory;
 class MediaStreamVideoRenderer;
 class WebMediaPlayerMSCompositor;
-class RenderFrameObserver;
 
 // WebMediaPlayerMS delegates calls from WebCore::MediaPlayerPrivate to
 // Chrome's media player when "src" is from media stream.
@@ -146,7 +145,7 @@ class CONTENT_EXPORT WebMediaPlayerMS
   // WebMediaPlayerDelegate::Observer implementation.
   void OnHidden() override;
   void OnShown() override;
-  void OnSuspendRequested(bool must_suspend) override;
+  bool OnSuspendRequested(bool must_suspend) override;
   void OnPlay() override;
   void OnPause() override;
   void OnVolumeMultiplierUpdate(double multiplier) override;
@@ -161,9 +160,10 @@ class CONTENT_EXPORT WebMediaPlayerMS
  private:
   friend class WebMediaPlayerMSTest;
 
-  // The callback for MediaStreamVideoRenderer to signal a new frame is
-  // available.
-  void OnFrameAvailable(const scoped_refptr<media::VideoFrame>& frame);
+  void OnFirstFrameReceived(media::VideoRotation video_rotation,
+                            bool is_opaque);
+  void OnOpacityChanged(bool is_opaque);
+
   // Need repaint due to state change.
   void RepaintInternal();
 
@@ -194,6 +194,11 @@ class CONTENT_EXPORT WebMediaPlayerMS
   const base::WeakPtr<media::WebMediaPlayerDelegate> delegate_;
   int delegate_id_;
 
+  // Inner class used for transfering frames on compositor thread to
+  // |compositor_|.
+  class FrameDeliverer;
+  std::unique_ptr<FrameDeliverer> frame_deliverer_;
+
   scoped_refptr<MediaStreamVideoRenderer> video_frame_provider_; // Weak
 
   std::unique_ptr<cc_blink::WebLayerImpl> video_weblayer_;
@@ -201,10 +206,7 @@ class CONTENT_EXPORT WebMediaPlayerMS
   scoped_refptr<MediaStreamAudioRenderer> audio_renderer_; // Weak
   media::SkCanvasVideoRenderer video_renderer_;
 
-  bool last_frame_opaque_;
   bool paused_;
-  bool render_frame_suspended_;
-  bool received_first_frame_;
   media::VideoRotation video_rotation_;
 
   scoped_refptr<media::MediaLog> media_log_;

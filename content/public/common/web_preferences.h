@@ -158,7 +158,7 @@ struct CONTENT_EXPORT WebPreferences {
   bool should_clear_document_background;
   bool enable_scroll_animator;
   bool css_variables_enabled;
-  bool touch_enabled;
+  bool touch_event_api_enabled;
   // TODO(mustaq): Nuke when the new API is ready
   bool device_supports_touch;
   // TODO(mustaq): Nuke when the new API is ready
@@ -210,6 +210,14 @@ struct CONTENT_EXPORT WebPreferences {
   // Cues will not be placed in this margin area.
   float text_track_margin_percentage;
 
+  // Specifies aggressiveness of background tab throttling.
+  // expensive_background_throttling_cpu_budget is given in percentages,
+  // other values are in seconds.
+  float expensive_background_throttling_cpu_budget;
+  float expensive_background_throttling_initial_budget;
+  float expensive_background_throttling_max_budget;
+  float expensive_background_throttling_max_delay;
+
 #if defined(OS_ANDROID)
   bool text_autosizing_enabled;
   float font_scale_factor;
@@ -234,7 +242,6 @@ struct CONTENT_EXPORT WebPreferences {
   // Used by Android_WebView only to support legacy apps that inject script into
   // a top-level initial empty document and expect it to persist on navigation.
   bool resue_global_for_unowned_main_frame;
-  bool autoplay_muted_videos_enabled;
   ProgressBarCompletion progress_bar_completion;
   // Specifies default setting for spellcheck when the spellcheck attribute is
   // not explicitly specified.
@@ -253,6 +260,9 @@ struct CONTENT_EXPORT WebPreferences {
 
   // Whether download UI should be hidden on this page.
   bool hide_download_ui;
+
+  // If enabled, disabled video track when the video is in the background.
+  bool background_video_track_optimization_enabled;
 
   // We try to keep the default values the same as the default values in
   // chrome, except for the cases where it would require lots of extra work for

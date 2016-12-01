@@ -17,6 +17,7 @@
 #include "base/time/tick_clock.h"
 #include "base/time/time.h"
 #include "components/ntp_snippets/category.h"
+#include "components/ntp_snippets/category_info.h"
 #include "components/ntp_snippets/remote/ntp_snippet.h"
 #include "components/ntp_snippets/remote/request_throttler.h"
 #include "components/translate/core/browser/language_model.h"
@@ -28,13 +29,28 @@ class PrefService;
 class SigninManagerBase;
 
 namespace base {
-class ListValue;
 class Value;
 }  // namespace base
 
 namespace ntp_snippets {
 
 class UserClassifier;
+
+// TODO(tschumann): BuildArticleCategoryInfo() and BuildRemoteCategoryInfo()
+// don't really belong into this library. However, as the snippets fetcher is
+// providing this data for server-defined remote sections it's a good starting
+// point. Candiates to add to such a library would be persisting categories
+// (have all category managment in one place) or turning parsed JSON into
+// FetchedCategory objects (all domain-specific logic in one place).
+
+// Provides the CategoryInfo data for article suggestions. If |title| is
+// nullopt, then the default, hard-coded title will be used.
+CategoryInfo BuildArticleCategoryInfo(
+    const base::Optional<base::string16>& title);
+
+// Provides the CategoryInfo data for other remote suggestions.
+CategoryInfo BuildRemoteCategoryInfo(const base::string16& title,
+                                     bool allow_fetching_more_results);
 
 // Fetches snippet data for the NTP from the server.
 class NTPSnippetsFetcher : public OAuth2TokenService::Consumer,
@@ -50,10 +66,10 @@ class NTPSnippetsFetcher : public OAuth2TokenService::Consumer,
 
   struct FetchedCategory {
     Category category;
-    base::string16 localized_title;  // Ignored for non-server categories.
+    CategoryInfo info;
     NTPSnippet::PtrVector snippets;
 
-    explicit FetchedCategory(Category c);
+    FetchedCategory(Category c, CategoryInfo&& info);
     FetchedCategory(FetchedCategory&&);             // = default, in .cc
     ~FetchedCategory();                             // = default, in .cc
     FetchedCategory& operator=(FetchedCategory&&);  // = default, in .cc
@@ -65,7 +81,7 @@ class NTPSnippetsFetcher : public OAuth2TokenService::Consumer,
   // occur, |snippets| contains no value (no actual vector in base::Optional).
   // Error details can be retrieved using last_status().
   using SnippetsAvailableCallback =
-      base::Callback<void(OptionalFetchedCategories fetched_categories)>;
+      base::OnceCallback<void(OptionalFetchedCategories fetched_categories)>;
 
   // Enumeration listing all possible outcomes for fetch attempts. Used for UMA
   // histograms, so do not change existing values. Insert new values at the end,
@@ -112,6 +128,9 @@ class NTPSnippetsFetcher : public OAuth2TokenService::Consumer,
     // user action. Typically, non-interactive requests are subject to a daily
     // quota.
     bool interactive_request = false;
+
+    // If set, only return results for this category.
+    base::Optional<Category> exclusive_category;
   };
 
   NTPSnippetsFetcher(
@@ -126,17 +145,13 @@ class NTPSnippetsFetcher : public OAuth2TokenService::Consumer,
       const UserClassifier* user_classifier);
   ~NTPSnippetsFetcher() override;
 
-  // Set a callback that is called when a new set of snippets are downloaded,
-  // overriding any previously set callback.
-  void SetCallback(const SnippetsAvailableCallback& callback);
-
   // Initiates a fetch from the server. When done (successfully or not), calls
   // the subscriber of SetCallback().
   //
   // If an ongoing fetch exists, it will be silently abandoned and a new one
   // started, without triggering an additional callback (i.e. the callback will
   // only be called once).
-  void FetchSnippets(const Params& params);
+  void FetchSnippets(const Params& params, SnippetsAvailableCallback callback);
 
   // Debug string representing the status/result of the last fetch attempt.
   const std::string& last_status() const { return last_status_; }
@@ -158,10 +173,6 @@ class NTPSnippetsFetcher : public OAuth2TokenService::Consumer,
   // Overrides internal clock for testing purposes.
   void SetTickClockForTesting(std::unique_ptr<base::TickClock> tick_clock) {
     tick_clock_ = std::move(tick_clock);
-  }
-
-  void SetPersonalizationForTesting(Personalization personalization) {
-    personalization_ = personalization;
   }
 
  private:
@@ -227,6 +238,7 @@ class NTPSnippetsFetcher : public OAuth2TokenService::Consumer,
   void FetchFinished(OptionalFetchedCategories fetched_categories,
                      FetchResult result,
                      const std::string& extra_message);
+  void FilterCategories(FetchedCategoriesVector* categories);
 
   bool DemandQuotaForRequest(bool interactive_request);
 

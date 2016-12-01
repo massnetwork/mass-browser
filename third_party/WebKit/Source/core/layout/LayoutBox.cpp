@@ -404,6 +404,11 @@ void LayoutBox::updateGridPositionAfterStyleChange(
       oldStyle->hasOutOfFlowPosition() == style()->hasOutOfFlowPosition())
     return;
 
+  // Positioned items don't participate on the layout of the grid,
+  // so we don't need to mark the grid as dirty if they change positions.
+  if (oldStyle->hasOutOfFlowPosition() && style()->hasOutOfFlowPosition())
+    return;
+
   // It should be possible to not dirty the grid in some cases (like moving an
   // explicitly placed grid item).
   // For now, it's more simple to just always recompute the grid.
@@ -668,9 +673,12 @@ void LayoutBox::scrollRectToVisible(const LayoutRect& rect,
     }
   }
 
-  // If we are fixed-position, it is useless to scroll the parent.
-  if (hasLayer() && layer()->scrollsWithViewport())
+  // If we are fixed-position and scroll with the viewport, it is useless to
+  // scroll the parent.
+  if (style()->position() == FixedPosition && hasLayer() &&
+      layer()->scrollsWithViewport()) {
     return;
+  }
 
   if (frame()->page()->autoscrollController().autoscrollInProgress())
     parentBox = enclosingScrollableBox();
@@ -706,8 +714,8 @@ void LayoutBox::updateLayerTransformAfterLayout() {
     layer()->updateTransformationMatrix();
 }
 
-LayoutUnit LayoutBox::logicalHeightIncludingOverflow() const {
-  if (!m_overflow)
+LayoutUnit LayoutBox::logicalHeightWithVisibleOverflow() const {
+  if (!m_overflow || hasOverflowClip())
     return logicalHeight();
   LayoutRect overflow = layoutOverflowRect();
   if (style()->isHorizontalWritingMode())
@@ -1033,57 +1041,6 @@ LayoutBox* LayoutBox::findAutoscrollable(LayoutObject* layoutObject) {
 
   return layoutObject && layoutObject->isBox() ? toLayoutBox(layoutObject)
                                                : nullptr;
-}
-
-static inline int adjustedScrollDelta(int beginningDelta) {
-  // This implemention matches Firefox's.
-  // http://mxr.mozilla.org/firefox/source/toolkit/content/widgets/browser.xml#856.
-  const int speedReducer = 12;
-
-  int adjustedDelta = beginningDelta / speedReducer;
-  if (adjustedDelta > 1)
-    adjustedDelta = static_cast<int>(adjustedDelta *
-                                     sqrt(static_cast<double>(adjustedDelta))) -
-                    1;
-  else if (adjustedDelta < -1)
-    adjustedDelta =
-        static_cast<int>(adjustedDelta *
-                         sqrt(static_cast<double>(-adjustedDelta))) +
-        1;
-
-  return adjustedDelta;
-}
-
-static inline IntSize adjustedScrollDelta(const IntSize& delta) {
-  return IntSize(adjustedScrollDelta(delta.width()),
-                 adjustedScrollDelta(delta.height()));
-}
-
-void LayoutBox::middleClickAutoscroll(const IntPoint& sourcePoint) {
-  LocalFrame* frame = this->frame();
-  if (!frame)
-    return;
-
-  IntPoint lastKnownMousePosition =
-      frame->eventHandler().lastKnownMousePosition();
-
-  // We need to check if the last known mouse position is out of the window.
-  // When the mouse is out of the window, the position is incoherent
-  static IntPoint previousMousePosition;
-  if (lastKnownMousePosition.x() < 0 || lastKnownMousePosition.y() < 0)
-    lastKnownMousePosition = previousMousePosition;
-  else
-    previousMousePosition = lastKnownMousePosition;
-
-  IntSize delta = lastKnownMousePosition - sourcePoint;
-
-  // at the center we let the space for the icon.
-  if (abs(delta.width()) <= AutoscrollController::noMiddleClickAutoscrollRadius)
-    delta.setWidth(0);
-  if (abs(delta.height()) <=
-      AutoscrollController::noMiddleClickAutoscrollRadius)
-    delta.setHeight(0);
-  scroll(ScrollByPixel, FloatSize(adjustedScrollDelta(delta)));
 }
 
 void LayoutBox::scrollByRecursively(const ScrollOffset& delta) {
@@ -1677,10 +1634,12 @@ void LayoutBox::imageChanged(WrappedImagePtr image, const IntRect*) {
             layer->image()->cachedImage() &&
             layer->image()->cachedImage()->getImage() &&
             layer->image()->cachedImage()->getImage()->maybeAnimated();
-        if (maybeAnimated)
+        if (maybeAnimated) {
           setMayNeedPaintInvalidationAnimatedBackgroundImage();
-        else
+        } else {
           setShouldDoFullPaintInvalidation();
+          setBackgroundChangedSinceLastPaintInvalidation();
+        }
         break;
       }
     }
@@ -1747,6 +1706,27 @@ bool LayoutBox::intersectsVisibleViewport() const {
       layoutView->frameView()->getScrollableArea()->visibleContentRect()));
 }
 
+void LayoutBox::ensureIsReadyForPaintInvalidation() {
+  LayoutBoxModelObject::ensureIsReadyForPaintInvalidation();
+
+  if (mayNeedPaintInvalidationAnimatedBackgroundImage() &&
+      !backgroundIsKnownToBeObscured())
+    setShouldDoFullPaintInvalidation(PaintInvalidationDelayedFull);
+
+  if (fullPaintInvalidationReason() != PaintInvalidationDelayedFull ||
+      !intersectsVisibleViewport())
+    return;
+
+  // Do regular full paint invalidation if the object with
+  // PaintInvalidationDelayedFull is onscreen.
+  if (intersectsVisibleViewport()) {
+    // Conservatively assume the delayed paint invalidation was caused by
+    // background image change.
+    setBackgroundChangedSinceLastPaintInvalidation();
+    setShouldDoFullPaintInvalidation(PaintInvalidationFull);
+  }
+}
+
 PaintInvalidationReason LayoutBox::invalidatePaintIfNeeded(
     const PaintInvalidationState& paintInvalidationState) {
   if (hasBoxDecorationBackground()
@@ -1785,10 +1765,11 @@ void LayoutBox::excludeScrollbars(
     LayoutRect& rect,
     OverlayScrollbarClipBehavior overlayScrollbarClipBehavior) const {
   if (PaintLayerScrollableArea* scrollableArea = this->getScrollableArea()) {
-    if (shouldPlaceBlockDirectionScrollbarOnLogicalLeft())
+    if (shouldPlaceBlockDirectionScrollbarOnLogicalLeft()) {
       rect.move(
           scrollableArea->verticalScrollbarWidth(overlayScrollbarClipBehavior),
           0);
+    }
     rect.contract(
         scrollableArea->verticalScrollbarWidth(overlayScrollbarClipBehavior),
         scrollableArea->horizontalScrollbarHeight(
@@ -2044,9 +2025,6 @@ void LayoutBox::positionLineBox(InlineBox* box) {
     box->remove(DontMarkLineBoxes);
     box->destroy();
   } else if (isAtomicInlineLevel()) {
-    // FIXME: the call to roundedLayoutPoint() below is temporary and should be
-    // removed once the transition to LayoutUnit-based types is complete
-    // (crbug.com/321237).
     setLocationAndUpdateOverflowControlsIfNeeded(box->topLeft());
     setInlineBoxWrapper(box);
   }
@@ -2269,6 +2247,8 @@ LayoutRect LayoutBox::localVisualRect() const {
   if (style()->visibility() != EVisibility::Visible)
     return LayoutRect();
 
+  if (hasMask() && !RuntimeEnabledFeatures::slimmingPaintV2Enabled())
+    return LayoutRect(layer()->boxForFilterOrMask());
   return selfVisualOverflowRect();
 }
 
@@ -2834,7 +2814,7 @@ void LayoutBox::computeMarginsForDirection(MarginDirection flowDirection,
     const ComputedStyle& containingBlockStyle = containingBlock->styleRef();
     if ((marginStartLength.isAuto() && marginEndLength.isAuto()) ||
         (!marginStartLength.isAuto() && !marginEndLength.isAuto() &&
-         containingBlockStyle.textAlign() == WEBKIT_CENTER)) {
+         containingBlockStyle.textAlign() == ETextAlign::WebkitCenter)) {
       // Other browsers center the margin box for align=center elements so we
       // match them here.
       LayoutUnit centeredMarginBoxStart = std::max(
@@ -2848,9 +2828,9 @@ void LayoutBox::computeMarginsForDirection(MarginDirection flowDirection,
 
     // Adjust margins for the align attribute
     if ((!containingBlockStyle.isLeftToRightDirection() &&
-         containingBlockStyle.textAlign() == WEBKIT_LEFT) ||
+         containingBlockStyle.textAlign() == ETextAlign::WebkitLeft) ||
         (containingBlockStyle.isLeftToRightDirection() &&
-         containingBlockStyle.textAlign() == WEBKIT_RIGHT)) {
+         containingBlockStyle.textAlign() == ETextAlign::WebkitRight)) {
       if (containingBlockStyle.isLeftToRightDirection() !=
           styleRef().isLeftToRightDirection()) {
         if (!marginStartLength.isAuto())
@@ -4675,6 +4655,7 @@ bool LayoutBox::shrinkToAvoidFloats() const {
   return style()->width().isAuto();
 }
 
+DISABLE_CFI_PERF
 static bool shouldBeConsideredAsReplaced(Node* node) {
   // Checkboxes and radioboxes are not isAtomicInlineLevel() nor do they have
   // their own layoutObject in which to override avoidFloats().
@@ -4711,7 +4692,7 @@ void LayoutBox::updateFragmentationInfoForChild(LayoutBox& child) {
     return;
 
   LayoutUnit logicalTop = child.logicalTop();
-  LayoutUnit logicalHeight = child.logicalHeightIncludingOverflow();
+  LayoutUnit logicalHeight = child.logicalHeightWithVisibleOverflow();
   LayoutUnit spaceLeft =
       pageRemainingLogicalHeightForOffset(logicalTop, AssociateWithLatterPage);
   if (spaceLeft < logicalHeight)
@@ -4728,7 +4709,7 @@ bool LayoutBox::childNeedsRelayoutForPagination(const LayoutBox& child) const {
   // to do this if there's a chance that we need to recalculate pagination
   // struts inside.
   if (LayoutUnit pageLogicalHeight = pageLogicalHeightForOffset(logicalTop)) {
-    LayoutUnit logicalHeight = child.logicalHeightIncludingOverflow();
+    LayoutUnit logicalHeight = child.logicalHeightWithVisibleOverflow();
     LayoutUnit remainingSpace = pageRemainingLogicalHeightForOffset(
         logicalTop, AssociateWithLatterPage);
     if (child.offsetToNextPage()) {
@@ -5196,6 +5177,11 @@ LayoutPoint LayoutBox::flipForWritingModeForChild(
 }
 
 LayoutBox* LayoutBox::locationContainer() const {
+  // Location of a non-root SVG object derived from LayoutBox should not be
+  // affected by writing-mode of the containing box (SVGRoot).
+  if (isSVG() && !isSVGRoot())
+    return nullptr;
+
   // Normally the box's location is relative to its containing box.
   LayoutObject* container = this->container();
   while (container && !container->isBox())

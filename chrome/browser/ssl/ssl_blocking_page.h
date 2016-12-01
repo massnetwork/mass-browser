@@ -18,14 +18,9 @@
 #include "chrome/browser/ssl/ssl_cert_reporter.h"
 #include "components/certificate_reporting/error_report.h"
 #include "content/public/browser/certificate_request_result_type.h"
+#include "extensions/features/features.h"
 #include "net/ssl/ssl_info.h"
 #include "url/gurl.h"
-
-#if defined(ENABLE_EXTENSIONS)
-namespace extensions {
-class ExperienceSamplingEvent;
-}
-#endif
 
 namespace policy {
 class PolicyTest_SSLErrorOverridingDisallowed_Test;

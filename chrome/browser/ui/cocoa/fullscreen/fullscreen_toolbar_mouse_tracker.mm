@@ -6,7 +6,7 @@
 
 #include "chrome/browser/ui/cocoa/browser_window_controller.h"
 #include "chrome/browser/ui/cocoa/fullscreen/fullscreen_toolbar_animation_controller.h"
-#import "chrome/browser/ui/cocoa/fullscreen_toolbar_controller.h"
+#import "chrome/browser/ui/cocoa/fullscreen/fullscreen_toolbar_controller.h"
 #include "ui/base/cocoa/appkit_utils.h"
 #import "ui/base/cocoa/tracking_area.h"
 
@@ -108,12 +108,7 @@ initWithFullscreenToolbarController:(FullscreenToolbarController*)owner
 }
 
 - (BOOL)mouseInsideTrackingArea {
-  if (!trackingArea_)
-    return NO;
-
-  NSPoint mouseLoc = [[contentView_ window] mouseLocationOutsideOfEventStream];
-  NSPoint mousePos = [contentView_ convertPoint:mouseLoc fromView:nil];
-  return NSMouseInRect(mousePos, trackingAreaFrame_, [contentView_ isFlipped]);
+  return [trackingArea_ mouseInsideTrackingAreaForView:contentView_];
 }
 
 - (void)mouseEntered:(NSEvent*)event {
@@ -125,7 +120,7 @@ initWithFullscreenToolbarController:(FullscreenToolbarController*)owner
 
   animationController_->AnimateToolbarOutIfPossible();
 
-  [owner_ updateToolbar];
+  [owner_ updateToolbarLayout];
   [self removeTrackingArea];
 }
 

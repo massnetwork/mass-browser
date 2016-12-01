@@ -136,6 +136,7 @@ using content::WebContentsObserver;
 using net::NetworkChangeNotifier;
 using prerender::test_utils::RequestCounter;
 using prerender::test_utils::CreateCountingInterceptorOnIO;
+using prerender::test_utils::CreateHangingFirstRequestInterceptorOnIO;
 using prerender::test_utils::CreateMockInterceptorOnIO;
 using prerender::test_utils::TestPrerender;
 using prerender::test_utils::TestPrerenderContents;
@@ -487,67 +488,6 @@ class RestorePrerenderMode {
  private:
   PrerenderManager::PrerenderManagerMode prev_mode_;
 };
-
-// URLRequestJob (and associated handler) which hangs.
-class HangingURLRequestJob : public net::URLRequestJob {
- public:
-  HangingURLRequestJob(net::URLRequest* request,
-                          net::NetworkDelegate* network_delegate)
-      : net::URLRequestJob(request, network_delegate) {
-  }
-
-  void Start() override {}
-
- private:
-  ~HangingURLRequestJob() override {}
-};
-
-class HangingFirstRequestInterceptor : public net::URLRequestInterceptor {
- public:
-  HangingFirstRequestInterceptor(const base::FilePath& file,
-                                 base::Closure callback)
-      : file_(file),
-        callback_(callback),
-        first_run_(true) {
-  }
-  ~HangingFirstRequestInterceptor() override {}
-
-  net::URLRequestJob* MaybeInterceptRequest(
-      net::URLRequest* request,
-      net::NetworkDelegate* network_delegate) const override {
-    if (first_run_) {
-      first_run_ = false;
-      if (!callback_.is_null()) {
-        BrowserThread::PostTask(
-            BrowserThread::UI, FROM_HERE, callback_);
-      }
-      return new HangingURLRequestJob(request, network_delegate);
-    }
-    return new net::URLRequestMockHTTPJob(
-        request,
-        network_delegate,
-        file_,
-        BrowserThread::GetBlockingPool()->GetTaskRunnerWithShutdownBehavior(
-            base::SequencedWorkerPool::SKIP_ON_SHUTDOWN));
-  }
-
- private:
-  base::FilePath file_;
-  base::Closure callback_;
-  mutable bool first_run_;
-};
-
-// Makes |url| never respond on the first load, and then with the contents of
-// |file| afterwards. When the first load has been scheduled, runs |callback| on
-// the UI thread.
-void CreateHangingFirstRequestInterceptorOnIO(
-    const GURL& url, const base::FilePath& file, base::Closure callback) {
-  CHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
-  std::unique_ptr<net::URLRequestInterceptor> never_respond_handler(
-      new HangingFirstRequestInterceptor(file, callback));
-  net::URLRequestFilter::GetInstance()->AddUrlInterceptor(
-      url, std::move(never_respond_handler));
-}
 
 // A ContentBrowserClient that cancels all prerenderers on OpenURL.
 class TestContentBrowserClient : public ChromeContentBrowserClient {
@@ -2630,31 +2570,6 @@ IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderSessionStorage) {
   GoBackToPageBeforePrerender();
 }
 
-// Checks that the control group works.  An XHR PUT cannot be detected in the
-// control group.
-IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, ControlGroup) {
-  RestorePrerenderMode restore_prerender_mode;
-  PrerenderManager::SetMode(
-      PrerenderManager::PRERENDER_MODE_EXPERIMENT_CONTROL_GROUP);
-  DisableJavascriptCalls();
-  PrerenderTestURL("/prerender/prerender_xhr_put.html",
-                   FINAL_STATUS_WOULD_HAVE_BEEN_USED, 0);
-  NavigateToDestURL();
-}
-
-// Checks that the control group correctly hits WOULD_HAVE_BEEN_USED
-// renderer-initiated navigations. (This verifies that the ShouldFork logic
-// behaves correctly.)
-IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, ControlGroupRendererInitiated) {
-  RestorePrerenderMode restore_prerender_mode;
-  PrerenderManager::SetMode(
-      PrerenderManager::PRERENDER_MODE_EXPERIMENT_CONTROL_GROUP);
-  DisableJavascriptCalls();
-  PrerenderTestURL("/prerender/prerender_xhr_put.html",
-                   FINAL_STATUS_WOULD_HAVE_BEEN_USED, 0);
-  OpenDestURLViaClick();
-}
-
 // Checks that the referrer policy is used when prerendering.
 IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderReferrerPolicy) {
   set_loader_path("/prerender/prerender_loader_with_referrer_policy.html");
@@ -2731,6 +2646,7 @@ class PrerenderBrowserTestWithExtensions : public PrerenderBrowserTest,
 
   void SetUpOnMainThread() override {
     PrerenderBrowserTest::SetUpOnMainThread();
+    ExtensionApiTest::SetUpOnMainThread();
   }
 };
 
@@ -2958,15 +2874,15 @@ IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest,
   // is partially controlled by the renderer, namely
   // ChromeContentRendererClient. This test instead relies on the Web
   // Store triggering such navigations.
-  std::string webstore_url = extension_urls::GetWebstoreLaunchURL();
+  GURL webstore_url = extension_urls::GetWebstoreLaunchURL();
 
   // Mock out requests to the Web Store.
   base::FilePath file(GetTestPath("prerender_page.html"));
   BrowserThread::PostTask(
       BrowserThread::IO, FROM_HERE,
-      base::Bind(&CreateMockInterceptorOnIO, GURL(webstore_url), file));
+      base::Bind(&CreateMockInterceptorOnIO, webstore_url, file));
 
-  PrerenderTestURL(CreateClientRedirect(webstore_url),
+  PrerenderTestURL(CreateClientRedirect(webstore_url.spec()),
                    FINAL_STATUS_OPEN_URL, 1);
 }
 
@@ -3250,9 +3166,9 @@ IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, AutosigninInPrerenderer) {
       base::Bind(&CreateCountingInterceptorOnIO,
                  done_url, empty_file, done_counter.AsWeakPtr()));
   // Loading may finish or be interrupted. The final result is important only.
-  // TODO(http://crbug.com/660278): TestPrrenderContents can be created after
-  // the JS code runs. The result would be a test timeout.
   DisableLoadEventCheck();
+  // TestPrenderContents is always created before the Autosignin JS can run, so
+  // waiting for PrerenderContents to stop should be reliable.
   PrerenderTestURL("/password/autosignin.html",
                    FINAL_STATUS_CREDENTIAL_MANAGER_API, 0);
   EXPECT_EQ(0, done_counter.count());

@@ -43,6 +43,7 @@
 #include "net/quic/test_tools/quic_test_packet_maker.h"
 #include "net/quic/test_tools/quic_test_utils.h"
 #include "net/quic/test_tools/test_task_runner.h"
+#include "net/socket/next_proto.h"
 #include "net/socket/socket_test_util.h"
 #include "net/spdy/spdy_session_test_util.h"
 #include "net/spdy/spdy_test_utils.h"
@@ -515,8 +516,8 @@ class QuicStreamFactoryTestBase {
 
     QuicStreamFactoryPeer::SetTaskRunner(factory_.get(), runner_.get());
 
-    const AlternativeService alternative_service1(QUIC, host_port_pair_.host(),
-                                                  host_port_pair_.port());
+    const AlternativeService alternative_service1(
+        kProtoQUIC, host_port_pair_.host(), host_port_pair_.port());
     AlternativeServiceInfoVector alternative_service_info_vector;
     base::Time expiration = base::Time::Now() + base::TimeDelta::FromDays(1);
     alternative_service_info_vector.push_back(
@@ -526,8 +527,8 @@ class QuicStreamFactoryTestBase {
 
     HostPortPair host_port_pair2(kServer2HostName, kDefaultServerPort);
     url::SchemeHostPort server2("https", kServer2HostName, kDefaultServerPort);
-    const AlternativeService alternative_service2(QUIC, host_port_pair2.host(),
-                                                  host_port_pair2.port());
+    const AlternativeService alternative_service2(
+        kProtoQUIC, host_port_pair2.host(), host_port_pair2.port());
     AlternativeServiceInfoVector alternative_service_info_vector2;
     alternative_service_info_vector2.push_back(
         AlternativeServiceInfo(alternative_service2, expiration));
@@ -965,7 +966,8 @@ TEST_P(QuicStreamFactoryTest, PoolingWithServerMigration) {
                                            "192.168.0.1", "");
   IPEndPoint alt_address = IPEndPoint(IPAddress(1, 2, 3, 4), 443);
   QuicConfig config;
-  config.SetAlternateServerAddressToSend(alt_address);
+  config.SetAlternateServerAddressToSend(
+      QuicSocketAddress(QuicSocketAddressImpl(alt_address)));
 
   VerifyServerMigration(config, alt_address);
 
@@ -3837,7 +3839,8 @@ TEST_P(QuicStreamFactoryTest, ServerMigrationIPv4ToIPv4) {
   // Add alternate IPv4 server address to config.
   IPEndPoint alt_address = IPEndPoint(IPAddress(1, 2, 3, 4), 123);
   QuicConfig config;
-  config.SetAlternateServerAddressToSend(alt_address);
+  config.SetAlternateServerAddressToSend(
+      QuicSocketAddress(QuicSocketAddressImpl(alt_address)));
   VerifyServerMigration(config, alt_address);
 }
 
@@ -3849,7 +3852,8 @@ TEST_P(QuicStreamFactoryTest, ServerMigrationIPv6ToIPv6) {
   IPEndPoint alt_address = IPEndPoint(
       IPAddress(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16), 123);
   QuicConfig config;
-  config.SetAlternateServerAddressToSend(alt_address);
+  config.SetAlternateServerAddressToSend(
+      QuicSocketAddress(QuicSocketAddressImpl(alt_address)));
   VerifyServerMigration(config, alt_address);
 }
 
@@ -3860,7 +3864,8 @@ TEST_P(QuicStreamFactoryTest, ServerMigrationIPv6ToIPv4) {
   // Add alternate IPv4 server address to config.
   IPEndPoint alt_address = IPEndPoint(IPAddress(1, 2, 3, 4), 123);
   QuicConfig config;
-  config.SetAlternateServerAddressToSend(alt_address);
+  config.SetAlternateServerAddressToSend(
+      QuicSocketAddress(QuicSocketAddressImpl(alt_address)));
   IPEndPoint expected_address(
       ConvertIPv4ToIPv4MappedIPv6(alt_address.address()), alt_address.port());
   VerifyServerMigration(config, expected_address);
@@ -3877,7 +3882,8 @@ TEST_P(QuicStreamFactoryTest, ServerMigrationIPv4ToIPv6Fails) {
   IPEndPoint alt_address = IPEndPoint(
       IPAddress(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16), 123);
   QuicConfig config;
-  config.SetAlternateServerAddressToSend(alt_address);
+  config.SetAlternateServerAddressToSend(
+      QuicSocketAddress(QuicSocketAddressImpl(alt_address)));
 
   ProofVerifyDetailsChromium verify_details = DefaultProofVerifyDetails();
   crypto_client_stream_factory_.AddProofVerifyDetails(&verify_details);
@@ -4124,8 +4130,8 @@ TEST_P(QuicStreamFactoryTest, RacingConnections) {
   socket_data2.AddRead(SYNCHRONOUS, ERR_IO_PENDING);
   socket_data2.AddSocketDataToFactory(&socket_factory_);
 
-  const AlternativeService alternative_service1(QUIC, host_port_pair_.host(),
-                                                host_port_pair_.port());
+  const AlternativeService alternative_service1(
+      kProtoQUIC, host_port_pair_.host(), host_port_pair_.port());
   AlternativeServiceInfoVector alternative_service_info_vector;
   base::Time expiration = base::Time::Now() + base::TimeDelta::FromDays(1);
   alternative_service_info_vector.push_back(

@@ -118,6 +118,10 @@ void ReportMetrics(bool password_manager_enabled,
             password_manager::SYNCING_WITH_CUSTOM_PASSPHRASE);
   }
   UMA_HISTOGRAM_BOOLEAN("PasswordManager.Enabled", password_manager_enabled);
+  UMA_HISTOGRAM_BOOLEAN(
+      "PasswordManager.ShouldShowAutoSignInFirstRunExperience",
+      password_bubble_experiment::ShouldShowAutoSignInPromptFirstRunExperience(
+          profile->GetPrefs()));
 }
 
 }  // namespace
@@ -207,9 +211,7 @@ bool ChromePasswordManagerClient::IsSavingAndFillingEnabledForCurrentPage()
 }
 
 bool ChromePasswordManagerClient::IsFillingEnabledForCurrentPage() const {
-  return (!password_manager::IsSettingsBehaviorChangeActive() ||
-          *saving_and_filling_passwords_enabled_) &&
-         !DidLastPageLoadEncounterSSLErrors() &&
+  return !DidLastPageLoadEncounterSSLErrors() &&
          IsPasswordManagementEnabledForCurrentPage();
 }
 
@@ -248,7 +250,7 @@ bool ChromePasswordManagerClient::PromptUserToSaveOrUpdatePassword(
   if (form_to_save->IsBlacklisted())
     return false;
 
-  if (update_password && IsUpdatePasswordUIEnabled()) {
+  if (update_password) {
     UpdatePasswordInfoBarDelegate::Create(web_contents(),
                                           std::move(form_to_save));
     return true;
@@ -268,21 +270,17 @@ bool ChromePasswordManagerClient::PromptUserToChooseCredentials(
   CredentialsCallback intercept =
       base::Bind(&ChromePasswordManagerClient::OnCredentialsChosen,
                  base::Unretained(this), callback, local_forms.size() == 1);
-  std::vector<std::unique_ptr<autofill::PasswordForm>> dummy_federations;
 #if defined(OS_ANDROID)
   // Deletes itself on the event from Java counterpart, when user interacts with
   // dialog.
   AccountChooserDialogAndroid* acccount_chooser_dialog =
       new AccountChooserDialogAndroid(web_contents(), std::move(local_forms),
-                                      std::move(dummy_federations), origin,
-                                      intercept);
+                                      origin, intercept);
   acccount_chooser_dialog->ShowDialog();
   return true;
 #else
   return PasswordsClientUIDelegateFromWebContents(web_contents())
-      ->OnChooseCredentials(std::move(local_forms),
-                            std::move(dummy_federations),
-                            origin, intercept);
+      ->OnChooseCredentials(std::move(local_forms), origin, intercept);
 #endif
 }
 
@@ -537,10 +535,6 @@ void ChromePasswordManagerClient::PromptUserToEnableAutosigninIfNecessary() {
 void ChromePasswordManagerClient::GenerationAvailableForForm(
     const autofill::PasswordForm& form) {
   password_manager_.GenerationAvailableForForm(form);
-}
-
-bool ChromePasswordManagerClient::IsUpdatePasswordUIEnabled() const {
-  return true;
 }
 
 const GURL& ChromePasswordManagerClient::GetMainFrameURL() const {

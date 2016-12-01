@@ -9,7 +9,7 @@
 #include "base/optional.h"
 #include "chrome/common/page_load_metrics/page_load_timing.h"
 #include "content/public/browser/navigation_handle.h"
-#include "third_party/WebKit/public/web/WebInputEvent.h"
+#include "third_party/WebKit/public/platform/WebInputEvent.h"
 #include "url/gurl.h"
 
 namespace page_load_metrics {
@@ -70,7 +70,7 @@ struct PageLoadExtraInfo {
       const base::Optional<base::TimeDelta>& first_background_time,
       const base::Optional<base::TimeDelta>& first_foreground_time,
       bool started_in_foreground,
-      bool user_gesture,
+      bool user_initiated,
       const GURL& committed_url,
       const GURL& start_url,
       UserAbortType abort_type,
@@ -95,7 +95,7 @@ struct PageLoadExtraInfo {
 
   // True if this is either a browser initiated navigation or the user_gesture
   // bit is true in the renderer.
-  const bool user_gesture;
+  const bool user_initiated;
 
   // Committed URL. If the page load did not commit, |committed_url| will be
   // empty.
@@ -108,6 +108,15 @@ struct PageLoadExtraInfo {
   // aborted, |abort_type| will be |ABORT_NONE|.
   const UserAbortType abort_type;
 
+  // Whether the abort for this page load was user initiated. For example, if
+  // this page load was aborted by a new navigation, this field tracks whether
+  // that new navigation was user-initiated. This field is only useful if this
+  // page load's abort type is a value other than ABORT_NONE. Note that this
+  // value is currently experimental, and is subject to change. In particular,
+  // this field is never set to true for some abort types, such as stop and
+  // close, since we don't yet have sufficient instrumentation to know if a stop
+  // or close was caused by a user action.
+  //
   // TODO(csharrison): If more metadata for aborts is needed we should provide a
   // better abstraction. Note that this is an approximation.
   bool abort_user_initiated;
@@ -142,14 +151,11 @@ class PageLoadMetricsObserver {
 
   virtual ~PageLoadMetricsObserver() {}
 
-  // The page load started, with the given navigation handle. Note that OnStart
-  // is called for same-page navigations. Implementers of OnStart that only want
-  // to process non-same-page navigations should also check to see that the page
-  // load committed via OnCommit or committed_url in
-  // PageLoadExtraInfo. currently_committed_url contains the URL of the
-  // committed page load at the time the navigation for navigation_handle was
-  // initiated, or the empty URL if there was no committed page load at the time
-  // the navigation was initiated.
+  // The page load started, with the given navigation handle.
+  // currently_committed_url contains the URL of the committed page load at the
+  // time the navigation for navigation_handle was initiated, or the empty URL
+  // if there was no committed page load at the time the navigation was
+  // initiated.
   virtual ObservePolicy OnStart(content::NavigationHandle* navigation_handle,
                                 const GURL& currently_committed_url,
                                 bool started_in_foreground);
@@ -165,7 +171,6 @@ class PageLoadMetricsObserver {
   // first data for the request. The navigation handle holds relevant data for
   // the navigation, but will be destroyed soon after this call. Don't hold a
   // reference to it.
-  // Note that this does not get called for same-page navigations.
   // Observers that return STOP_OBSERVING will not receive any additional
   // callbacks, and will be deleted after invocation of this method returns.
   virtual ObservePolicy OnCommit(content::NavigationHandle* navigation_handle);
@@ -173,7 +178,8 @@ class PageLoadMetricsObserver {
   // OnHidden is triggered when a page leaves the foreground. It does not fire
   // when a foreground page is permanently closed; for that, listen to
   // OnComplete instead.
-  virtual ObservePolicy OnHidden();
+  virtual ObservePolicy OnHidden(const PageLoadTiming& timing,
+                                 const PageLoadExtraInfo& extra_info);
 
   // OnShown is triggered when a page is brought to the foreground. It does not
   // fire when the page first loads; for that, listen for OnStart instead.

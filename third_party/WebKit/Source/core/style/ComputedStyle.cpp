@@ -841,8 +841,8 @@ bool ComputedStyle::diffNeedsFullLayoutAndPaintInvalidation(
   if (isDisplayTableType(display())) {
     if (m_inheritedData.m_borderCollapse !=
             other.m_inheritedData.m_borderCollapse ||
-        m_inheritedData.m_emptyCells != other.m_inheritedData.m_emptyCells ||
-        m_inheritedData.m_captionSide != other.m_inheritedData.m_captionSide ||
+        emptyCells() != other.emptyCells() ||
+        captionSide() != other.captionSide() ||
         m_nonInheritedData.m_tableLayout !=
             other.m_nonInheritedData.m_tableLayout)
       return true;
@@ -870,8 +870,7 @@ bool ComputedStyle::diffNeedsFullLayoutAndPaintInvalidation(
   } else if (display() == EDisplay::ListItem) {
     if (m_inheritedData.m_listStyleType !=
             other.m_inheritedData.m_listStyleType ||
-        m_inheritedData.m_listStylePosition !=
-            other.m_inheritedData.m_listStylePosition)
+        listStylePosition() != other.listStylePosition())
       return true;
   }
 
@@ -963,15 +962,12 @@ bool ComputedStyle::diffNeedsPaintInvalidationSubtree(
 
 bool ComputedStyle::diffNeedsPaintInvalidationObject(
     const ComputedStyle& other) const {
-  if (!m_background->outline().visuallyEqual(other.m_background->outline()))
-    return true;
-
   if (visibility() != other.visibility() ||
       m_inheritedData.m_printColorAdjust !=
           other.m_inheritedData.m_printColorAdjust ||
       m_inheritedData.m_insideLink != other.m_inheritedData.m_insideLink ||
       !m_surround->border.visuallyEqual(other.m_surround->border) ||
-      !m_background->visuallyEqual(*other.m_background))
+      *m_background != *other.m_background)
     return true;
 
   if (m_rareInheritedData.get() != other.m_rareInheritedData.get()) {
@@ -997,6 +993,8 @@ bool ComputedStyle::diffNeedsPaintInvalidationObject(
             *other.m_rareNonInheritedData.get()) ||
         !m_rareNonInheritedData->clipPathDataEquivalent(
             *other.m_rareNonInheritedData.get()) ||
+        !m_rareNonInheritedData->m_outline.visuallyEqual(
+            other.m_rareNonInheritedData->m_outline) ||
         (visitedLinkBorderLeftColor() != other.visitedLinkBorderLeftColor() &&
          borderLeftWidth()) ||
         (visitedLinkBorderRightColor() != other.visitedLinkBorderRightColor() &&
@@ -1087,18 +1085,21 @@ void ComputedStyle::updatePropertySpecificDifferences(
     if (!m_rareNonInheritedData->reflectionDataEquivalent(
             *other.m_rareNonInheritedData.get()))
       diff.setFilterChanged();
+
+    if (!m_rareNonInheritedData->m_outline.visuallyEqual(
+            other.m_rareNonInheritedData->m_outline))
+      diff.setNeedsRecomputeOverflow();
   }
 
-  if (!m_background->outline().visuallyEqual(other.m_background->outline()) ||
-      !m_surround->border.visualOverflowEqual(other.m_surround->border))
+  if (!m_surround->border.visualOverflowEqual(other.m_surround->border))
     diff.setNeedsRecomputeOverflow();
 
   if (!diff.needsPaintInvalidation()) {
     if (m_styleInheritedData->color != other.m_styleInheritedData->color ||
         m_styleInheritedData->visitedLinkColor !=
             other.m_styleInheritedData->visitedLinkColor ||
-        m_inheritedData.m_textUnderline !=
-            other.m_inheritedData.m_textUnderline ||
+        m_inheritedData.m_hasSimpleUnderline !=
+            other.m_inheritedData.m_hasSimpleUnderline ||
         m_visual->textDecoration != other.m_visual->textDecoration) {
       diff.setTextDecorationOrColorChanged();
     } else if (m_rareNonInheritedData.get() !=
@@ -1136,9 +1137,10 @@ void ComputedStyle::updatePropertySpecificDifferences(
 }
 
 void ComputedStyle::addPaintImage(StyleImage* image) {
-  if (!m_rareNonInheritedData.access()->m_paintImages)
+  if (!m_rareNonInheritedData.access()->m_paintImages) {
     m_rareNonInheritedData.access()->m_paintImages =
-        WTF::wrapUnique(new Vector<Persistent<StyleImage>>());
+        makeUnique<Vector<Persistent<StyleImage>>>();
+  }
   m_rareNonInheritedData.access()->m_paintImages->append(image);
 }
 
@@ -1250,6 +1252,10 @@ bool ComputedStyle::hasWillChangeTransformHint() const {
     switch (property) {
       case CSSPropertyTransform:
       case CSSPropertyAliasWebkitTransform:
+      case CSSPropertyPerspective:
+      case CSSPropertyTranslate:
+      case CSSPropertyScale:
+      case CSSPropertyRotate:
         return true;
       default:
         break;
@@ -1261,9 +1267,6 @@ bool ComputedStyle::hasWillChangeTransformHint() const {
 bool ComputedStyle::requireTransformOrigin(
     ApplyTransformOrigin applyOrigin,
     ApplyMotionPath applyMotionPath) const {
-  const Vector<RefPtr<TransformOperation>>& transformOperations =
-      transform().operations();
-
   // transform-origin brackets the transform with translate operations.
   // Optimize for the case where the only transform is a translation, since the
   // transform-origin is irrelevant in that case.
@@ -1273,9 +1276,8 @@ bool ComputedStyle::requireTransformOrigin(
   if (applyMotionPath == IncludeMotionPath)
     return true;
 
-  unsigned size = transformOperations.size();
-  for (unsigned i = 0; i < size; ++i) {
-    TransformOperation::OperationType type = transformOperations[i]->type();
+  for (const auto& operation : transform().operations()) {
+    TransformOperation::OperationType type = operation->type();
     if (type != TransformOperation::TranslateX &&
         type != TransformOperation::TranslateY &&
         type != TransformOperation::Translate &&
@@ -1311,20 +1313,20 @@ void ComputedStyle::applyTransform(
   bool applyTransformOrigin =
       requireTransformOrigin(applyOrigin, applyMotionPath);
 
-  float offsetX = transformOriginX().type() == Percent ? boundingBox.x() : 0;
-  float offsetY = transformOriginY().type() == Percent ? boundingBox.y() : 0;
-
   float originX = 0;
   float originY = 0;
   float originZ = 0;
 
+  const FloatSize& boxSize = boundingBox.size();
   if (applyTransformOrigin ||
       // We need to calculate originX and originY for applying motion path.
-      applyMotionPath == ComputedStyle::IncludeMotionPath) {
+      applyMotionPath == IncludeMotionPath) {
+    float offsetX = transformOriginX().type() == Percent ? boundingBox.x() : 0;
     originX =
-        floatValueForLength(transformOriginX(), boundingBox.width()) + offsetX;
+        floatValueForLength(transformOriginX(), boxSize.width()) + offsetX;
+    float offsetY = transformOriginY().type() == Percent ? boundingBox.y() : 0;
     originY =
-        floatValueForLength(transformOriginY(), boundingBox.height()) + offsetY;
+        floatValueForLength(transformOriginY(), boxSize.height()) + offsetY;
     if (applyTransformOrigin) {
       originZ = transformOriginZ();
       result.translate3d(originX, originY, originZ);
@@ -1334,23 +1336,20 @@ void ComputedStyle::applyTransform(
   if (applyIndependentTransformProperties ==
       IncludeIndependentTransformProperties) {
     if (translate())
-      translate()->apply(result, boundingBox.size());
+      translate()->apply(result, boxSize);
 
     if (rotate())
-      rotate()->apply(result, boundingBox.size());
+      rotate()->apply(result, boxSize);
 
     if (scale())
-      scale()->apply(result, boundingBox.size());
+      scale()->apply(result, boxSize);
   }
 
-  if (applyMotionPath == ComputedStyle::IncludeMotionPath)
-    applyMotionPathTransform(originX, originY, result);
+  if (applyMotionPath == IncludeMotionPath)
+    applyMotionPathTransform(originX, originY, boundingBox, result);
 
-  const Vector<RefPtr<TransformOperation>>& transformOperations =
-      transform().operations();
-  unsigned size = transformOperations.size();
-  for (unsigned i = 0; i < size; ++i)
-    transformOperations[i]->apply(result, boundingBox.size());
+  for (const auto& operation : transform().operations())
+    operation->apply(result, boxSize);
 
   if (applyTransformOrigin) {
     result.translate3d(-originX, -originY, -originZ);
@@ -1360,11 +1359,11 @@ void ComputedStyle::applyTransform(
 void ComputedStyle::applyMotionPathTransform(
     float originX,
     float originY,
+    const FloatRect& boundingBox,
     TransformationMatrix& transform) const {
   const StyleMotionData& motionData =
       m_rareNonInheritedData->m_transform->m_motion;
-  // TODO(ericwilligers): crbug.com/638055 Apply offset-position and
-  // offset-anchor.
+  // TODO(ericwilligers): crbug.com/638055 Apply offset-position.
   if (!motionData.m_path) {
     return;
   }
@@ -1387,8 +1386,25 @@ void ComputedStyle::applyMotionPathTransform(
   if (motionData.m_rotation.type == OffsetRotationFixed)
     angle = 0;
 
-  transform.translate(point.x() - originX, point.y() - originY);
+  float originShiftX = 0;
+  float originShiftY = 0;
+  if (RuntimeEnabledFeatures::cssOffsetPositionAnchorEnabled()) {
+    // TODO(ericwilligers): crbug.com/638055 Support offset-anchor: auto.
+    const LengthPoint& anchor = offsetAnchor();
+    originShiftX = floatValueForLength(anchor.x(), boundingBox.width()) -
+                   floatValueForLength(transformOriginX(), boundingBox.width());
+    originShiftY =
+        floatValueForLength(anchor.y(), boundingBox.height()) -
+        floatValueForLength(transformOriginY(), boundingBox.height());
+  }
+
+  transform.translate(point.x() - originX + originShiftX,
+                      point.y() - originY + originShiftY);
   transform.rotate(angle + motionData.m_rotation.angle);
+
+  if (RuntimeEnabledFeatures::cssOffsetPositionAnchorEnabled()) {
+    transform.translate(-originShiftX, -originShiftY);
+  }
 }
 
 void ComputedStyle::setTextShadow(PassRefPtr<ShadowList> s) {
@@ -1695,27 +1711,38 @@ FontStretch ComputedStyle::fontStretch() const {
 }
 
 TextDecoration ComputedStyle::textDecorationsInEffect() const {
+  if (m_inheritedData.m_hasSimpleUnderline)
+    return TextDecorationUnderline;
+  if (!m_rareInheritedData->appliedTextDecorations)
+    return TextDecorationNone;
+
   int decorations = 0;
 
   const Vector<AppliedTextDecoration>& applied = appliedTextDecorations();
 
   for (size_t i = 0; i < applied.size(); ++i)
-    decorations |= applied[i].line();
+    decorations |= applied[i].lines();
 
   return static_cast<TextDecoration>(decorations);
 }
 
 const Vector<AppliedTextDecoration>& ComputedStyle::appliedTextDecorations()
     const {
-  if (!m_inheritedData.m_textUnderline &&
-      !m_rareInheritedData->appliedTextDecorations) {
+  if (m_inheritedData.m_hasSimpleUnderline) {
+    DEFINE_STATIC_LOCAL(
+        Vector<AppliedTextDecoration>, underline,
+        (1, AppliedTextDecoration(
+                TextDecorationUnderline, TextDecorationStyleSolid,
+                visitedDependentColor(CSSPropertyTextDecorationColor))));
+    // Since we only have one of these in memory, just update the color before
+    // returning.
+    underline.at(0).setColor(
+        visitedDependentColor(CSSPropertyTextDecorationColor));
+    return underline;
+  }
+  if (!m_rareInheritedData->appliedTextDecorations) {
     DEFINE_STATIC_LOCAL(Vector<AppliedTextDecoration>, empty, ());
     return empty;
-  }
-  if (m_inheritedData.m_textUnderline) {
-    DEFINE_STATIC_LOCAL(Vector<AppliedTextDecoration>, underline,
-                        (1, AppliedTextDecoration(TextDecorationUnderline)));
-    return underline;
   }
 
   return m_rareInheritedData->appliedTextDecorations->vector();
@@ -1926,45 +1953,62 @@ void ComputedStyle::addAppliedTextDecoration(
   else if (!list->hasOneRef())
     list = list->copy();
 
-  if (m_inheritedData.m_textUnderline) {
-    m_inheritedData.m_textUnderline = false;
-    list->append(AppliedTextDecoration(TextDecorationUnderline));
-  }
-
   list->append(decoration);
 }
 
-void ComputedStyle::applyTextDecorations() {
-  if (getTextDecoration() == TextDecorationNone)
+void ComputedStyle::overrideTextDecorationColors(Color overrideColor) {
+  RefPtr<AppliedTextDecorationList>& list =
+      m_rareInheritedData.access()->appliedTextDecorations;
+  DCHECK(list);
+  if (!list->hasOneRef())
+    list = list->copy();
+
+  for (size_t i = 0; i < list->size(); ++i)
+    list->at(i).setColor(overrideColor);
+}
+
+void ComputedStyle::applyTextDecorations(const Color& parentTextDecorationColor,
+                                         bool overrideExistingColors) {
+  if (getTextDecoration() == TextDecorationNone &&
+      !m_inheritedData.m_hasSimpleUnderline &&
+      !m_rareInheritedData->appliedTextDecorations)
     return;
 
-  TextDecorationStyle style = getTextDecorationStyle();
-  StyleColor styleColor =
-      decorationColorIncludingFallback(insideLink() == InsideVisitedLink);
-
-  int decorations = getTextDecoration();
-
-  if (decorations & TextDecorationUnderline) {
-    // To save memory, we don't use AppliedTextDecoration objects in the
-    // common case of a single simple underline.
-    AppliedTextDecoration underline(TextDecorationUnderline, style, styleColor);
-
-    if (!m_rareInheritedData->appliedTextDecorations &&
-        underline.isSimpleUnderline())
-      m_inheritedData.m_textUnderline = true;
-    else
-      addAppliedTextDecoration(underline);
+  // If there are any color changes or decorations set by this element, stop
+  // using m_hasSimpleUnderline.
+  Color currentTextDecorationColor =
+      visitedDependentColor(CSSPropertyTextDecorationColor);
+  if (m_inheritedData.m_hasSimpleUnderline &&
+      (getTextDecoration() != TextDecorationNone ||
+       currentTextDecorationColor != parentTextDecorationColor)) {
+    m_inheritedData.m_hasSimpleUnderline = false;
+    addAppliedTextDecoration(AppliedTextDecoration(TextDecorationUnderline,
+                                                   TextDecorationStyleSolid,
+                                                   parentTextDecorationColor));
   }
-  if (decorations & TextDecorationOverline)
-    addAppliedTextDecoration(
-        AppliedTextDecoration(TextDecorationOverline, style, styleColor));
-  if (decorations & TextDecorationLineThrough)
-    addAppliedTextDecoration(
-        AppliedTextDecoration(TextDecorationLineThrough, style, styleColor));
+  if (overrideExistingColors && m_rareInheritedData->appliedTextDecorations)
+    overrideTextDecorationColors(currentTextDecorationColor);
+  if (getTextDecoration() == TextDecorationNone)
+    return;
+  DCHECK(!m_inheritedData.m_hasSimpleUnderline);
+  // To save memory, we don't use AppliedTextDecoration objects in the common
+  // case of a single simple underline of currentColor.
+  TextDecoration decorationLines = getTextDecoration();
+  TextDecorationStyle decorationStyle = getTextDecorationStyle();
+  bool isSimpleUnderline = decorationLines == TextDecorationUnderline &&
+                           decorationStyle == TextDecorationStyleSolid &&
+                           textDecorationColor().isCurrentColor();
+  if (isSimpleUnderline && !m_rareInheritedData->appliedTextDecorations) {
+    m_inheritedData.m_hasSimpleUnderline = true;
+    return;
+  }
+
+  addAppliedTextDecoration(AppliedTextDecoration(
+      decorationLines, decorationStyle, currentTextDecorationColor));
 }
 
 void ComputedStyle::clearAppliedTextDecorations() {
-  m_inheritedData.m_textUnderline = false;
+  m_inheritedData.m_hasSimpleUnderline = false;
 
   if (m_rareInheritedData->appliedTextDecorations)
     m_rareInheritedData.access()->appliedTextDecorations = nullptr;
@@ -1972,7 +2016,8 @@ void ComputedStyle::clearAppliedTextDecorations() {
 
 void ComputedStyle::restoreParentTextDecorations(
     const ComputedStyle& parentStyle) {
-  m_inheritedData.m_textUnderline = parentStyle.m_inheritedData.m_textUnderline;
+  m_inheritedData.m_hasSimpleUnderline =
+      parentStyle.m_inheritedData.m_hasSimpleUnderline;
   if (m_rareInheritedData->appliedTextDecorations !=
       parentStyle.m_rareInheritedData->appliedTextDecorations)
     m_rareInheritedData.access()->appliedTextDecorations =
@@ -2227,7 +2272,7 @@ int ComputedStyle::outlineOutsetExtent() const {
     return GraphicsContext::focusRingOutsetExtent(
         outlineOffset(), std::ceil(getOutlineStrokeWidthForFocusRing()));
   }
-  return std::max(0, saturatedAddition(outlineWidth(), outlineOffset()));
+  return std::max(0, SaturatedAddition(outlineWidth(), outlineOffset()));
 }
 
 float ComputedStyle::getOutlineStrokeWidthForFocusRing() const {

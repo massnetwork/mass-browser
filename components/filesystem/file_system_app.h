@@ -14,10 +14,6 @@
 #include "services/service_manager/public/cpp/service.h"
 #include "services/tracing/public/cpp/provider.h"
 
-namespace mojo {
-class Connector;
-}
-
 namespace filesystem {
 
 class FileSystemApp
@@ -32,7 +28,7 @@ class FileSystemApp
   static base::FilePath GetUserDataDir();
 
   // |service_manager::Service| override:
-  void OnStart(const service_manager::ServiceInfo& info) override;
+  void OnStart() override;
   bool OnConnect(const service_manager::ServiceInfo& remote_info,
                  service_manager::InterfaceRegistry* registry) override;
 

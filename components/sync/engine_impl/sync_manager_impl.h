@@ -33,16 +33,11 @@
 #include "components/sync/syncable/user_share.h"
 #include "net/base/network_change_notifier.h"
 
-class GURL;
-
 namespace syncer {
 
 class ModelTypeRegistry;
-class SyncServerConnectionManager;
 class SyncCycleContext;
 class TypeDebugInfoObserver;
-class WriteNode;
-class WriteTransaction;
 
 // SyncManager encapsulates syncable::Directory and serves as the parent of all
 // other objects in the sync API.  If multiple threads interact with the same
@@ -110,6 +105,7 @@ class SyncManagerImpl
   void RequestEmitDebugInfo() override;
   void ClearServerData(const ClearServerDataCallback& callback) override;
   void OnCookieJarChanged(bool account_mismatch, bool empty_jar) override;
+  void OnMemoryDump(base::trace_event::ProcessMemoryDump* pmd) override;
 
   // SyncEncryptionHandler::Observer implementation.
   void OnPassphraseRequired(
@@ -132,6 +128,7 @@ class SyncManagerImpl
   void OnActionableError(const SyncProtocolError& error) override;
   void OnRetryTimeChanged(base::Time retry_time) override;
   void OnThrottledTypesChanged(ModelTypeSet throttled_types) override;
+  void OnBackedOffTypesChanged(ModelTypeSet backed_off_types) override;
   void OnMigrationRequested(ModelTypeSet types) override;
   void OnProtocolEvent(const ProtocolEvent& event) override;
 
@@ -278,7 +275,7 @@ class SyncManagerImpl
 
   // The ServerConnectionManager used to abstract communication between the
   // client (the Syncer) and the sync server.
-  std::unique_ptr<SyncServerConnectionManager> connection_manager_;
+  std::unique_ptr<ServerConnectionManager> connection_manager_;
 
   // Maintains state that affects the way we interact with different sync types.
   // This state changes when entering or exiting a configuration cycle.

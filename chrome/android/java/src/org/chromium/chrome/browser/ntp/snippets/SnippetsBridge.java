@@ -55,8 +55,8 @@ public class SnippetsBridge implements SuggestionsSource {
     }
 
     /**
-     * Destroys the native service and unregisters observers. This object can't be reused to
-     * communicate with any native service and should be discarded.
+     * Destroys the native bridge. This object can no longer be used to send native commands, and
+     * any observer is nulled out and will stop receiving updates. This object should be discarded.
      */
     public void destroy() {
         assert mNativeSnippetsBridge != 0;
@@ -66,17 +66,20 @@ public class SnippetsBridge implements SuggestionsSource {
     }
 
     /**
-     * Fetches new snippets.
-     */
-    public static void fetchSnippets(boolean forceRequest) {
-        nativeFetchSnippets(forceRequest);
-    }
-
-    /**
      * Reschedules the fetching of snippets.
      */
     public static void rescheduleFetching() {
         nativeRescheduleFetching();
+    }
+
+    public static void fetchRemoteSuggestionsFromBackground() {
+        // Do not force regular background fetches.
+        nativeFetchRemoteSuggestionsInTheBackground();
+    }
+
+    @Override
+    public void fetchRemoteSuggestions() {
+        nativeFetchRemoteSuggestions();
     }
 
     @Override
@@ -187,26 +190,53 @@ public class SnippetsBridge implements SuggestionsSource {
         nativeSetObserver(mNativeSnippetsBridge, observer == null ? null : this);
     }
 
+    @Override
+    public void fetchSuggestions(@CategoryInt int category, String[] displayedSuggestionIds) {
+        assert mNativeSnippetsBridge != 0;
+        assert mObserver != null;
+
+        nativeFetch(mNativeSnippetsBridge, category, displayedSuggestionIds);
+    }
+
     @CalledByNative
     private static List<SnippetArticle> createSuggestionList() {
         return new ArrayList<>();
     }
 
     @CalledByNative
-    private static void addSuggestion(List<SnippetArticle> suggestions, int category, String id,
-            String title, String publisher, String previewText, String url, String ampUrl,
-            long timestamp, float score, int cardLayout) {
+    private static SnippetArticle addSuggestion(List<SnippetArticle> suggestions, int category,
+            String id, String title, String publisher, String previewText, String url,
+            String ampUrl, long timestamp, float score) {
         int position = suggestions.size();
         suggestions.add(new SnippetArticle(category, id, title, publisher, previewText, url, ampUrl,
-                timestamp, score, position, cardLayout));
+                timestamp, score, position));
+        return suggestions.get(position);
+    }
+
+    @CalledByNative
+    private static void setAssetDownloadDataForSuggestion(
+            SnippetArticle suggestion, String filePath, String mimeType) {
+        suggestion.setAssetDownloadData(filePath, mimeType);
+    }
+
+    @CalledByNative
+    private static void setOfflinePageDownloadDataForSuggestion(
+            SnippetArticle suggestion, long offlinePageId) {
+        suggestion.setOfflinePageDownloadData(offlinePageId);
+    }
+
+    @CalledByNative
+    private static void setRecentTabDataForSuggestion(
+            SnippetArticle suggestion, String tabId, long offlinePageId) {
+        suggestion.setRecentTabData(tabId, offlinePageId);
     }
 
     @CalledByNative
     private static SuggestionsCategoryInfo createSuggestionsCategoryInfo(int category, String title,
-            int cardLayout, boolean hasMoreButton, boolean showIfEmpty,
-            String noSuggestionsMessage) {
-        return new SuggestionsCategoryInfo(
-                category, title, cardLayout, hasMoreButton, showIfEmpty, noSuggestionsMessage);
+            int cardLayout, boolean hasMoreAction, boolean hasReloadAction,
+            boolean hasViewAllAction, boolean showIfEmpty, String noSuggestionsMessage) {
+        return new SuggestionsCategoryInfo(category, title, cardLayout, hasMoreAction,
+                hasReloadAction, hasViewAllAction, showIfEmpty, noSuggestionsMessage);
     }
 
     @CalledByNative
@@ -217,8 +247,15 @@ public class SnippetsBridge implements SuggestionsSource {
     }
 
     @CalledByNative
-    private void onCategoryStatusChanged(@CategoryInt int category,
-            @CategoryStatusEnum int newStatus) {
+    private void onMoreSuggestions(@CategoryInt int category, List<SnippetArticle> suggestions) {
+        assert mNativeSnippetsBridge != 0;
+        assert mObserver != null;
+        mObserver.onMoreSuggestions(category, suggestions);
+    }
+
+    @CalledByNative
+    private void onCategoryStatusChanged(
+            @CategoryInt int category, @CategoryStatusEnum int newStatus) {
         if (mObserver != null) mObserver.onCategoryStatusChanged(category, newStatus);
     }
 
@@ -227,9 +264,15 @@ public class SnippetsBridge implements SuggestionsSource {
         if (mObserver != null) mObserver.onSuggestionInvalidated(category, idWithinCategory);
     }
 
+    @CalledByNative
+    private void onFullRefreshRequired() {
+        if (mObserver != null) mObserver.onFullRefreshRequired();
+    }
+
     private native long nativeInit(Profile profile);
     private native void nativeDestroy(long nativeNTPSnippetsBridge);
-    private static native void nativeFetchSnippets(boolean forceRequest);
+    private static native void nativeFetchRemoteSuggestions();
+    private static native void nativeFetchRemoteSuggestionsInTheBackground();
     private static native void nativeRescheduleFetching();
     private native int[] nativeGetCategories(long nativeNTPSnippetsBridge);
     private native int nativeGetCategoryStatus(long nativeNTPSnippetsBridge, int category);
@@ -239,6 +282,8 @@ public class SnippetsBridge implements SuggestionsSource {
             long nativeNTPSnippetsBridge, int category);
     private native void nativeFetchSuggestionImage(long nativeNTPSnippetsBridge, int category,
             String idWithinCategory, Callback<Bitmap> callback);
+    private native void nativeFetch(
+            long nativeNTPSnippetsBridge, int category, String[] knownSuggestions);
     private native void nativeDismissSuggestion(long nativeNTPSnippetsBridge, String url,
             int globalPosition, int category, int categoryPosition, String idWithinCategory);
     private native void nativeDismissCategory(long nativeNTPSnippetsBridge, int category);

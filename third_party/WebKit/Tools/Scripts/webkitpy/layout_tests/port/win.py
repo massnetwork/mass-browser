@@ -29,7 +29,6 @@
 """Windows implementation of the Port interface."""
 
 import errno
-import os
 import logging
 
 try:
@@ -209,7 +208,7 @@ class WinPort(base.Port):
         return self.path_from_chromium_base('third_party', 'apache-win32', 'bin', 'httpd.exe')
 
     def path_to_apache_config_file(self):
-        return self._filesystem.join(self.layout_tests_dir(), 'http', 'conf', 'win-httpd.conf')
+        return self._filesystem.join(self.apache_config_directory(), 'win-httpd.conf')
 
     #
     # PROTECTED ROUTINES

@@ -75,7 +75,7 @@ class LayoutGrid final : public LayoutBlock {
   typedef Vector<LayoutBox*, 1> GridCell;
   const GridCell& gridCell(int row, int column) const {
     SECURITY_DCHECK(!m_gridIsDirty);
-    return m_grid[row][column];
+    return m_grid.cell(row, column);
   }
 
   const Vector<LayoutBox*>& itemsOverflowingGridArea() const {
@@ -85,11 +85,11 @@ class LayoutGrid final : public LayoutBlock {
 
   int paintIndexForGridItem(const LayoutBox* layoutBox) const {
     SECURITY_DCHECK(!m_gridIsDirty);
-    return m_gridItemsIndexesMap.get(layoutBox);
+    return m_grid.gridItemPaintOrder(*layoutBox);
   }
 
   size_t autoRepeatCountForDirection(GridTrackSizingDirection direction) const {
-    return direction == ForColumns ? m_autoRepeatColumns : m_autoRepeatRows;
+    return m_grid.autoRepeatTracks(direction);
   }
 
   LayoutUnit translateRTLCoordinate(LayoutUnit) const;
@@ -124,6 +124,13 @@ class LayoutGrid final : public LayoutBlock {
       GridSizingData&,
       LayoutUnit& baseSizesWithoutMaximization,
       LayoutUnit& growthLimitsWithoutMaximization) const;
+  void computeFlexSizedTracksGrowth(
+      GridTrackSizingDirection,
+      Vector<GridTrack>&,
+      const Vector<size_t>& flexibleSizedTracksIndex,
+      double flexFraction,
+      Vector<LayoutUnit>& increments,
+      LayoutUnit& totalGrowth) const;
   LayoutUnit computeUsedBreadthOfMinLength(const GridTrackSize&,
                                            LayoutUnit maxBreadth) const;
   LayoutUnit computeUsedBreadthOfMaxLength(const GridTrackSize&,
@@ -132,10 +139,6 @@ class LayoutGrid final : public LayoutBlock {
   void resolveContentBasedTrackSizingFunctions(GridTrackSizingDirection,
                                                GridSizingData&) const;
 
-  void ensureGridSize(size_t maximumRowSize, size_t maximumColumnSize);
-  void insertItemIntoGrid(LayoutBox&, const GridArea&);
-
-  void updateAutoRepeatTracksAndSetDirtyIfNeeded(SizingOperation);
   size_t computeAutoRepeatTracksCount(GridTrackSizingDirection,
                                       SizingOperation) const;
 
@@ -143,11 +146,7 @@ class LayoutGrid final : public LayoutBlock {
   std::unique_ptr<OrderedTrackIndexSet> computeEmptyTracksForAutoRepeat(
       GridTrackSizingDirection) const;
 
-  bool hasAutoRepeatEmptyTracks(GridTrackSizingDirection) const;
-  bool isEmptyAutoRepeatTrack(GridTrackSizingDirection,
-                              size_t lineNumber) const;
-
-  void placeItemsOnGrid();
+  void placeItemsOnGrid(SizingOperation);
   void populateExplicitGridAndOrderIterator();
   std::unique_ptr<GridArea> createEmptyGridAreaAtSpecifiedPositionsOutsideGrid(
       const LayoutBox&,
@@ -176,8 +175,9 @@ class LayoutGrid final : public LayoutBlock {
 
   void layoutGridItems(GridSizingData&);
   void prepareChildForPositionedLayout(LayoutBox&);
-  void layoutPositionedObjects(bool relayoutChildren,
-                               PositionedLayoutBehavior = DefaultLayout);
+  void layoutPositionedObjects(
+      bool relayoutChildren,
+      PositionedLayoutBehavior = DefaultLayout) override;
   void offsetAndBreadthForPositionedChild(const LayoutBox&,
                                           GridTrackSizingDirection,
                                           LayoutUnit& offset,
@@ -301,6 +301,15 @@ class LayoutGrid final : public LayoutBlock {
   void updateAutoMarginsInColumnAxisIfNeeded(LayoutBox&);
   void updateAutoMarginsInRowAxisIfNeeded(LayoutBox&);
 
+  int baselinePosition(
+      FontBaseline,
+      bool firstLine,
+      LineDirectionMode,
+      LinePositionMode = PositionOnContainingLine) const override;
+  int firstLineBoxBaseline() const override;
+  int inlineBlockBaseline(LineDirectionMode) const override;
+  bool isInlineBaselineAlignedChild(const LayoutBox* child) const;
+
 #if ENABLE(ASSERT)
   bool tracksAreWiderThanMinTrackBreadth(GridTrackSizingDirection,
                                          GridSizingData&) const;
@@ -318,9 +327,6 @@ class LayoutGrid final : public LayoutBlock {
                                               GridTrackSizingDirection,
                                               SizingOperation) const;
 
-  size_t gridColumnCount() const;
-  size_t gridRowCount() const;
-
   bool isOrthogonalChild(const LayoutBox&) const;
   GridTrackSizingDirection flowAwareDirectionForChild(
       const LayoutBox&,
@@ -328,31 +334,94 @@ class LayoutGrid final : public LayoutBlock {
 
   bool cachedHasDefiniteLogicalHeight() const;
 
-  typedef Vector<Vector<GridCell>> GridRepresentation;
-  GridRepresentation m_grid;
+  size_t numTracks(GridTrackSizingDirection) const;
+
+  // TODO(svillar): move into this class once GridIterator is added.
+  typedef Vector<Vector<GridCell>> GridAsMatrix;
+  class Grid final {
+   public:
+    Grid(LayoutGrid* grid) : m_orderIterator(grid) {}
+
+    size_t numTracks(GridTrackSizingDirection) const;
+
+    void ensureGridSize(size_t maximumRowSize, size_t maximumColumnSize);
+    void insert(LayoutBox&, const GridArea&);
+
+    // Note that out of flow children are not grid items.
+    bool hasGridItems() const { return !m_gridItemArea.isEmpty(); }
+
+    // TODO(svillar): move this to SizingData once it's passed to
+    // placeItemsOnGrid.
+    bool hasAnyOrthogonalGridItem() const { return m_hasAnyOrthogonalGridItem; }
+    void setHasAnyOrthogonalGridItem(bool);
+
+    GridArea gridItemArea(const LayoutBox& item) const;
+    void setGridItemArea(const LayoutBox& item, GridArea);
+
+    GridSpan gridItemSpan(const LayoutBox&, GridTrackSizingDirection) const;
+
+    size_t gridItemPaintOrder(const LayoutBox& item) const;
+    void setGridItemPaintOrder(const LayoutBox& item, size_t order);
+
+    const GridCell& cell(size_t row, size_t column) const {
+      return m_grid[row][column];
+    }
+
+    int smallestTrackStart(GridTrackSizingDirection) const;
+    void setSmallestTracksStart(int rowStart, int columnStart);
+
+    size_t autoRepeatTracks(GridTrackSizingDirection) const;
+    void setAutoRepeatTracks(size_t autoRepeatRows, size_t autoRepeatColumns);
+
+    void setAutoRepeatEmptyColumns(std::unique_ptr<OrderedTrackIndexSet>);
+    void setAutoRepeatEmptyRows(std::unique_ptr<OrderedTrackIndexSet>);
+
+    size_t autoRepeatEmptyTracksCount(GridTrackSizingDirection) const;
+    bool hasAutoRepeatEmptyTracks(GridTrackSizingDirection) const;
+    bool isEmptyAutoRepeatTrack(GridTrackSizingDirection, size_t) const;
+
+    OrderedTrackIndexSet* autoRepeatEmptyTracks(GridTrackSizingDirection) const;
+
+    OrderIterator& orderIterator() { return m_orderIterator; }
+
+    void shrinkToFit() { m_grid.shrinkToFit(); }
+    void clear();
+
+#if ENABLE(ASSERT)
+    bool hasAnyGridItemPaintOrder() const;
+#endif
+
+   private:
+    friend class GridIterator;
+
+    OrderIterator m_orderIterator;
+
+    int m_smallestColumnStart{0};
+    int m_smallestRowStart{0};
+
+    size_t m_autoRepeatColumns{0};
+    size_t m_autoRepeatRows{0};
+
+    bool m_hasAnyOrthogonalGridItem{false};
+    GridAsMatrix m_grid;
+
+    HashMap<const LayoutBox*, GridArea> m_gridItemArea;
+    HashMap<const LayoutBox*, size_t> m_gridItemsIndexesMap;
+
+    std::unique_ptr<OrderedTrackIndexSet> m_autoRepeatEmptyColumns{nullptr};
+    std::unique_ptr<OrderedTrackIndexSet> m_autoRepeatEmptyRows{nullptr};
+  };
+  Grid m_grid;
+
   bool m_gridIsDirty;
   Vector<LayoutUnit> m_rowPositions;
   Vector<LayoutUnit> m_columnPositions;
   LayoutUnit m_offsetBetweenColumns;
   LayoutUnit m_offsetBetweenRows;
-  HashMap<const LayoutBox*, GridArea> m_gridItemArea;
-  OrderIterator m_orderIterator;
   Vector<LayoutBox*> m_gridItemsOverflowingGridArea;
-  HashMap<const LayoutBox*, size_t> m_gridItemsIndexesMap;
 
   LayoutUnit m_minContentHeight{-1};
   LayoutUnit m_maxContentHeight{-1};
-
-  int m_smallestRowStart;
-  int m_smallestColumnStart;
-
-  size_t m_autoRepeatColumns{0};
-  size_t m_autoRepeatRows{0};
-
-  bool m_hasAnyOrthogonalChildren;
-
-  std::unique_ptr<OrderedTrackIndexSet> m_autoRepeatEmptyColumns{nullptr};
-  std::unique_ptr<OrderedTrackIndexSet> m_autoRepeatEmptyRows{nullptr};
 
   Optional<bool> m_hasDefiniteLogicalHeight;
 };

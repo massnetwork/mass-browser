@@ -22,14 +22,6 @@
 #include "ui/views/view.h"
 #include "ui/views/widget/widget_observer.h"
 
-class ExtensionPopup;
-
-namespace extensions {
-class ActiveTabPermissionGranter;
-class Command;
-class Extension;
-}
-
 namespace views {
 class BubbleDialogDelegateView;
 class ResizeArea;
@@ -180,7 +172,7 @@ class BrowserActionsContainer : public views::View,
   int OnDragUpdated(const ui::DropTargetEvent& event) override;
   void OnDragExited() override;
   int OnPerformDrop(const ui::DropTargetEvent& event) override;
-  void GetAccessibleState(ui::AXViewState* state) override;
+  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
 
   // Overridden from views::DragController:
   void WriteDragDataForView(View* sender,

@@ -34,19 +34,18 @@
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_set.h"
 #include "extensions/common/manifest.h"
+#include "extensions/features/features.h"
 
-#if !defined(ENABLE_EXTENSIONS)
+#if !BUILDFLAG(ENABLE_EXTENSIONS)
 #error "Extensions must be enabled"
 #endif
 
-class GURL;
 class HostContentSettingsMap;
 class Profile;
 
 namespace base {
 class CommandLine;
 class SequencedTaskRunner;
-class Version;
 }
 
 namespace content {
@@ -58,8 +57,6 @@ class AppDataMigrator;
 class ComponentLoader;
 class CrxInstaller;
 class ExtensionActionStorageManager;
-class ExtensionDownloader;
-class ExtensionDownloaderDelegate;
 class ExtensionErrorController;
 class ExtensionRegistry;
 class ExtensionSystem;

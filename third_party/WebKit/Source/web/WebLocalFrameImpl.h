@@ -62,12 +62,12 @@ class WebDataSourceImpl;
 class WebDevToolsAgentImpl;
 class WebDevToolsFrontendImpl;
 class WebFrameClient;
+class WebInputMethodControllerImpl;
 class WebNode;
 class WebPerformance;
 class WebPlugin;
 class WebPluginContainerImpl;
 class WebScriptExecutionCallback;
-class WebSuspendableTask;
 class WebView;
 class WebViewImpl;
 enum class WebFrameLoadType;
@@ -80,7 +80,7 @@ class WebVector;
 // Implementation of WebFrame, note that this is a reference counted object.
 class WEB_EXPORT WebLocalFrameImpl final
     : public WebFrameImplBase,
-      WTF_NON_EXPORTED_BASE(public WebLocalFrame) {
+      NON_EXPORTED_BASE(public WebLocalFrame) {
  public:
   // WebFrame methods:
   void close() override;
@@ -88,7 +88,6 @@ class WEB_EXPORT WebLocalFrameImpl final
   WebString assignedName() const override;
   void setName(const WebString&) override;
   WebVector<WebIconURL> iconURLs(int iconTypesMask) const override;
-  void setRemoteWebLayer(WebLayer*) override;
   void setContentSettingsClient(WebContentSettingsClient*) override;
   void setSharedWorkerRepositoryClient(
       WebSharedWorkerRepositoryClient*) override;
@@ -181,7 +180,6 @@ class WEB_EXPORT WebLocalFrameImpl final
   bool isCommandEnabled(const WebString&) const override;
   void enableSpellChecking(bool) override;
   bool isSpellCheckingEnabled() const override;
-  void requestTextChecking(const WebElement&) override;
   void replaceMisspelledRange(const WebString&) override;
   void removeSpellingMarkers() override;
   bool hasSelection() const override;
@@ -231,7 +229,6 @@ class WEB_EXPORT WebLocalFrameImpl final
 
   WebRect selectionBoundsRect() const override;
 
-  bool selectionStartHasSpellingMarkerFor(int from, int length) const override;
   WebString layerTreeAsText(bool showDebugInfo = false) const override;
 
   WebFrameImplBase* toImplBase() override { return this; }
@@ -263,16 +260,14 @@ class WEB_EXPORT WebLocalFrameImpl final
                 const WebHistoryItem&,
                 WebHistoryLoadType,
                 bool isClientRedirect) override;
+  bool maybeRenderFallbackContent(const WebURLError&) const override;
   bool isLoading() const override;
-  bool isFrameDetachedForSpecialOneOffStopTheCrashingHackBug561873()
-      const override;
   bool isNavigationScheduledWithin(double interval) const override;
   void setCommittedFirstRealLoad() override;
   void setHasReceivedUserGesture() override;
   void sendOrientationChangeEvent() override;
   WebSandboxFlags effectiveSandboxFlags() const override;
   void forceSandboxFlags(WebSandboxFlags) override;
-  void requestRunTask(WebSuspendableTask*) const override;
   void didCallAddSearchProvider() override;
   void didCallIsSearchProviderInstalled() override;
   void replaceSelection(const WebString&) override;
@@ -403,6 +398,8 @@ class WEB_EXPORT WebLocalFrameImpl final
   void setContextMenuNode(Node* node) { m_contextMenuNode = node; }
   void clearContextMenuNode() { m_contextMenuNode.clear(); }
 
+  WebInputMethodControllerImpl* inputMethodController() const;
+
   DECLARE_TRACE();
 
  private:
@@ -466,6 +463,8 @@ class WEB_EXPORT WebLocalFrameImpl final
   WebDevToolsFrontendImpl* m_webDevToolsFrontend;
 
   Member<Node> m_contextMenuNode;
+
+  std::unique_ptr<WebInputMethodControllerImpl> m_inputMethodController;
 
   // Oilpan: WebLocalFrameImpl must remain alive until close() is called.
   // Accomplish that by keeping a self-referential Persistent<>. It is

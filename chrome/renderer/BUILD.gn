@@ -4,6 +4,10 @@
 
 import("//build/config/features.gni")
 import("//chrome/common/features.gni")
+import("//components/spellcheck/spellcheck_build_features.gni")
+import("//extensions/features/features.gni")
+import("//media/media_options.gni")
+import("//ppapi/features/features.gni")
 import("//tools/grit/grit_rule.gni")
 
 grit("resources") {
@@ -104,6 +108,7 @@ static_library("renderer") {
     "//components/printing/renderer",
     "//components/rappor/public/interfaces",
     "//components/resources:components_resources",
+    "//components/spellcheck:build_features",
     "//components/startup_metric_utils/common:interfaces",
     "//components/subresource_filter/content/renderer",
     "//components/translate/content/renderer",
@@ -115,10 +120,12 @@ static_library("renderer") {
     "//content/app/strings",
     "//content/public/common",
     "//content/public/renderer",
+    "//extensions/features",
     "//media",
     "//media/capture",
     "//net",
     "//ppapi/features",
+    "//printing/features",
     "//skia",
     "//storage/common",
     "//third_party/WebKit/public:blink",
@@ -369,6 +376,7 @@ static_library("test_support") {
   deps = [
     ":renderer",
     "//content/test:test_support",
+    "//extensions/features",
     "//testing/gmock",
     "//testing/gtest",
   ]

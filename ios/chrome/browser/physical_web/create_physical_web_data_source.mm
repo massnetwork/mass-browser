@@ -5,8 +5,11 @@
 #include "ios/chrome/browser/physical_web/create_physical_web_data_source.h"
 
 #include "base/memory/ptr_util.h"
-#import "ios/chrome/common/physical_web/ios_chrome_physical_web_data_source.h"
+#import "ios/chrome/browser/physical_web/ios_chrome_physical_web_data_source.h"
 
-std::unique_ptr<PhysicalWebDataSource> CreateIOSChromePhysicalWebDataSource() {
-  return base::MakeUnique<IOSChromePhysicalWebDataSource>();
+std::unique_ptr<physical_web::PhysicalWebDataSource>
+CreateIOSChromePhysicalWebDataSource() {
+  std::unique_ptr<physical_web::PhysicalWebDataSource> datasource =
+      base::MakeUnique<IOSChromePhysicalWebDataSource>();
+  return datasource;
 }

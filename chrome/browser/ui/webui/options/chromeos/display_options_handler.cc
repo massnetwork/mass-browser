@@ -21,7 +21,6 @@
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/stringprintf.h"
 #include "base/values.h"
 #include "chrome/browser/chromeos/display/display_preferences.h"
 #include "chrome/browser/ui/ash/ash_util.h"
@@ -35,6 +34,7 @@
 #include "ui/display/manager/display_layout_builder.h"
 #include "ui/display/manager/display_manager.h"
 #include "ui/display/screen.h"
+#include "ui/display/types/display_constants.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size_conversions.h"
 
@@ -53,10 +53,10 @@ ash::DisplayConfigurationController* GetDisplayConfigurationController() {
 int64_t GetDisplayIdFromValue(const base::Value* arg) {
   std::string id_value;
   if (!arg->GetAsString(&id_value))
-    return display::Display::kInvalidDisplayID;
-  int64_t display_id = display::Display::kInvalidDisplayID;
+    return display::kInvalidDisplayId;
+  int64_t display_id = display::kInvalidDisplayId;
   if (!base::StringToInt64(id_value, &display_id))
-    return display::Display::kInvalidDisplayID;
+    return display::kInvalidDisplayId;
   return display_id;
 }
 
@@ -64,10 +64,10 @@ int64_t GetDisplayIdFromArgs(const base::ListValue* args) {
   const base::Value* arg;
   if (!args->Get(0, &arg)) {
     LOG(ERROR) << "No display id arg";
-    return display::Display::kInvalidDisplayID;
+    return display::kInvalidDisplayId;
   }
   int64_t display_id = GetDisplayIdFromValue(arg);
-  if (display_id == display::Display::kInvalidDisplayID)
+  if (display_id == display::kInvalidDisplayId)
     LOG(ERROR) << "Invalid display id: " << *arg;
   return display_id;
 }
@@ -76,7 +76,7 @@ int64_t GetDisplayIdFromDictionary(const base::DictionaryValue* dictionary,
                                    const std::string& key) {
   const base::Value* arg;
   if (!dictionary->Get(key, &arg))
-    return display::Display::kInvalidDisplayID;
+    return display::kInvalidDisplayId;
   return GetDisplayIdFromValue(arg);
 }
 
@@ -361,7 +361,7 @@ void DisplayOptionsHandler::SendAllDisplayInfo() {
       const display::DisplayPlacement placement =
           display_manager->GetCurrentDisplayLayout().FindPlacementById(
               display.id());
-      if (placement.display_id != display::Display::kInvalidDisplayID) {
+      if (placement.display_id != display::kInvalidDisplayId) {
         js_display->SetString(
             "parentId", base::Int64ToString(placement.parent_display_id));
         js_display->SetInteger("layoutType", placement.position);
@@ -416,7 +416,7 @@ void DisplayOptionsHandler::HandleMirroring(const base::ListValue* args) {
 void DisplayOptionsHandler::HandleSetPrimary(const base::ListValue* args) {
   DCHECK(!args->empty());
   int64_t display_id = GetDisplayIdFromArgs(args);
-  if (display_id == display::Display::kInvalidDisplayID)
+  if (display_id == display::kInvalidDisplayId)
     return;
 
   content::RecordAction(base::UserMetricsAction("Options_DisplaySetPrimary"));
@@ -443,11 +443,11 @@ void DisplayOptionsHandler::HandleSetDisplayLayout(
     }
 
     int64_t parent_id = GetDisplayIdFromDictionary(dictionary, "parentId");
-    if (parent_id == display::Display::kInvalidDisplayID)
+    if (parent_id == display::kInvalidDisplayId)
       continue;  // No placement for root (primary) display.
 
     int64_t display_id = GetDisplayIdFromDictionary(dictionary, "id");
-    if (display_id == display::Display::kInvalidDisplayID) {
+    if (display_id == display::kInvalidDisplayId) {
       LOG(ERROR) << "Invalud display id in layout dictionary: " << *dictionary;
       continue;
     }
@@ -477,7 +477,7 @@ void DisplayOptionsHandler::HandleSetDisplayMode(const base::ListValue* args) {
   DCHECK(!args->empty());
 
   int64_t display_id = GetDisplayIdFromArgs(args);
-  if (display_id == display::Display::kInvalidDisplayID)
+  if (display_id == display::kInvalidDisplayId)
     return;
 
   const base::DictionaryValue* mode_data = nullptr;
@@ -515,7 +515,7 @@ void DisplayOptionsHandler::HandleSetRotation(const base::ListValue* args) {
   DCHECK(!args->empty());
 
   int64_t display_id = GetDisplayIdFromArgs(args);
-  if (display_id == display::Display::kInvalidDisplayID)
+  if (display_id == display::kInvalidDisplayId)
     return;
 
   int rotation_value = 0;
@@ -543,7 +543,7 @@ void DisplayOptionsHandler::HandleSetRotation(const base::ListValue* args) {
 void DisplayOptionsHandler::HandleSetColorProfile(const base::ListValue* args) {
   DCHECK(!args->empty());
   int64_t display_id = GetDisplayIdFromArgs(args);
-  if (display_id == display::Display::kInvalidDisplayID)
+  if (display_id == display::kInvalidDisplayId)
     return;
 
   std::string profile_value;

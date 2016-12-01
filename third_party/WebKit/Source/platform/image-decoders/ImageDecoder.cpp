@@ -121,8 +121,10 @@ std::unique_ptr<ImageDecoder> ImageDecoder::create(
       break;
   }
 
-  if (decoder)
+  if (decoder) {
     decoder->setData(data.release(), dataComplete);
+    decoder->m_targetColorSpace = globalTargetColorSpace();
+  }
 
   return decoder;
 }
@@ -174,6 +176,11 @@ ImageFrame* ImageDecoder::frameBufferAtIndex(size_t index) {
     PlatformInstrumentation::didDecodeImage();
   }
 
+  if (!m_hasHistogrammedColorSpace) {
+    BitmapImageMetrics::countImageGamma(m_embeddedColorSpace.get());
+    m_hasHistogrammedColorSpace = true;
+  }
+
   frame->notifyBitmapIfPixelsChanged();
   return frame;
 }
@@ -209,9 +216,15 @@ size_t ImageDecoder::clearCacheExceptFrame(size_t clearExceptFrame) {
   if (m_frameBufferCache.size() <= 1)
     return 0;
 
+  return clearCacheExceptTwoFrames(clearExceptFrame, kNotFound);
+}
+
+size_t ImageDecoder::clearCacheExceptTwoFrames(size_t clearExceptFrame1,
+                                               size_t clearExceptFrame2) {
   size_t frameBytesCleared = 0;
   for (size_t i = 0; i < m_frameBufferCache.size(); ++i) {
-    if (i != clearExceptFrame) {
+    if (m_frameBufferCache[i].getStatus() != ImageFrame::FrameEmpty &&
+        i != clearExceptFrame1 && i != clearExceptFrame2) {
       frameBytesCleared += frameBytesAtIndex(i);
       clearFrameBuffer(i);
     }
@@ -221,6 +234,77 @@ size_t ImageDecoder::clearCacheExceptFrame(size_t clearExceptFrame) {
 
 void ImageDecoder::clearFrameBuffer(size_t frameIndex) {
   m_frameBufferCache[frameIndex].clearPixelData();
+}
+
+Vector<size_t> ImageDecoder::findFramesToDecode(size_t index) const {
+  DCHECK(index < m_frameBufferCache.size());
+
+  Vector<size_t> framesToDecode;
+  do {
+    framesToDecode.append(index);
+    index = m_frameBufferCache[index].requiredPreviousFrameIndex();
+  } while (index != kNotFound &&
+           m_frameBufferCache[index].getStatus() != ImageFrame::FrameComplete);
+  return framesToDecode;
+}
+
+bool ImageDecoder::postDecodeProcessing(size_t index) {
+  DCHECK(index < m_frameBufferCache.size());
+
+  if (m_frameBufferCache[index].getStatus() != ImageFrame::FrameComplete)
+    return false;
+
+  if (m_purgeAggressively)
+    clearCacheExceptFrame(index);
+
+  return true;
+}
+
+bool ImageDecoder::initFrameBuffer(size_t frameIndex) {
+  DCHECK(frameIndex < m_frameBufferCache.size());
+
+  ImageFrame* const buffer = &m_frameBufferCache[frameIndex];
+
+  // If the frame is already initialized, return true.
+  if (buffer->getStatus() != ImageFrame::FrameEmpty)
+    return true;
+
+  size_t requiredPreviousFrameIndex = buffer->requiredPreviousFrameIndex();
+  if (requiredPreviousFrameIndex == kNotFound) {
+    // This frame doesn't rely on any previous data.
+    if (!buffer->setSizeAndColorSpace(size().width(), size().height(),
+                                      colorSpace())) {
+      return setFailed();
+    }
+  } else {
+    ImageFrame* const prevBuffer =
+        &m_frameBufferCache[requiredPreviousFrameIndex];
+    DCHECK(prevBuffer->getStatus() == ImageFrame::FrameComplete);
+
+    // We try to reuse |prevBuffer| as starting state to avoid copying.
+    // If canReusePreviousFrameBuffer returns false, we must copy the data since
+    // |prevBuffer| is necessary to decode this or later frames. In that case,
+    // copy the data instead.
+    if ((!canReusePreviousFrameBuffer(frameIndex) ||
+         !buffer->takeBitmapDataIfWritable(prevBuffer)) &&
+        !buffer->copyBitmapData(*prevBuffer))
+      return setFailed();
+
+    if (prevBuffer->getDisposalMethod() ==
+        ImageFrame::DisposeOverwriteBgcolor) {
+      // We want to clear the previous frame to transparent, without
+      // affecting pixels in the image outside of the frame.
+      const IntRect& prevRect = prevBuffer->originalFrameRect();
+      DCHECK(!prevRect.contains(IntRect(IntPoint(), size())));
+      buffer->zeroFillFrameRect(prevRect);
+    }
+  }
+
+  // Update our status to be partially complete.
+  buffer->setStatus(ImageFrame::FramePartial);
+
+  onInitFrameBuffer(frameIndex);
+  return true;
 }
 
 void ImageDecoder::updateAggressivePurging(size_t index) {
@@ -339,7 +423,7 @@ SkColorSpace* gTargetColorSpace = nullptr;
 }  // namespace
 
 // static
-void ImageDecoder::setTargetColorProfile(const WebVector<char>& profile) {
+void ImageDecoder::setGlobalTargetColorProfile(const WebVector<char>& profile) {
   if (profile.isEmpty())
     return;
 
@@ -355,7 +439,24 @@ void ImageDecoder::setTargetColorProfile(const WebVector<char>& profile) {
       SkColorSpace::MakeICC(profile.data(), profile.size()).release();
 
   // UMA statistics.
-  BitmapImageMetrics::countGamma(gTargetColorSpace);
+  BitmapImageMetrics::countOutputGamma(gTargetColorSpace);
+}
+
+// static
+sk_sp<SkColorSpace> ImageDecoder::globalTargetColorSpace() {
+  // Take a lock around initializing and accessing the global device color
+  // profile.
+  SpinLock::Guard guard(gTargetColorSpaceLock);
+
+  // Initialize the output device profile to sRGB if it has not yet been
+  // initialized.
+  if (!gTargetColorSpace) {
+    gTargetColorSpace =
+        SkColorSpace::MakeNamed(SkColorSpace::kSRGB_Named).release();
+  }
+
+  gTargetColorSpace->ref();
+  return sk_sp<SkColorSpace>(gTargetColorSpace);
 }
 
 sk_sp<SkColorSpace> ImageDecoder::colorSpace() const {
@@ -371,48 +472,45 @@ sk_sp<SkColorSpace> ImageDecoder::colorSpace() const {
   return SkColorSpace::MakeNamed(SkColorSpace::kSRGB_Named);
 }
 
-void ImageDecoder::setColorProfileAndComputeTransform(const char* iccData,
-                                                      unsigned iccLength) {
+void ImageDecoder::setEmbeddedColorProfile(const char* iccData,
+                                           unsigned iccLength) {
   sk_sp<SkColorSpace> colorSpace = SkColorSpace::MakeICC(iccData, iccLength);
   if (!colorSpace)
     DLOG(ERROR) << "Failed to parse image ICC profile";
-  setColorSpaceAndComputeTransform(std::move(colorSpace));
+  setEmbeddedColorSpace(std::move(colorSpace));
 }
 
-void ImageDecoder::setColorSpaceAndComputeTransform(
-    sk_sp<SkColorSpace> colorSpace) {
+void ImageDecoder::setEmbeddedColorSpace(sk_sp<SkColorSpace> colorSpace) {
   DCHECK(!m_ignoreColorSpace);
+  DCHECK(!m_hasHistogrammedColorSpace);
 
   m_embeddedColorSpace = colorSpace;
+  m_sourceToTargetColorTransformNeedsUpdate = true;
+}
 
-  m_sourceToOutputDeviceColorTransform = nullptr;
+SkColorSpaceXform* ImageDecoder::colorTransform() {
+  if (!m_sourceToTargetColorTransformNeedsUpdate)
+    return m_sourceToTargetColorTransform.get();
+  m_sourceToTargetColorTransformNeedsUpdate = false;
+  m_sourceToTargetColorTransform = nullptr;
 
   // With color correct rendering, we do not transform to the output color space
   // at decode time.  Instead, we tag the raw image pixels and pass the tagged
   // SkImage to Skia.
   if (RuntimeEnabledFeatures::colorCorrectRenderingEnabled())
-    return;
+    return nullptr;
 
   if (!m_embeddedColorSpace)
-    return;
+    return nullptr;
 
-  // Take a lock around initializing and accessing the global device color
-  // profile.
-  SpinLock::Guard guard(gTargetColorSpaceLock);
-
-  // Initialize the output device profile to sRGB if it has not yet been
-  // initialized.
-  if (!gTargetColorSpace) {
-    gTargetColorSpace =
-        SkColorSpace::MakeNamed(SkColorSpace::kSRGB_Named).release();
+  if (SkColorSpace::Equals(m_embeddedColorSpace.get(),
+                           m_targetColorSpace.get())) {
+    return nullptr;
   }
 
-  if (SkColorSpace::Equals(m_embeddedColorSpace.get(), gTargetColorSpace)) {
-    return;
-  }
-
-  m_sourceToOutputDeviceColorTransform =
-      SkColorSpaceXform::New(m_embeddedColorSpace.get(), gTargetColorSpace);
+  m_sourceToTargetColorTransform = SkColorSpaceXform::New(
+      m_embeddedColorSpace.get(), m_targetColorSpace.get());
+  return m_sourceToTargetColorTransform.get();
 }
 
 }  // namespace blink

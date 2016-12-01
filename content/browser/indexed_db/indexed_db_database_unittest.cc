@@ -49,13 +49,11 @@ TEST_F(IndexedDBDatabaseTest, BackingStoreRetention) {
   EXPECT_TRUE(backing_store->HasOneRef());
 
   scoped_refptr<MockIndexedDBFactory> factory = new MockIndexedDBFactory();
+  scoped_refptr<IndexedDBDatabase> db;
   leveldb::Status s;
-  scoped_refptr<IndexedDBDatabase> db =
-      IndexedDBDatabase::Create(ASCIIToUTF16("db"),
-                                backing_store.get(),
-                                factory.get(),
-                                IndexedDBDatabase::Identifier(),
-                                &s);
+  std::tie(db, s) =
+      IndexedDBDatabase::Create(ASCIIToUTF16("db"), backing_store.get(),
+                                factory.get(), IndexedDBDatabase::Identifier());
   ASSERT_TRUE(s.ok());
   EXPECT_FALSE(backing_store->HasOneRef());  // local and db
   db = NULL;
@@ -68,13 +66,11 @@ TEST_F(IndexedDBDatabaseTest, ConnectionLifecycle) {
   EXPECT_TRUE(backing_store->HasOneRef());  // local
 
   scoped_refptr<MockIndexedDBFactory> factory = new MockIndexedDBFactory();
+  scoped_refptr<IndexedDBDatabase> db;
   leveldb::Status s;
-  scoped_refptr<IndexedDBDatabase> db =
-      IndexedDBDatabase::Create(ASCIIToUTF16("db"),
-                                backing_store.get(),
-                                factory.get(),
-                                IndexedDBDatabase::Identifier(),
-                                &s);
+  std::tie(db, s) =
+      IndexedDBDatabase::Create(ASCIIToUTF16("db"), backing_store.get(),
+                                factory.get(), IndexedDBDatabase::Identifier());
   ASSERT_TRUE(s.ok());
   EXPECT_FALSE(backing_store->HasOneRef());  // local and db
 
@@ -122,13 +118,11 @@ TEST_F(IndexedDBDatabaseTest, ForcedClose) {
   EXPECT_TRUE(backing_store->HasOneRef());
 
   scoped_refptr<MockIndexedDBFactory> factory = new MockIndexedDBFactory();
+  scoped_refptr<IndexedDBDatabase> database;
   leveldb::Status s;
-  scoped_refptr<IndexedDBDatabase> database =
-      IndexedDBDatabase::Create(ASCIIToUTF16("db"),
-                                backing_store.get(),
-                                factory.get(),
-                                IndexedDBDatabase::Identifier(),
-                                &s);
+  std::tie(database, s) =
+      IndexedDBDatabase::Create(ASCIIToUTF16("db"), backing_store.get(),
+                                factory.get(), IndexedDBDatabase::Identifier());
   ASSERT_TRUE(s.ok());
   EXPECT_FALSE(backing_store->HasOneRef());  // local and db
 
@@ -158,7 +152,7 @@ TEST_F(IndexedDBDatabaseTest, ForcedClose) {
 
 class MockCallbacks : public IndexedDBCallbacks {
  public:
-  MockCallbacks() : IndexedDBCallbacks(NULL, 0, 0) {}
+  MockCallbacks() : IndexedDBCallbacks(nullptr, url::Origin(), nullptr) {}
 
   void OnBlocked(int64_t existing_version) override { blocked_called_ = true; }
   void OnSuccess(int64_t result) override { success_called_ = true; }
@@ -189,13 +183,11 @@ TEST_F(IndexedDBDatabaseTest, PendingDelete) {
   EXPECT_TRUE(backing_store->HasOneRef());  // local
 
   scoped_refptr<MockIndexedDBFactory> factory = new MockIndexedDBFactory();
+  scoped_refptr<IndexedDBDatabase> db;
   leveldb::Status s;
-  scoped_refptr<IndexedDBDatabase> db =
-      IndexedDBDatabase::Create(ASCIIToUTF16("db"),
-                                backing_store.get(),
-                                factory.get(),
-                                IndexedDBDatabase::Identifier(),
-                                &s);
+  std::tie(db, s) =
+      IndexedDBDatabase::Create(ASCIIToUTF16("db"), backing_store.get(),
+                                factory.get(), IndexedDBDatabase::Identifier());
   ASSERT_TRUE(s.ok());
   EXPECT_FALSE(backing_store->HasOneRef());  // local and db
 
@@ -245,10 +237,11 @@ TEST_F(IndexedDBDatabaseTest, ConnectionRequestsNoLongerValid) {
 
   const int64_t transaction_id1 = 1;
   scoped_refptr<MockIndexedDBFactory> factory = new MockIndexedDBFactory();
+  scoped_refptr<IndexedDBDatabase> db;
   leveldb::Status s;
-  scoped_refptr<IndexedDBDatabase> db = IndexedDBDatabase::Create(
-      ASCIIToUTF16("db"), backing_store.get(), factory.get(),
-      IndexedDBDatabase::Identifier(), &s);
+  std::tie(db, s) =
+      IndexedDBDatabase::Create(ASCIIToUTF16("db"), backing_store.get(),
+                                factory.get(), IndexedDBDatabase::Identifier());
 
   // Make a connection request. This will be processed immediately.
   scoped_refptr<MockIndexedDBCallbacks> request1(new MockIndexedDBCallbacks());
@@ -352,11 +345,9 @@ class IndexedDBDatabaseOperationTest : public testing::Test {
   void SetUp() override {
     backing_store_ = new IndexedDBFakeBackingStore();
     leveldb::Status s;
-    db_ = IndexedDBDatabase::Create(ASCIIToUTF16("db"),
-                                    backing_store_.get(),
-                                    factory_.get(),
-                                    IndexedDBDatabase::Identifier(),
-                                    &s);
+    std::tie(db_, s) = IndexedDBDatabase::Create(
+        ASCIIToUTF16("db"), backing_store_.get(), factory_.get(),
+        IndexedDBDatabase::Identifier());
     ASSERT_TRUE(s.ok());
 
     request_ = new MockIndexedDBCallbacks();
@@ -511,7 +502,7 @@ TEST_F(IndexedDBDatabaseOperationTest, CreatePutDelete) {
   IndexedDBValue value("value1", std::vector<IndexedDBBlobInfo>());
   std::vector<std::unique_ptr<storage::BlobDataHandle>> handles;
   std::unique_ptr<IndexedDBKey> key(base::MakeUnique<IndexedDBKey>("key"));
-  std::vector<IndexedDBDatabase::IndexKeys> index_keys;
+  std::vector<IndexedDBIndexKeys> index_keys;
   scoped_refptr<MockIndexedDBCallbacks> request(
       new MockIndexedDBCallbacks(false));
   db_->Put(transaction_->id(), store_id, &value, &handles, std::move(key),

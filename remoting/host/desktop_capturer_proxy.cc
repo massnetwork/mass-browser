@@ -10,15 +10,17 @@
 
 #include "base/bind.h"
 #include "base/location.h"
+#include "base/logging.h"
 #include "base/macros.h"
 #include "base/memory/ptr_util.h"
 #include "base/single_thread_task_runner.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "remoting/proto/control.pb.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_capture_options.h"
+#include "third_party/webrtc/modules/desktop_capture/desktop_capturer.h"
+#include "third_party/webrtc/modules/desktop_capture/desktop_capturer_differ_wrapper.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_frame.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_region.h"
-#include "third_party/webrtc/modules/desktop_capture/screen_capturer.h"
 
 #if defined(OS_CHROMEOS)
 #include "remoting/host/chromeos/aura_desktop_capturer.h"
@@ -71,9 +73,10 @@ void DesktopCapturerProxy::Core::CreateCapturer(
   DCHECK(!capturer_);
 
 #if defined(OS_CHROMEOS)
-  capturer_.reset(new AuraDesktopCapturer());
+  capturer_ = base::MakeUnique<webrtc::DesktopCapturerDifferWrapper>(
+      base::MakeUnique<AuraDesktopCapturer>());
 #else  // !defined(OS_CHROMEOS)
-  capturer_.reset(webrtc::ScreenCapturer::Create(options));
+  capturer_ = webrtc::DesktopCapturer::CreateScreenCapturer(options);
 #endif  // !defined(OS_CHROMEOS)
   if (!capturer_)
     LOG(ERROR) << "Failed to initialize screen capturer.";
@@ -164,6 +167,16 @@ void DesktopCapturerProxy::CaptureFrame() {
   capture_task_runner_->PostTask(
       FROM_HERE,
       base::Bind(&Core::CaptureFrame, base::Unretained(core_.get())));
+}
+
+bool DesktopCapturerProxy::GetSourceList(SourceList* sources) {
+  NOTIMPLEMENTED();
+  return false;
+}
+
+bool DesktopCapturerProxy::SelectSource(SourceId id) {
+  NOTIMPLEMENTED();
+  return false;
 }
 
 void DesktopCapturerProxy::OnFrameCaptured(

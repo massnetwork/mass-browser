@@ -87,19 +87,6 @@ double SiteEngagementService::GetMaxPoints() {
 
 // static
 bool SiteEngagementService::IsEnabled() {
-  // If the engagement service or any of its dependencies are force-enabled,
-  // return true immediately.
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kEnableSiteEngagementService) ||
-      SiteEngagementEvictionPolicy::IsEnabled() ||
-      AppBannerSettingsHelper::ShouldUseSiteEngagementScore()) {
-    return true;
-  }
-
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kDisableSiteEngagementService)) {
-    return false;
-  }
   const std::string group_name =
       base::FieldTrialList::FindFullName(kEngagementParams);
   return !base::StartsWith(group_name, "Disabled",
@@ -401,6 +388,10 @@ void SiteEngagementService::RecordMetrics() {
       percent_origins_with_max_engagement);
 }
 
+bool SiteEngagementService::ShouldRecordEngagement(const GURL& url) const {
+  return url.SchemeIsHTTPOrHTTPS();
+}
+
 base::Time SiteEngagementService::GetLastEngagementTime() const {
   return base::Time::FromInternalValue(
       profile_->GetPrefs()->GetInt64(prefs::kSiteEngagementLastUpdateTime));
@@ -448,7 +439,10 @@ double SiteEngagementService::GetMedianEngagement(
 void SiteEngagementService::HandleMediaPlaying(
     content::WebContents* web_contents,
     bool is_hidden) {
-  const GURL& url = web_contents->GetVisibleURL();
+  const GURL& url = web_contents->GetLastCommittedURL();
+  if (!ShouldRecordEngagement(url))
+    return;
+
   SiteEngagementMetrics::RecordEngagement(
       is_hidden ? SiteEngagementMetrics::ENGAGEMENT_MEDIA_HIDDEN
                 : SiteEngagementMetrics::ENGAGEMENT_MEDIA_VISIBLE);
@@ -462,22 +456,26 @@ void SiteEngagementService::HandleMediaPlaying(
 
 void SiteEngagementService::HandleNavigation(content::WebContents* web_contents,
                                              ui::PageTransition transition) {
-  if (IsEngagementNavigation(transition)) {
-    const GURL& url = web_contents->GetLastCommittedURL();
-    SiteEngagementMetrics::RecordEngagement(
-        SiteEngagementMetrics::ENGAGEMENT_NAVIGATION);
-    AddPoints(url, SiteEngagementScore::GetNavigationPoints());
+  const GURL& url = web_contents->GetLastCommittedURL();
+  if (!IsEngagementNavigation(transition) || !ShouldRecordEngagement(url))
+    return;
 
-    RecordMetrics();
-    for (SiteEngagementObserver& observer : observer_list_)
-      observer.OnEngagementIncreased(web_contents, url, GetScore(url));
-  }
+  SiteEngagementMetrics::RecordEngagement(
+      SiteEngagementMetrics::ENGAGEMENT_NAVIGATION);
+  AddPoints(url, SiteEngagementScore::GetNavigationPoints());
+
+  RecordMetrics();
+  for (SiteEngagementObserver& observer : observer_list_)
+    observer.OnEngagementIncreased(web_contents, url, GetScore(url));
 }
 
 void SiteEngagementService::HandleUserInput(
     content::WebContents* web_contents,
     SiteEngagementMetrics::EngagementType type) {
-  const GURL& url = web_contents->GetVisibleURL();
+  const GURL& url = web_contents->GetLastCommittedURL();
+  if (!ShouldRecordEngagement(url))
+    return;
+
   SiteEngagementMetrics::RecordEngagement(type);
   AddPoints(url, SiteEngagementScore::GetUserInputPoints());
 

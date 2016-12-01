@@ -77,6 +77,19 @@ class NetworkTimeTracker : public net::URLFetcherDelegate {
     NETWORK_TIME_SUBSEQUENT_SYNC_PENDING,
   };
 
+  // Describes the behavior of fetches to the network time service.
+  enum FetchBehavior {
+    // Only used in case of an unrecognize Finch experiment parameter.
+    FETCH_BEHAVIOR_UNKNOWN,
+    // Time queries will be issued in the background as needed.
+    FETCHES_IN_BACKGROUND_ONLY,
+    // Time queries will not be issued except when StartTimeFetch() is called.
+    FETCHES_ON_DEMAND_ONLY,
+    // Time queries will be issued both in the background as needed and also
+    // on-demand.
+    FETCHES_IN_BACKGROUND_AND_ON_DEMAND,
+  };
+
   static void RegisterPrefs(PrefRegistrySimple* registry);
 
   // Constructor.  Arguments may be stubbed out for tests.  |getter|, if not
@@ -124,15 +137,22 @@ class NetworkTimeTracker : public net::URLFetcherDelegate {
                          base::TimeDelta latency,
                          base::TimeTicks post_time);
 
+  bool AreTimeFetchesEnabled() const;
+  FetchBehavior GetFetchBehavior() const;
+
   void SetMaxResponseSizeForTesting(size_t limit);
 
   void SetPublicKeyForTesting(const base::StringPiece& key);
 
   void SetTimeServerURLForTesting(const GURL& url);
 
+  GURL GetTimeServerURLForTesting() const;
+
   bool QueryTimeServiceForTesting();
 
   void WaitForFetchForTesting(uint32_t nonce);
+
+  void OverrideNonceForTesting(uint32_t nonce);
 
   base::TimeDelta GetTimerDelayForTesting() const;
 

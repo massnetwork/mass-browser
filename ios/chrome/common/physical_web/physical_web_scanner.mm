@@ -21,6 +21,10 @@
 #import "ios/chrome/common/physical_web/physical_web_request.h"
 #import "ios/chrome/common/physical_web/physical_web_types.h"
 
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "This file requires ARC support."
+#endif
+
 namespace {
 
 NSString* const kUriBeaconServiceUUID = @"FED8";
@@ -65,7 +69,7 @@ enum BeaconType {
 
 @implementation PhysicalWebScanner {
   // Delegate that will be notified when the list of devices change.
-  id<PhysicalWebScannerDelegate> delegate_;
+  __unsafe_unretained id<PhysicalWebScannerDelegate> delegate_;
   // The value of |started_| is YES when the scanner has been started and NO
   // when it's been stopped. The initial value is NO.
   BOOL started_;
@@ -115,8 +119,6 @@ enum BeaconType {
                    CBCentralManagerOptionShowPowerAlertKey : @NO
                  }]);
     unresolvedDevices_.reset([[NSMutableArray alloc] init]);
-    [[NSHTTPCookieStorage sharedHTTPCookieStorage]
-        setCookieAcceptPolicy:NSHTTPCookieAcceptPolicyNever];
   }
   return self;
 }
@@ -133,7 +135,6 @@ enum BeaconType {
     [updateTimer_ invalidate];
     updateTimer_.reset();
   }
-  [super dealloc];
 }
 
 - (void)start {
@@ -190,11 +191,11 @@ enum BeaconType {
     std::string description = base::SysNSStringToUTF8([device description]);
 
     auto metadataItem = base::MakeUnique<base::DictionaryValue>();
-    metadataItem->SetString(kPhysicalWebScannedUrlKey, scannedUrl);
-    metadataItem->SetString(kPhysicalWebResolvedUrlKey, resolvedUrl);
-    metadataItem->SetString(kPhysicalWebIconUrlKey, icon);
-    metadataItem->SetString(kPhysicalWebTitleKey, title);
-    metadataItem->SetString(kPhysicalWebDescriptionKey, description);
+    metadataItem->SetString(physical_web::kScannedUrlKey, scannedUrl);
+    metadataItem->SetString(physical_web::kResolvedUrlKey, resolvedUrl);
+    metadataItem->SetString(physical_web::kIconUrlKey, icon);
+    metadataItem->SetString(physical_web::kTitleKey, title);
+    metadataItem->SetString(physical_web::kDescriptionKey, description);
     metadataList->Append(std::move(metadataItem));
   }
 
@@ -254,12 +255,12 @@ enum BeaconType {
   ];
   if (onLostDetectionEnabled_) {
     // Register a repeating timer to periodically check for lost URLs.
-    updateTimer_.reset(
-        [[NSTimer scheduledTimerWithTimeInterval:kUpdateIntervalSeconds
-                                          target:self
-                                        selector:@selector(onUpdateTimeElapsed:)
-                                        userInfo:nil
-                                         repeats:YES] retain]);
+    updateTimer_.reset([NSTimer
+        scheduledTimerWithTimeInterval:kUpdateIntervalSeconds
+                                target:self
+                              selector:@selector(onUpdateTimeElapsed:)
+                              userInfo:nil
+                               repeats:YES]);
   }
   [centralManager_ scanForPeripheralsWithServices:serviceUUIDs options:nil];
 }
@@ -474,7 +475,7 @@ enum BeaconType {
   [pendingRequests_ addObject:strongRequest];
   base::WeakNSObject<PhysicalWebScanner> weakSelf(self);
   [request start:^(PhysicalWebDevice* device, NSError* error) {
-    base::scoped_nsobject<PhysicalWebScanner> strongSelf([weakSelf retain]);
+    base::scoped_nsobject<PhysicalWebScanner> strongSelf(weakSelf);
     if (!strongSelf) {
       return;
     }

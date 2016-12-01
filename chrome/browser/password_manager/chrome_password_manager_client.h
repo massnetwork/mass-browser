@@ -33,12 +33,6 @@ namespace content {
 class WebContents;
 }
 
-namespace password_manager {
-struct CredentialInfo;
-class PasswordGenerationManager;
-class PasswordManagerDriver;
-}
-
 // ChromePasswordManagerClient implements the PasswordManagerClient interface.
 class ChromePasswordManagerClient
     : public password_manager::PasswordManagerClient,
@@ -89,7 +83,6 @@ class ChromePasswordManagerClient
   const password_manager::PasswordManager* GetPasswordManager() const override;
   autofill::AutofillManager* GetAutofillManagerForMainFrame() override;
   const GURL& GetMainFrameURL() const override;
-  bool IsUpdatePasswordUIEnabled() const override;
   const GURL& GetLastCommittedEntryURL() const override;
   void AnnotateNavigationEntry(bool has_password_field) override;
   const password_manager::CredentialsFilter* GetStoreResultFilter()

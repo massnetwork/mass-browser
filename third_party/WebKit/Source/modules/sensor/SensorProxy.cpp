@@ -6,6 +6,7 @@
 
 #include "core/frame/LocalFrame.h"
 #include "modules/sensor/SensorProviderProxy.h"
+#include "modules/sensor/SensorReading.h"
 #include "platform/mojo/MojoHelper.h"
 #include "public/platform/Platform.h"
 
@@ -13,14 +14,20 @@ using namespace device::mojom::blink;
 
 namespace blink {
 
-SensorProxy::SensorProxy(SensorType sensorType, SensorProviderProxy* provider)
-    : m_type(sensorType),
+SensorProxy::SensorProxy(SensorType sensorType,
+                         SensorProviderProxy* provider,
+                         Page* page,
+                         std::unique_ptr<SensorReadingFactory> readingFactory)
+    : PageVisibilityObserver(page),
+      m_type(sensorType),
       m_mode(ReportingMode::CONTINUOUS),
       m_provider(provider),
       m_clientBinding(this),
       m_state(SensorProxy::Uninitialized),
-      m_reading(),
-      m_suspended(false) {}
+      m_suspended(false),
+      m_readingFactory(std::move(readingFactory)),
+      m_maximumFrequency(0.0),
+      m_timer(this, &SensorProxy::onTimerFired) {}
 
 SensorProxy::~SensorProxy() {}
 
@@ -29,8 +36,10 @@ void SensorProxy::dispose() {
 }
 
 DEFINE_TRACE(SensorProxy) {
+  visitor->trace(m_reading);
   visitor->trace(m_observers);
   visitor->trace(m_provider);
+  PageVisibilityObserver::trace(visitor);
 }
 
 void SensorProxy::addObserver(Observer* observer) {
@@ -62,14 +71,17 @@ void SensorProxy::addConfiguration(
     SensorConfigurationPtr configuration,
     std::unique_ptr<Function<void(bool)>> callback) {
   DCHECK(isInitialized());
+  auto wrapper = WTF::bind(&SensorProxy::onAddConfigurationCompleted,
+                           wrapWeakPersistent(this), configuration->frequency,
+                           passed(std::move(callback)));
   m_sensor->AddConfiguration(std::move(configuration),
-                             convertToBaseCallback(std::move(callback)));
+                             convertToBaseCallback(std::move(wrapper)));
 }
 
-void SensorProxy::removeConfiguration(
-    SensorConfigurationPtr configuration,
-    std::unique_ptr<Function<void(bool)>> callback) {
+void SensorProxy::removeConfiguration(SensorConfigurationPtr configuration) {
   DCHECK(isInitialized());
+  auto callback = WTF::bind(&SensorProxy::onRemoveConfigurationCompleted,
+                            wrapWeakPersistent(this), configuration->frequency);
   m_sensor->RemoveConfiguration(std::move(configuration),
                                 convertToBaseCallback(std::move(callback)));
 }
@@ -81,6 +93,12 @@ void SensorProxy::suspend() {
 
   m_sensor->Suspend();
   m_suspended = true;
+
+  if (usesPollingTimer())
+    updatePollingStatus();
+
+  for (Observer* observer : m_observers)
+    observer->onSuspended();
 }
 
 void SensorProxy::resume() {
@@ -90,24 +108,37 @@ void SensorProxy::resume() {
 
   m_sensor->Resume();
   m_suspended = false;
+
+  if (usesPollingTimer())
+    updatePollingStatus();
 }
 
-const device::mojom::blink::SensorConfiguration* SensorProxy::defaultConfig()
-    const {
+const SensorConfiguration* SensorProxy::defaultConfig() const {
   DCHECK(isInitialized());
   return m_defaultConfig.get();
 }
 
-void SensorProxy::updateInternalReading() {
+bool SensorProxy::usesPollingTimer() const {
+  return isInitialized() && (m_mode == ReportingMode::CONTINUOUS);
+}
+
+void SensorProxy::updateSensorReading() {
   DCHECK(isInitialized());
+  DCHECK(m_readingFactory);
   int readAttempts = 0;
   const int kMaxReadAttemptsCount = 10;
-  while (!tryReadFromBuffer()) {
+  device::SensorReading readingData;
+  while (!tryReadFromBuffer(readingData)) {
     if (++readAttempts == kMaxReadAttemptsCount) {
       handleSensorError();
       return;
     }
   }
+
+  m_reading = m_readingFactory->createSensorReading(readingData);
+
+  for (Observer* observer : m_observers)
+    observer->onSensorReadingChanged();
 }
 
 void SensorProxy::RaiseError() {
@@ -115,23 +146,42 @@ void SensorProxy::RaiseError() {
 }
 
 void SensorProxy::SensorReadingChanged() {
-  for (Observer* observer : m_observers)
-    observer->onSensorReadingChanged();
+  updateSensorReading();
+}
+
+void SensorProxy::pageVisibilityChanged() {
+  if (!isInitialized())
+    return;
+
+  if (page()->visibilityState() != PageVisibilityStateVisible) {
+    suspend();
+  } else {
+    resume();
+  }
 }
 
 void SensorProxy::handleSensorError(ExceptionCode code,
-                                    const String& sanitizedMessage,
-                                    const String& unsanitizedMessage) {
+                                    String sanitizedMessage,
+                                    String unsanitizedMessage) {
   if (!Platform::current()) {
     // TODO(rockot): Remove this hack once renderer shutdown sequence is fixed.
     return;
   }
+
+  if (usesPollingTimer()) {  // Stop polling.
+    m_frequenciesUsed.clear();
+    updatePollingStatus();
+  }
+
   m_state = Uninitialized;
+  // The m_sensor.reset() will release all callbacks and its bound parameters,
+  // therefore, handleSensorError accepts messages by value.
   m_sensor.reset();
   m_sharedBuffer.reset();
   m_sharedBufferHandle.reset();
   m_defaultConfig.reset();
   m_clientBinding.Close();
+  m_reading = nullptr;
 
   for (Observer* observer : m_observers)
     observer->onSensorError(code, sanitizedMessage, unsanitizedMessage);
@@ -168,6 +218,9 @@ void SensorProxy::onSensorCreated(SensorInitParamsPtr params,
     return;
   }
 
+  m_maximumFrequency = params->maximum_frequency;
+  DCHECK(m_maximumFrequency <= SensorConfiguration::kMaxAllowedFrequency);
+
   auto errorCallback =
       WTF::bind(&SensorProxy::handleSensorError, wrapWeakPersistent(this),
                 UnknownError, String("Internal error"), String());
@@ -179,17 +232,71 @@ void SensorProxy::onSensorCreated(SensorInitParamsPtr params,
     observer->onSensorInitialized();
 }
 
-bool SensorProxy::tryReadFromBuffer() {
+void SensorProxy::onAddConfigurationCompleted(
+    double frequency,
+    std::unique_ptr<Function<void(bool)>> callback,
+    bool result) {
+  if (usesPollingTimer() && result) {
+    m_frequenciesUsed.append(frequency);
+    updatePollingStatus();
+  }
+
+  (*callback)(result);
+}
+
+void SensorProxy::onRemoveConfigurationCompleted(double frequency,
+                                                 bool result) {
+  if (!result)
+    DVLOG(1) << "Failure at sensor configuration removal";
+
+  if (!usesPollingTimer())
+    return;
+
+  size_t index = m_frequenciesUsed.find(frequency);
+  if (index == kNotFound) {
+    // Could happen e.g. if 'handleSensorError' was called before.
+    return;
+  }
+
+  m_frequenciesUsed.remove(index);
+  updatePollingStatus();
+}
+
+bool SensorProxy::tryReadFromBuffer(device::SensorReading& result) {
   DCHECK(isInitialized());
   const ReadingBuffer* buffer =
       static_cast<const ReadingBuffer*>(m_sharedBuffer.get());
   const device::OneWriterSeqLock& seqlock = buffer->seqlock.value();
   auto version = seqlock.ReadBegin();
-  auto reading = buffer->reading;
+  auto readingData = buffer->reading;
   if (seqlock.ReadRetry(version))
     return false;
-  m_reading = reading;
+  result = readingData;
   return true;
+}
+
+void SensorProxy::updatePollingStatus() {
+  DCHECK(usesPollingTimer());
+
+  if (m_suspended || m_frequenciesUsed.isEmpty()) {
+    m_timer.stop();
+    return;
+  }
+  // TODO(Mikhail): Consider using sorted queue instead of searching
+  // max element each time.
+  auto it =
+      std::max_element(m_frequenciesUsed.begin(), m_frequenciesUsed.end());
+  DCHECK_GT(*it, 0.0);
+
+  double repeatInterval = 1 / *it;
+  if (!m_timer.isActive() || m_timer.repeatInterval() != repeatInterval) {
+    updateSensorReading();
+    m_timer.startRepeating(repeatInterval, BLINK_FROM_HERE);
+  }
+}
+
+void SensorProxy::onTimerFired(TimerBase*) {
+  updateSensorReading();
 }
 
 }  // namespace blink

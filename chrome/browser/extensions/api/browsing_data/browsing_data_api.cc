@@ -11,7 +11,6 @@
 #include <string>
 #include <utility>
 
-#include "base/strings/stringprintf.h"
 #include "base/values.h"
 #include "chrome/browser/browsing_data/browsing_data_helper.h"
 #include "chrome/browser/browsing_data/browsing_data_remover.h"
@@ -65,8 +64,6 @@ const char kUnprotectedWebKey[] = "unprotectedWeb";
 const char kBadDataTypeDetails[] = "Invalid value for data type '%s'.";
 const char kDeleteProhibitedError[] = "Browsing history and downloads are not "
                                       "permitted to be removed.";
-const char kOneAtATimeError[] = "Only one 'browsingData' API call can run at "
-                                "a time.";
 
 }  // namespace extension_browsing_data_api_constants
 
@@ -314,14 +311,7 @@ void BrowsingDataRemoverFunction::CheckRemovingPluginDataSupported(
 void BrowsingDataRemoverFunction::StartRemoving() {
   BrowsingDataRemover* remover =
       BrowsingDataRemoverFactory::GetForBrowserContext(GetProfile());
-  // TODO(msramek): This restriction is no longer needed. Remove it.
-  if (remover->is_removing()) {
-    error_ = extension_browsing_data_api_constants::kOneAtATimeError;
-    SendResponse(false);
-    return;
-  }
-
-  // If we're good to go, add a ref (Balanced in OnBrowsingDataRemoverDone)
+  // Add a ref (Balanced in OnBrowsingDataRemoverDone)
   AddRef();
 
   // Create a BrowsingDataRemover, set the current object as an observer (so

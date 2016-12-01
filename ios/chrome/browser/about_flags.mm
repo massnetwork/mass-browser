@@ -26,6 +26,7 @@
 #include "components/flags_ui/flags_storage.h"
 #include "components/flags_ui/flags_ui_switches.h"
 #include "components/ntp_tiles/switches.h"
+#include "components/reading_list/core/reading_list_switches.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/sync/driver/sync_driver_switches.h"
 #include "google_apis/gaia/gaia_switches.h"
@@ -36,6 +37,10 @@
 
 #if !defined(OFFICIAL_BUILD)
 #include "components/variations/variations_switches.h"
+#endif
+
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "This file requires ARC support."
 #endif
 
 namespace {
@@ -191,8 +196,12 @@ void AppendSwitchesFromExperimentalSettings(base::CommandLine* command_line) {
     }
   }
 
-  if ([defaults boolForKey:@"EnablePopularSites"]) {
+  // Populate command line flags from EnablePopularSites.
+  NSString* EnablePopularSites = [defaults stringForKey:@"EnablePopularSites"];
+  if ([EnablePopularSites isEqualToString:@"Enabled"]) {
     command_line->AppendSwitch(ntp_tiles::switches::kEnableNTPPopularSites);
+  } else if ([EnablePopularSites isEqualToString:@"Disabled"]) {
+    command_line->AppendSwitch(ntp_tiles::switches::kDisableNTPPopularSites);
   }
 
   // Set the UA flag if UseMobileSafariUA is enabled.
@@ -223,6 +232,13 @@ void AppendSwitchesFromExperimentalSettings(base::CommandLine* command_line) {
     command_line->AppendSwitch(switches::kEnablePaymentRequest);
   } else if ([enable_payment_request isEqualToString:@"Disabled"]) {
     command_line->AppendSwitch(switches::kDisablePaymentRequest);
+  }
+
+  // Populate command line flags from Reading List.
+  if ([defaults boolForKey:@"EnableReadingList"]) {
+    command_line->AppendSwitch(reading_list::switches::kEnableReadingList);
+  } else {
+    command_line->AppendSwitch(reading_list::switches::kDisableReadingList);
   }
 
   // Populate command line flag for Spotlight Actions.

@@ -8,6 +8,7 @@
 #include "ash/common/wm_shell.h"
 #include "base/bind.h"
 #include "base/bind_helpers.h"
+#include "content/public/common/service_names.mojom.h"
 #include "services/service_manager/public/cpp/connector.h"
 
 namespace ash {
@@ -93,6 +94,12 @@ void SystemTrayController::ShowNetworkCreate(const std::string& type) {
     system_tray_client_->ShowNetworkCreate(type);
 }
 
+void SystemTrayController::ShowThirdPartyVpnCreate(
+    const std::string& extension_id) {
+  if (ConnectToSystemTrayClient())
+    system_tray_client_->ShowThirdPartyVpnCreate(extension_id);
+}
+
 void SystemTrayController::ShowNetworkSettings(const std::string& network_id) {
   if (ConnectToSystemTrayClient())
     system_tray_client_->ShowNetworkSettings(network_id);
@@ -101,6 +108,16 @@ void SystemTrayController::ShowNetworkSettings(const std::string& network_id) {
 void SystemTrayController::ShowProxySettings() {
   if (ConnectToSystemTrayClient())
     system_tray_client_->ShowProxySettings();
+}
+
+void SystemTrayController::SignOut() {
+  if (ConnectToSystemTrayClient())
+    system_tray_client_->SignOut();
+}
+
+void SystemTrayController::RequestRestartForUpdate() {
+  if (ConnectToSystemTrayClient())
+    system_tray_client_->RequestRestartForUpdate();
 }
 
 void SystemTrayController::BindRequest(mojom::SystemTrayRequest request) {
@@ -118,7 +135,7 @@ bool SystemTrayController::ConnectToSystemTrayClient() {
     return true;
 
   // Connect (or reconnect) to the interface.
-  connector_->ConnectToInterface("service:content_browser",
+  connector_->ConnectToInterface(content::mojom::kBrowserServiceName,
                                  &system_tray_client_);
 
   // Handle chrome crashes by forcing a reconnect on the next request.

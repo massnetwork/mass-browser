@@ -32,11 +32,14 @@
 #define HTTPParsers_h
 
 #include "platform/PlatformExport.h"
+#include "platform/json/JSONValues.h"
 #include "wtf/Allocator.h"
 #include "wtf/Forward.h"
 #include "wtf/HashSet.h"
 #include "wtf/Vector.h"
 #include "wtf/text/StringHash.h"
+
+#include <memory>
 
 namespace blink {
 
@@ -156,6 +159,14 @@ PLATFORM_EXPORT bool parseMultipartHeadersFromBody(const char* bytes,
                                                    size_t,
                                                    ResourceResponse*,
                                                    size_t* end);
+
+// Parses a header value containing JSON data, according to
+// https://tools.ietf.org/html/draft-ietf-httpbis-jfv-01
+// Returns an empty unique_ptr if the header cannot be parsed as JSON. JSON
+// strings which represent object nested deeper than |maxParseDepth| will also
+// cause an empty return value.
+PLATFORM_EXPORT std::unique_ptr<JSONArray> parseJSONHeader(const String& header,
+                                                           int maxParseDepth);
 
 }  // namespace blink
 

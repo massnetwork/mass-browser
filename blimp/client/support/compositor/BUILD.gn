@@ -25,14 +25,16 @@ source_set("compositor") {
     "//base",
     "//cc",
     "//gpu/command_buffer/client",
-    "//gpu/command_buffer/client:gl_in_process_context",
     "//gpu/command_buffer/client:gles2_c_lib",
     "//gpu/command_buffer/client:gles2_implementation",
+    "//gpu/ipc:gl_in_process_context",
+    "//gpu/ipc/common",
     "//ui/gl",
   ]
 
   deps = [
     "//blimp/client/public:public_headers",
+    "//cc/animation",
     "//cc/surfaces",
     "//gpu/skia_bindings",
     "//skia",

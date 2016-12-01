@@ -29,7 +29,6 @@
 
 struct NaClDesc;
 struct NaClImcTypedMsgHdr;
-struct PP_Size;
 
 namespace base {
 class SingleThreadTaskRunner;
@@ -38,10 +37,6 @@ class SingleThreadTaskRunner;
 namespace IPC {
 class Channel;
 struct ChannelHandle;
-}
-
-namespace ppapi {
-class HostResource;
 }
 
 // Adapts a Chrome IPC channel to an IPC channel that we expose to Native
@@ -139,10 +134,6 @@ class NaClIPCAdapter : public base::RefCountedThreadSafe<NaClIPCAdapter>,
   // Make a NaClDesc that refers to this NaClIPCAdapter. Note that the returned
   // NaClDesc is reference-counted, and a reference is returned.
   NaClDesc* MakeNaClDesc();
-
-#if defined(OS_POSIX)
-  base::ScopedFD TakeClientFileDescriptor();
-#endif
 
   // Listener implementation.
   bool OnMessageReceived(const IPC::Message& message) override;

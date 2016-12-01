@@ -88,7 +88,7 @@ DEFINE_TRACE(StyleRuleBase) {
       toStyleRuleViewport(this)->traceAfterDispatch(visitor);
       return;
   }
-  ASSERT_NOT_REACHED();
+  NOTREACHED();
 }
 
 void StyleRuleBase::finalizeGarbageCollectedObject() {
@@ -127,7 +127,7 @@ void StyleRuleBase::finalizeGarbageCollectedObject() {
       toStyleRuleViewport(this)->~StyleRuleViewport();
       return;
   }
-  ASSERT_NOT_REACHED();
+  NOTREACHED();
 }
 
 StyleRuleBase* StyleRuleBase::copy() const {
@@ -144,7 +144,7 @@ StyleRuleBase* StyleRuleBase::copy() const {
       return toStyleRuleSupports(this)->copy();
     case Import:
       // FIXME: Copy import rules.
-      ASSERT_NOT_REACHED();
+      NOTREACHED();
       return nullptr;
     case Keyframes:
       return toStyleRuleKeyframes(this)->copy();
@@ -211,13 +211,15 @@ unsigned StyleRule::averageSizeInBytes() {
 StyleRule::StyleRule(CSSSelectorList selectorList, StylePropertySet* properties)
     : StyleRuleBase(Style),
       m_selectorList(std::move(selectorList)),
-      m_properties(properties) {}
+      m_properties(properties),
+      m_shouldConsiderForMatchingRules(ConsiderIfNonEmpty) {}
 
 StyleRule::StyleRule(CSSSelectorList selectorList,
                      CSSLazyPropertyParser* lazyPropertyParser)
     : StyleRuleBase(Style),
       m_selectorList(std::move(selectorList)),
-      m_lazyPropertyParser(lazyPropertyParser) {}
+      m_lazyPropertyParser(lazyPropertyParser),
+      m_shouldConsiderForMatchingRules(AlwaysConsider) {}
 
 const StylePropertySet& StyleRule::properties() const {
   if (!m_properties) {
@@ -230,7 +232,8 @@ const StylePropertySet& StyleRule::properties() const {
 StyleRule::StyleRule(const StyleRule& o)
     : StyleRuleBase(o),
       m_selectorList(o.m_selectorList.copy()),
-      m_properties(o.properties().mutableCopy()) {}
+      m_properties(o.properties().mutableCopy()),
+      m_shouldConsiderForMatchingRules(ConsiderIfNonEmpty) {}
 
 StyleRule::~StyleRule() {}
 
@@ -246,9 +249,17 @@ bool StyleRule::propertiesHaveFailedOrCanceledSubresources() const {
 }
 
 bool StyleRule::shouldConsiderForMatchingRules(bool includeEmptyRules) const {
-  // Consider all non-empty property sets if parsing has not been deferred.
-  // Otherwise, consider all StyleRules with non-null deferred closures.
-  return includeEmptyRules || !m_properties || !m_properties->isEmpty();
+  DCHECK(m_shouldConsiderForMatchingRules == AlwaysConsider || m_properties);
+  return includeEmptyRules ||
+         m_shouldConsiderForMatchingRules == AlwaysConsider ||
+         !m_properties->isEmpty();
+}
+
+bool StyleRule::hasParsedProperties() const {
+  // StyleRule should only have one of {m_lazyPropertyParser, m_properties} set.
+  DCHECK(m_lazyPropertyParser || m_properties);
+  DCHECK(!m_lazyPropertyParser || !m_properties);
+  return !m_lazyPropertyParser;
 }
 
 DEFINE_TRACE_AFTER_DISPATCH(StyleRule) {

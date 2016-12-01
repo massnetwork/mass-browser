@@ -60,10 +60,10 @@
 #include "modules/peerconnection/RTCDTMFSender.h"
 #include "modules/peerconnection/RTCDataChannel.h"
 #include "modules/peerconnection/RTCDataChannelEvent.h"
-#include "modules/peerconnection/RTCIceCandidateEvent.h"
 #include "modules/peerconnection/RTCIceServer.h"
 #include "modules/peerconnection/RTCOfferOptions.h"
 #include "modules/peerconnection/RTCPeerConnectionErrorCallback.h"
+#include "modules/peerconnection/RTCPeerConnectionIceEvent.h"
 #include "modules/peerconnection/RTCSessionDescription.h"
 #include "modules/peerconnection/RTCSessionDescriptionCallback.h"
 #include "modules/peerconnection/RTCSessionDescriptionInit.h"
@@ -306,11 +306,25 @@ WebRTCConfiguration parseConfiguration(ExecutionContext* context,
 
       for (const String& urlString : urlStrings) {
         KURL url(KURL(), urlString);
-        if (!url.isValid() ||
-            !(url.protocolIs("turn") || url.protocolIs("turns") ||
-              url.protocolIs("stun"))) {
-          exceptionState.throwTypeError("Malformed URL");
+        if (!url.isValid()) {
+          exceptionState.throwDOMException(
+              SyntaxError, "'" + urlString + "' is not a valid URL.");
           return WebRTCConfiguration();
+        }
+        if (!(url.protocolIs("turn") || url.protocolIs("turns") ||
+              url.protocolIs("stun"))) {
+          exceptionState.throwDOMException(
+              SyntaxError, "'" + url.protocol() +
+                               "' is not one of the supported URL schemes "
+                               "'stun', 'turn' or 'turns'.");
+          return WebRTCConfiguration();
+        }
+        if ((url.protocolIs("turn") || url.protocolIs("turns")) &&
+            (username.isNull() || credential.isNull())) {
+          exceptionState.throwDOMException(InvalidAccessError,
+                                           "Both username and credential are "
+                                           "required when the URL scheme is "
+                                           "\"turn\" or \"turns\".");
         }
         iceServers.append(WebRTCIceServer{url, username, credential});
       }
@@ -332,12 +346,15 @@ WebRTCConfiguration parseConfiguration(ExecutionContext* context,
   return webConfiguration;
 }
 
-RTCOfferOptionsPlatform* parseOfferOptions(const Dictionary& options) {
+RTCOfferOptionsPlatform* parseOfferOptions(const Dictionary& options,
+                                           ExceptionState& exceptionState) {
   if (options.isUndefinedOrNull())
-    return 0;
+    return nullptr;
 
-  Vector<String> propertyNames;
-  options.getPropertyNames(propertyNames);
+  const Vector<String>& propertyNames =
+      options.getPropertyNames(exceptionState);
+  if (exceptionState.hadException())
+    return nullptr;
 
   // Treat |options| as MediaConstraints if it is empty or has "optional" or
   // "mandatory" properties for compatibility.
@@ -345,7 +362,7 @@ RTCOfferOptionsPlatform* parseOfferOptions(const Dictionary& options) {
   // client code is ready.
   if (propertyNames.isEmpty() || propertyNames.contains("optional") ||
       propertyNames.contains("mandatory"))
-    return 0;
+    return nullptr;
 
   int32_t offerToReceiveVideo = -1;
   int32_t offerToReceiveAudio = -1;
@@ -480,7 +497,8 @@ RTCPeerConnection::RTCPeerConnection(ExecutionContext* context,
               this,
               &RTCPeerConnection::dispatchScheduledEvent)),
       m_stopped(false),
-      m_closed(false) {
+      m_closed(false),
+      m_hasDataChannels(false) {
   ThreadState::current()->registerPreFinalizer(this);
   Document* document = toDocument(getExecutionContext());
 
@@ -558,7 +576,8 @@ ScriptPromise RTCPeerConnection::createOffer(
     ScriptState* scriptState,
     RTCSessionDescriptionCallback* successCallback,
     RTCPeerConnectionErrorCallback* errorCallback,
-    const Dictionary& rtcOfferOptions) {
+    const Dictionary& rtcOfferOptions,
+    ExceptionState& exceptionState) {
   DCHECK(successCallback);
   DCHECK(errorCallback);
   ExecutionContext* context = scriptState->getExecutionContext();
@@ -567,7 +586,10 @@ ScriptPromise RTCPeerConnection::createOffer(
   if (callErrorCallbackIfSignalingStateClosed(m_signalingState, errorCallback))
     return ScriptPromise::castUndefined(scriptState);
 
-  RTCOfferOptionsPlatform* offerOptions = parseOfferOptions(rtcOfferOptions);
+  RTCOfferOptionsPlatform* offerOptions =
+      parseOfferOptions(rtcOfferOptions, exceptionState);
+  if (exceptionState.hadException())
+    return ScriptPromise();
   RTCSessionDescriptionRequest* request =
       RTCSessionDescriptionRequestImpl::create(getExecutionContext(), this,
                                                successCallback, errorCallback);
@@ -835,7 +857,7 @@ ScriptPromise RTCPeerConnection::generateCertificate(
   Nullable<DOMTimeStamp> expires;
   if (keygenAlgorithm.isDictionary()) {
     Dictionary keygenAlgorithmDict = keygenAlgorithm.getAsDictionary();
-    if (keygenAlgorithmDict.hasProperty("expires")) {
+    if (keygenAlgorithmDict.hasProperty("expires", exceptionState)) {
       v8::Local<v8::Value> expiresValue;
       keygenAlgorithmDict.get("expires", expiresValue);
       if (expiresValue->IsNumber()) {
@@ -848,6 +870,9 @@ ScriptPromise RTCPeerConnection::generateCertificate(
         }
       }
     }
+  }
+  if (exceptionState.hadException()) {
+    return ScriptPromise();
   }
 
   // Convert from WebCrypto representation to recognized WebRTCKeyParams. WebRTC
@@ -1245,11 +1270,12 @@ void RTCPeerConnection::didGenerateICECandidate(
   DCHECK(!m_closed);
   DCHECK(getExecutionContext()->isContextThread());
   if (webCandidate.isNull()) {
-    scheduleDispatchEvent(RTCIceCandidateEvent::create(false, false, nullptr));
+    scheduleDispatchEvent(
+        RTCPeerConnectionIceEvent::create(false, false, nullptr));
   } else {
     RTCIceCandidate* iceCandidate = RTCIceCandidate::create(webCandidate);
     scheduleDispatchEvent(
-        RTCIceCandidateEvent::create(false, false, iceCandidate));
+        RTCPeerConnectionIceEvent::create(false, false, iceCandidate));
   }
 }
 

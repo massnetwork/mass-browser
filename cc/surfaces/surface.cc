@@ -22,10 +22,10 @@ namespace cc {
 // completely damaged the first time they're drawn from.
 static const int kFrameIndexStart = 2;
 
-Surface::Surface(const SurfaceId& id, SurfaceFactory* factory)
+Surface::Surface(const SurfaceId& id, base::WeakPtr<SurfaceFactory> factory)
     : surface_id_(id),
       previous_frame_surface_id_(id),
-      factory_(factory->AsWeakPtr()),
+      factory_(factory),
       frame_index_(kFrameIndexStart),
       destroyed_(false) {}
 
@@ -88,6 +88,11 @@ void Surface::QueueFrame(CompositorFrame frame, const DrawCallback& callback) {
     factory_->manager()->DidSatisfySequences(surface_id_.frame_sink_id(),
                                              &satisfies_sequences);
   }
+}
+
+void Surface::EvictFrame() {
+  QueueFrame(CompositorFrame(), DrawCallback());
+  current_frame_.reset();
 }
 
 void Surface::RequestCopyOfOutput(

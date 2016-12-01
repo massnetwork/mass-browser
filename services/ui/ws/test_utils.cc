@@ -11,7 +11,6 @@
 #include "gpu/ipc/client/gpu_channel_host.h"
 #include "services/service_manager/public/interfaces/connector.mojom.h"
 #include "services/ui/public/interfaces/cursor.mojom.h"
-#include "services/ui/surfaces/display_compositor.h"
 #include "services/ui/ws/display_binding.h"
 #include "services/ui/ws/display_manager.h"
 #include "services/ui/ws/platform_display_init_params.h"
@@ -19,6 +18,7 @@
 #include "services/ui/ws/window_manager_access_policy.h"
 #include "services/ui/ws/window_manager_window_tree_factory.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/gfx/geometry/dip_util.h"
 
 namespace ui {
 namespace ws {
@@ -29,11 +29,10 @@ namespace {
 // Empty implementation of PlatformDisplay.
 class TestPlatformDisplay : public PlatformDisplay {
  public:
-  explicit TestPlatformDisplay(int64_t id,
-                               bool is_primary,
+  explicit TestPlatformDisplay(const PlatformDisplayInitParams& params,
                                mojom::Cursor* cursor_storage)
-      : id_(id),
-        is_primary_(is_primary),
+      : id_(params.display_id),
+        display_metrics_(params.metrics),
         cursor_storage_(cursor_storage) {
     display_metrics_.bounds = gfx::Rect(0, 0, 400, 300);
     display_metrics_.device_scale_factor = 1.f;
@@ -41,10 +40,10 @@ class TestPlatformDisplay : public PlatformDisplay {
   ~TestPlatformDisplay() override {}
 
   // PlatformDisplay:
-  void Init(PlatformDisplayDelegate* delegate) override {}
+  void Init(PlatformDisplayDelegate* delegate) override {
+    delegate->OnAcceleratedWidgetAvailable();
+  }
   int64_t GetId() const override { return id_; }
-  void SchedulePaint(const ServerWindow* window,
-                     const gfx::Rect& bounds) override {}
   void SetViewportSize(const gfx::Size& size) override {}
   void SetTitle(const base::string16& title) override {}
   void SetCapture() override {}
@@ -54,7 +53,6 @@ class TestPlatformDisplay : public PlatformDisplay {
   }
   void UpdateTextInputState(const ui::TextInputState& state) override {}
   void SetImeVisibility(bool visible) override {}
-  bool IsFramePending() const override { return false; }
   gfx::Rect GetBounds() const override { return display_metrics_.bounds; }
   bool UpdateViewportMetrics(const display::ViewportMetrics& metrics) override {
     if (display_metrics_ == metrics)
@@ -65,15 +63,11 @@ class TestPlatformDisplay : public PlatformDisplay {
   const display::ViewportMetrics& GetViewportMetrics() const override {
     return display_metrics_;
   }
-  bool IsPrimaryDisplay() const override { return is_primary_; }
-  void OnGpuChannelEstablished(
-      scoped_refptr<gpu::GpuChannelHost> host) override {}
+  FrameGenerator* GetFrameGenerator() override { return nullptr; }
 
  private:
+  const int64_t id_;
   display::ViewportMetrics display_metrics_;
-
-  int64_t id_;
-  bool is_primary_;
   mojom::Cursor* cursor_storage_;
 
   DISALLOW_COPY_AND_ASSIGN(TestPlatformDisplay);
@@ -92,60 +86,79 @@ ClientWindowId NextUnusedClientWindowId(WindowTree* tree) {
 
 }  // namespace
 
-// WindowManagerWindowTreeFactorySetTestApi ------------------------------------
+// TestPlatformScreen  -------------------------------------------------
 
-WindowManagerWindowTreeFactorySetTestApi::
-    WindowManagerWindowTreeFactorySetTestApi(
-        WindowManagerWindowTreeFactorySet*
-            window_manager_window_tree_factory_set)
-    : window_manager_window_tree_factory_set_(
-          window_manager_window_tree_factory_set) {}
+TestPlatformScreen::TestPlatformScreen() {}
 
-WindowManagerWindowTreeFactorySetTestApi::
-    ~WindowManagerWindowTreeFactorySetTestApi() {}
+TestPlatformScreen::~TestPlatformScreen() {}
 
-void WindowManagerWindowTreeFactorySetTestApi::Add(const UserId& user_id) {
-  WindowManagerWindowTreeFactory* factory =
-      window_manager_window_tree_factory_set_->Add(user_id, nullptr);
-  factory->CreateWindowTree(nullptr, nullptr);
+int64_t TestPlatformScreen::AddDisplay() {
+  return AddDisplay(MakeViewportMetrics(0, 0, 100, 100, 1.0f));
+}
+
+int64_t TestPlatformScreen::AddDisplay(
+    const display::ViewportMetrics& metrics) {
+  // Generate a unique display id.
+  int64_t display_id = display_ids_.empty() ? 1 : *display_ids_.rbegin() + 1;
+  display_ids_.insert(display_id);
+
+  delegate_->OnDisplayAdded(display_id, metrics);
+
+  // First display added will be the primary display.
+  if (primary_display_id_ == display::kInvalidDisplayId) {
+    primary_display_id_ = display_id;
+    delegate_->OnPrimaryDisplayChanged(display_id);
+  }
+
+  return display_id;
+}
+
+void TestPlatformScreen::ModifyDisplay(
+    int64_t id,
+    const display::ViewportMetrics& metrics) {
+  DCHECK(display_ids_.count(id) == 1);
+  delegate_->OnDisplayModified(id, metrics);
+}
+
+void TestPlatformScreen::RemoveDisplay(int64_t id) {
+  DCHECK(display_ids_.count(id) == 1);
+  delegate_->OnDisplayRemoved(id);
+  display_ids_.erase(id);
+}
+
+void TestPlatformScreen::Init(display::PlatformScreenDelegate* delegate) {
+  // Reset
+  delegate_ = delegate;
+  display_ids_.clear();
+  primary_display_id_ = display::kInvalidDisplayId;
+}
+
+int64_t TestPlatformScreen::GetPrimaryDisplayId() const {
+  return primary_display_id_;
 }
 
 // TestPlatformDisplayFactory  -------------------------------------------------
 
-const int64_t TestPlatformDisplayFactory::kFirstDisplayId = 1;
-
 TestPlatformDisplayFactory::TestPlatformDisplayFactory(
     mojom::Cursor* cursor_storage)
-    : cursor_storage_(cursor_storage),
-      next_display_id_(kFirstDisplayId) {}
+    : cursor_storage_(cursor_storage) {}
 
 TestPlatformDisplayFactory::~TestPlatformDisplayFactory() {}
 
-PlatformDisplay* TestPlatformDisplayFactory::CreatePlatformDisplay() {
-  bool is_primary = (next_display_id_ == kFirstDisplayId);
-  return new TestPlatformDisplay(next_display_id_++, is_primary,
-                                 cursor_storage_);
+std::unique_ptr<PlatformDisplay>
+TestPlatformDisplayFactory::CreatePlatformDisplay(
+    const PlatformDisplayInitParams& init_params) {
+  return base::MakeUnique<TestPlatformDisplay>(init_params, cursor_storage_);
 }
 
 // TestFrameGeneratorDelegate -------------------------------------------------
 
-TestFrameGeneratorDelegate::TestFrameGeneratorDelegate(
-    std::unique_ptr<ServerWindow> root)
-    : root_(std::move(root)) {}
+TestFrameGeneratorDelegate::TestFrameGeneratorDelegate() {}
 
 TestFrameGeneratorDelegate::~TestFrameGeneratorDelegate() {}
 
-ServerWindow* TestFrameGeneratorDelegate::GetRootWindow() {
-  return root_.get();
-}
-
 bool TestFrameGeneratorDelegate::IsInHighContrastMode() {
   return false;
-}
-
-const display::ViewportMetrics& TestFrameGeneratorDelegate::GetViewportMetrics()
-    const {
-  return metrics_;
 }
 
 // WindowTreeTestApi  ---------------------------------------------------------
@@ -208,7 +221,7 @@ void TestWindowManager::WmDisplayRemoved(int64_t display_id) {
 void TestWindowManager::WmCreateTopLevelWindow(
     uint32_t change_id,
     ClientSpecificId requesting_client_id,
-    mojo::Map<mojo::String, mojo::Array<uint8_t>> properties) {
+    const std::unordered_map<std::string, std::vector<uint8_t>>& properties) {
   got_create_top_level_window_ = true;
   change_id_ = change_id;
 }
@@ -283,7 +296,7 @@ void TestWindowTreeClient::OnWindowBoundsChanged(uint32_t window,
 void TestWindowTreeClient::OnClientAreaChanged(
     uint32_t window_id,
     const gfx::Insets& new_client_area,
-    mojo::Array<gfx::Rect> new_additional_client_areas) {}
+    const std::vector<gfx::Rect>& new_additional_client_areas) {}
 
 void TestWindowTreeClient::OnTransientWindowAdded(
     uint32_t window_id,
@@ -297,7 +310,7 @@ void TestWindowTreeClient::OnWindowHierarchyChanged(
     uint32_t window,
     uint32_t old_parent,
     uint32_t new_parent,
-    mojo::Array<mojom::WindowDataPtr> windows) {
+    std::vector<mojom::WindowDataPtr> windows) {
   tracker_.OnWindowHierarchyChanged(window, old_parent, new_parent,
                                     std::move(windows));
 }
@@ -330,9 +343,9 @@ void TestWindowTreeClient::OnWindowParentDrawnStateChanged(uint32_t window,
 
 void TestWindowTreeClient::OnWindowSharedPropertyChanged(
     uint32_t window,
-    const mojo::String& name,
-    mojo::Array<uint8_t> new_data) {
-  tracker_.OnWindowSharedPropertyChanged(window, name, std::move(new_data));
+    const std::string& name,
+    const base::Optional<std::vector<uint8_t>>& new_data) {
+  tracker_.OnWindowSharedPropertyChanged(window, name, new_data);
 }
 
 void TestWindowTreeClient::OnWindowInputEvent(uint32_t event_id,
@@ -361,12 +374,11 @@ void TestWindowTreeClient::OnWindowPredefinedCursorChanged(
 void TestWindowTreeClient::OnWindowSurfaceChanged(
     Id window_id,
     const cc::SurfaceId& surface_id,
-    const cc::SurfaceSequence& surface_sequence,
     const gfx::Size& frame_size,
     float device_scale_factor) {}
 
 void TestWindowTreeClient::OnDragDropStart(
-    mojo::Map<mojo::String, mojo::Array<uint8_t>> mime_data) {}
+    const std::unordered_map<std::string, std::vector<uint8_t>>& mime_data) {}
 
 void TestWindowTreeClient::OnDragEnter(uint32_t window,
                                        uint32_t key_state,
@@ -436,12 +448,7 @@ mojom::WindowTreeClient* TestWindowTreeBinding::CreateClientForShutdown() {
 TestWindowServerDelegate::TestWindowServerDelegate() {}
 TestWindowServerDelegate::~TestWindowServerDelegate() {}
 
-Display* TestWindowServerDelegate::AddDisplay() {
-  // Display manages its own lifetime.
-  Display* display = new Display(window_server_, PlatformDisplayInitParams());
-  display->Init(nullptr);
-  return display;
-}
+void TestWindowServerDelegate::StartDisplayInit() {}
 
 void TestWindowServerDelegate::OnNoMoreDisplays() {
   got_on_no_more_displays_ = true;
@@ -460,14 +467,6 @@ TestWindowServerDelegate::CreateWindowTreeBinding(
   return std::move(binding);
 }
 
-void TestWindowServerDelegate::CreateDefaultDisplays() {
-  DCHECK(num_displays_to_create_);
-  DCHECK(window_server_);
-
-  for (int i = 0; i < num_displays_to_create_; ++i)
-    AddDisplay();
-}
-
 bool TestWindowServerDelegate::IsTestConfig() const {
   return true;
 }
@@ -477,6 +476,9 @@ bool TestWindowServerDelegate::IsTestConfig() const {
 WindowServerTestHelper::WindowServerTestHelper()
     : cursor_id_(mojom::Cursor::CURSOR_NULL),
       platform_display_factory_(&cursor_id_) {
+  // Some tests create their own message loop, for example to add a task runner.
+  if (!base::MessageLoop::current())
+    message_loop_ = base::MakeUnique<base::MessageLoop>();
   PlatformDisplay::set_factory_for_testing(&platform_display_factory_);
   window_server_ = base::MakeUnique<WindowServer>(&window_server_delegate_);
   window_server_delegate_.set_window_server(window_server_.get());
@@ -489,16 +491,11 @@ WindowServerTestHelper::~WindowServerTestHelper() {
 
 // WindowEventTargetingHelper ------------------------------------------------
 
-WindowEventTargetingHelper::WindowEventTargetingHelper()
-    : wm_client_(nullptr),
-      display_binding_(nullptr),
-      display_(nullptr),
-      display_compositor_(new DisplayCompositor(nullptr)) {
-  PlatformDisplayInitParams display_init_params;
-  display_init_params.display_compositor = display_compositor_;
-  display_ = new Display(window_server(), display_init_params);
+WindowEventTargetingHelper::WindowEventTargetingHelper() {
+  display_ = new Display(window_server());
   display_binding_ = new TestDisplayBinding(window_server());
-  display_->Init(base::WrapUnique(display_binding_));
+  display_->Init(PlatformDisplayInitParams(),
+                 base::WrapUnique(display_binding_));
   wm_client_ = ws_test_helper_.window_server_delegate()->last_client();
   wm_client_->tracker()->changes()->clear();
 }
@@ -564,10 +561,31 @@ void WindowEventTargetingHelper::CreateSecondaryTree(
 
 void WindowEventTargetingHelper::SetTaskRunner(
     scoped_refptr<base::SingleThreadTaskRunner> task_runner) {
-  ws_test_helper_.message_loop()->SetTaskRunner(task_runner);
+  base::MessageLoop::current()->SetTaskRunner(task_runner);
 }
 
 // ----------------------------------------------------------------------------
+
+void AddWindowManager(WindowServer* window_server, const UserId& user_id) {
+  window_server->window_manager_window_tree_factory_set()
+      ->Add(user_id, nullptr)
+      ->CreateWindowTree(nullptr, nullptr);
+}
+
+display::ViewportMetrics MakeViewportMetrics(int origin_x,
+                                             int origin_y,
+                                             int width_pixels,
+                                             int height_pixels,
+                                             float scale_factor) {
+  display::ViewportMetrics metrics;
+  gfx::Size scaled_size = gfx::ConvertSizeToDIP(
+      scale_factor, gfx::Size(width_pixels, height_pixels));
+  metrics.bounds = gfx::Rect(gfx::Point(origin_x, origin_y), scaled_size);
+  metrics.work_area = metrics.bounds;
+  metrics.pixel_size = gfx::Size(width_pixels, height_pixels);
+  metrics.device_scale_factor = scale_factor;
+  return metrics;
+}
 
 ServerWindow* FirstRoot(WindowTree* tree) {
   return tree->roots().size() == 1u

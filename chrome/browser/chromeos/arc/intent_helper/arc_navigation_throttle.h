@@ -15,7 +15,6 @@
 #include "base/memory/weak_ptr.h"
 #include "components/arc/intent_helper/activity_icon_loader.h"
 #include "content/public/browser/navigation_throttle.h"
-#include "mojo/public/cpp/bindings/array.h"
 #include "ui/gfx/image/image.h"
 #include "url/gurl.h"
 
@@ -41,6 +40,15 @@ class ArcNavigationThrottle : public content::NavigationThrottle {
     PREFERRED_ACTIVITY_FOUND = 4,
     SIZE,
     INVALID = SIZE,
+  };
+
+  // As for CloseReason, these define the buckets for an UMA histogram, so this
+  // must be treated in an append-only fashion. This helps especify where a
+  // navigation will continue.
+  enum class Platform : int {
+    ARC = 0,
+    CHROME = 1,
+    SIZE,
   };
 
   // Restricts the amount of apps displayed to the user without the need of a
@@ -69,16 +77,31 @@ class ArcNavigationThrottle : public content::NavigationThrottle {
   // Finds |selected_app_package| from the |handlers| array and returns the
   // index. If the app is not found, returns |handlers.size()|.
   static size_t GetAppIndex(
-      const mojo::Array<mojom::IntentHandlerInfoPtr>& handlers,
+      const std::vector<mojom::IntentHandlerInfoPtr>& handlers,
       const std::string& selected_app_package);
+  // Determines the destination of the current navigation. We know that if the
+  // |close_reason| is either ERROR or DIALOG_DEACTIVATED the navigation MUST
+  // stay in Chrome, otherwise we can assume the navigation goes to ARC with the
+  // exception of the |selected_app_package| being Chrome.
+  static Platform GetDestinationPlatform(
+      const std::string& selected_app_package,
+      CloseReason close_reason);
+  // Records intent picker usage statistics as well as whether navigations are
+  // continued or redirected to Chrome or ARC respectively, via UMA histograms.
+  static void RecordUma(CloseReason close_reason, Platform platform);
+
+  // Swaps Chrome app with any app in row |kMaxAppResults-1| iff its index is
+  // bigger, thus ensuring the user can always see Chrome without scrolling.
+  // When swap is needed, fills |out_indices| and returns true. If |handlers|
+  // do not have Chrome, returns false.
+  static bool IsSwapElementsNeeded(
+      const std::vector<mojom::IntentHandlerInfoPtr>& handlers,
+      std::pair<size_t, size_t>* out_indices);
 
   static bool IsAppAvailableForTesting(
-      const mojo::Array<mojom::IntentHandlerInfoPtr>& handlers);
+      const std::vector<mojom::IntentHandlerInfoPtr>& handlers);
   static size_t FindPreferredAppForTesting(
-      const mojo::Array<mojom::IntentHandlerInfoPtr>& handlers);
-  static bool IsSwapElementsNeededForTesting(
-      const mojo::Array<mojom::IntentHandlerInfoPtr>& handlers,
-      std::pair<size_t, size_t>* out_indices);
+      const std::vector<mojom::IntentHandlerInfoPtr>& handlers);
 
  private:
   // content::Navigation implementation:
@@ -87,11 +110,11 @@ class ArcNavigationThrottle : public content::NavigationThrottle {
 
   NavigationThrottle::ThrottleCheckResult HandleRequest();
   void OnAppCandidatesReceived(
-      mojo::Array<mojom::IntentHandlerInfoPtr> handlers);
+      std::vector<mojom::IntentHandlerInfoPtr> handlers);
   void OnAppIconsReceived(
-      mojo::Array<mojom::IntentHandlerInfoPtr> handlers,
+      std::vector<mojom::IntentHandlerInfoPtr> handlers,
       std::unique_ptr<ActivityIconLoader::ActivityToIconsMap> icons);
-  void OnIntentPickerClosed(mojo::Array<mojom::IntentHandlerInfoPtr> handlers,
+  void OnIntentPickerClosed(std::vector<mojom::IntentHandlerInfoPtr> handlers,
                             const std::string& selected_app_package,
                             CloseReason close_reason);
   GURL GetStartingGURL() const;

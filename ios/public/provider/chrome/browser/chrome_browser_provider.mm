@@ -30,15 +30,12 @@ ChromeBrowserProvider::~ChromeBrowserProvider() {}
 
 ChromeBrowserProvider::ChromeBrowserProvider() {}
 
+void ChromeBrowserProvider::Initialize() const {}
+
 void ChromeBrowserProvider::AssertBrowserContextKeyedFactoriesBuilt() {}
 
 void ChromeBrowserProvider::RegisterProfilePrefs(
     user_prefs::PrefRegistrySyncable* registry) {}
-
-UpdatableResourceProvider*
-ChromeBrowserProvider::GetUpdatableResourceProvider() {
-  return nullptr;
-}
 
 InfoBarViewPlaceholder ChromeBrowserProvider::CreateInfoBarView(
     CGRect frame,
@@ -126,10 +123,6 @@ ChromeBrowserProvider::CreateSyncedWindowDelegatesGetter(
   return nullptr;
 }
 
-NSArray* ChromeBrowserProvider::GetAvailableVoiceSearchLanguages() const {
-  return [NSArray array];
-}
-
 VoiceSearchProvider* ChromeBrowserProvider::GetVoiceSearchProvider() const {
   return nullptr;
 }
@@ -145,8 +138,25 @@ id<LogoVendor> ChromeBrowserProvider::CreateLogoVendor(
   return nil;
 }
 
-bool ChromeBrowserProvider::ShouldEmbedderRegisterVoiceSearchPrefs() const {
-  return false;
+OmahaServiceProvider* ChromeBrowserProvider::GetOmahaServiceProvider() const {
+  return nullptr;
 }
+
+UserFeedbackProvider* ChromeBrowserProvider::GetUserFeedbackProvider() const {
+  return nullptr;
+}
+
+BrandedImageProvider* ChromeBrowserProvider::GetBrandedImageProvider() const {
+  return nullptr;
+}
+
+id<NativeAppWhitelistManager>
+ChromeBrowserProvider::GetNativeAppWhitelistManager() const {
+  return nil;
+}
+
+void ChromeBrowserProvider::HideModalViewStack() const {}
+
+void ChromeBrowserProvider::LogIfModalViewsArePresented() const {}
 
 }  // namespace ios

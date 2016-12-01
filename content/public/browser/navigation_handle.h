@@ -6,6 +6,7 @@
 #define CONTENT_PUBLIC_BROWSER_NAVIGATION_HANDLE_H_
 
 #include <memory>
+#include <string>
 
 #include "content/common/content_export.h"
 #include "content/public/browser/navigation_throttle.h"
@@ -21,6 +22,7 @@ class HttpResponseHeaders;
 }  // namespace net
 
 namespace content {
+struct GlobalRequestID;
 class NavigationData;
 class NavigationThrottle;
 class RenderFrameHost;
@@ -93,6 +95,11 @@ class CONTENT_EXPORT NavigationHandle {
 
   // Whether or not the navigation was started within a context menu.
   virtual bool WasStartedFromContextMenu() const = 0;
+
+  // Returns the URL and encoding of an INPUT field that corresponds to a
+  // searchable form request.
+  virtual const GURL& GetSearchableFormURL() = 0;
+  virtual const std::string& GetSearchableFormEncoding() = 0;
 
   // Parameters available at network request start time ------------------------
   //
@@ -175,13 +182,25 @@ class CONTENT_EXPORT NavigationHandle {
   virtual net::HttpResponseInfo::ConnectionInfo GetConnectionInfo() = 0;
 
   // Resumes a navigation that was previously deferred by a NavigationThrottle.
+  // Note: this may lead to the deletion of the NavigationHandle and its
+  // associated NavigationThrottles.
   virtual void Resume() = 0;
 
   // Cancels a navigation that was previously deferred by a NavigationThrottle.
   // |result| should be equal to NavigationThrottle::CANCEL or
   // NavigationThrottle::CANCEL_AND_IGNORE.
+  // Note: this may lead to the deletion of the NavigationHandle and its
+  // associated NavigationThrottles.
   virtual void CancelDeferredNavigation(
       NavigationThrottle::ThrottleCheckResult result) = 0;
+
+  // Returns the ID of the URLRequest associated with this navigation. Can only
+  // be called from NavigationThrottle::WillProcessResponse and
+  // WebContentsObserver::ReadyToCommitNavigation.
+  // In the case of transfer navigations, this is the ID of the first request
+  // made. The transferred request's ID will not be tracked by the
+  // NavigationHandle.
+  virtual const GlobalRequestID& GetGlobalRequestID() = 0;
 
   // Testing methods ----------------------------------------------------------
   //

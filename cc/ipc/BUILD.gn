@@ -75,6 +75,7 @@ mojom("internal_interfaces") {
 
   public_deps = [
     ":interfaces",
+    "//gpu/ipc/common:interfaces",
     "//ui/gfx/geometry/mojo",
   ]
 }
@@ -92,6 +93,7 @@ mojom("test_interfaces") {
 
 source_set("struct_traits") {
   sources = [
+    "begin_frame_args_struct_traits.h",
     "compositor_frame_metadata_struct_traits.cc",
     "compositor_frame_metadata_struct_traits.h",
     "compositor_frame_struct_traits.cc",

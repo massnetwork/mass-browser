@@ -714,8 +714,9 @@ cr.define('login', function() {
       this.addEventListener('mousedown', this.handlePodMouseDown_.bind(this));
 
       if (this.pinKeyboard) {
+        this.pinKeyboard.passwordElement = this.passwordElement;
         this.pinKeyboard.addEventListener('pin-change',
-            this.handlePinChanged_.bind(this));
+            this.handleInputChanged_.bind(this));
       }
 
       this.actionBoxAreaElement.addEventListener('mousedown',
@@ -755,6 +756,8 @@ cr.define('login', function() {
           this.handlePasswordKeyPress_.bind(this));
       this.passwordElement.addEventListener('input',
           this.handleInputChanged_.bind(this));
+      this.passwordElement.addEventListener('mouseup',
+          this.handleInputMouseUp_.bind(this));
 
       if (this.submitButton) {
         this.submitButton.addEventListener('click',
@@ -781,6 +784,27 @@ cr.define('login', function() {
          });
         cr.ui.login.ResourceLoader.loadAssetsOnIdle('custom-elements-user-pod');
       }
+    },
+
+    /**
+     * Whether the user pod is disabled.
+     * @type {boolean}
+     */
+    disabled_: false,
+    get disabled() {
+      return this.disabled_;
+    },
+    set disabled(value) {
+      this.disabled_ = value;
+      this.querySelectorAll('button,input').forEach(function(element) {
+        element.disabled = value
+      });
+
+      // Special handling for submit button - the submit button should be
+      // enabled only if there is the password value set.
+      var submitButton = this.submitButton;
+      if (submitButton)
+        submitButton.disabled = value || !this.passwordElement.value;
     },
 
     /**
@@ -1167,6 +1191,8 @@ cr.define('login', function() {
       // Change the password placeholder based on pin keyboard visibility.
       this.passwordElement.placeholder = loadTimeData.getString(visible ?
           'pinKeyboardPlaceholderPinPassword' : 'passwordHint');
+
+      chrome.send('setForceDisableVirtualKeyboard', [visible]);
     },
 
     isPinShown: function() {
@@ -1867,24 +1893,24 @@ cr.define('login', function() {
     },
 
     /**
-     * Handles pin change event from the pin keyboard.
-     * @param {Event} e Pin change event.
-     */
-    handlePinChanged_: function(e) {
-      this.passwordElement.value = e.detail.pin;
-      this.updateInput_();
-    },
-
-    /**
      * Handles input event on the password element.
      * @param {Event} e Input event.
      */
     handleInputChanged_: function(e) {
-      if (this.pinKeyboard)
-        this.pinKeyboard.value = this.passwordElement.value;
-      if (this.submitButton)
-        this.submitButton.disabled = this.passwordElement.value.length <= 0;
       this.updateInput_();
+    },
+
+    /**
+     * Handles mouse up event on the password element.
+     * @param {Event} e Mouse up event.
+     */
+    handleInputMouseUp_: function(e) {
+      // If the PIN keyboard is shown and the user clicks on the password
+      // element, the virtual keyboard should pop up if it is enabled, so we
+      // must disable the virtual keyboard override.
+      if (this.isPinShown()) {
+        chrome.send('setForceDisableVirtualKeyboard', [false]);
+      }
     },
 
     /**
@@ -2066,6 +2092,11 @@ cr.define('login', function() {
       languageAndInput.addEventListener('click',
                                         this.transitionToAdvanced_.bind(this));
 
+      var monitoringLearnMore = this.querySelector('.monitoring-learn-more');
+      monitoringLearnMore.tabIndex = UserPodTabOrder.POD_INPUT;
+      monitoringLearnMore.addEventListener(
+          'click', this.onMonitoringLearnMoreClicked_.bind(this));
+
       this.enterButtonElement.addEventListener('click', (function(e) {
         this.enterButtonElement.disabled = true;
         var locale = this.querySelector('.language-select').value;
@@ -2214,6 +2245,45 @@ cr.define('login', function() {
         // Guard timer set to animation duration + 20ms.
         ensureTransitionEndEvent(languageAndInputSection, 380);
       }, 0);
+    },
+
+    /**
+     * Show a dialog when user clicks on learn more (monitoring) button.
+     */
+    onMonitoringLearnMoreClicked_: function() {
+      if (!this.dialogContainer_) {
+        this.dialogContainer_ = document.createElement('div');
+        this.dialogContainer_.classList.add('monitoring-dialog-container');
+        var topContainer = document.querySelector('#scroll-container');
+        topContainer.appendChild(this.dialogContainer_);
+      }
+      // Public Session POD in advanced view has a different size so add a dummy
+      // parent element to enable different CSS settings.
+      this.dialogContainer_.classList.toggle(
+          'advanced', this.classList.contains('advanced'))
+      var html = '';
+      var infoItems = ['publicAccountMonitoringInfoItem1',
+                       'publicAccountMonitoringInfoItem2',
+                       'publicAccountMonitoringInfoItem3',
+                       'publicAccountMonitoringInfoItem4'];
+      for (item of infoItems) {
+        html += '<p class="cr-dialog-item">';
+        html += loadTimeData.getString(item);
+        html += '</p>';
+      }
+      var title = loadTimeData.getString('publicAccountMonitoringInfo');
+      this.dialog_ = new cr.ui.dialogs.BaseDialog(this.dialogContainer_);
+      this.dialog_.showHtml(title, html, undefined,
+                            this.onMonitoringDialogClosed_.bind(this));
+      this.parentNode.disabled = true;
+    },
+
+    /**
+     * Cleanup after the monitoring warning dialog is closed.
+     */
+    onMonitoringDialogClosed_: function() {
+      this.parentNode.disabled = false;
+      this.dialog_ = undefined;
     },
 
     /**
@@ -2624,10 +2694,9 @@ cr.define('login', function() {
     },
     set disabled(value) {
       this.disabled_ = value;
-      var controls = this.querySelectorAll('button,input');
-      for (var i = 0, control; control = controls[i]; ++i) {
-        control.disabled = value;
-      }
+      this.pods.forEach(function(pod) {
+        pod.disabled = value;
+      });
     },
 
     /**
@@ -3300,6 +3369,10 @@ cr.define('login', function() {
      * @param {Event} e Event object.
      */
     setActivatedPod: function(pod, e) {
+      if (this.disabled) {
+        console.error('Cannot activate pod while sign-in UI is disabled.');
+        return;
+      }
       if (pod && pod.activate(e))
         this.activatedPod_ = pod;
     },

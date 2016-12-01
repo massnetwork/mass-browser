@@ -4,6 +4,7 @@
 
 #include "platform/heap/PersistentNode.h"
 
+#include "base/debug/alias.h"
 #include "platform/heap/Handle.h"
 
 namespace blink {
@@ -33,7 +34,9 @@ int PersistentRegion::numberOfPersistents() {
         ++persistentCount;
     }
   }
-  ASSERT(persistentCount == m_persistentCount);
+#if DCHECK_IS_ON()
+  DCHECK_EQ(persistentCount, m_persistentCount);
+#endif
   return persistentCount;
 }
 

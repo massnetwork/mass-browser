@@ -18,20 +18,9 @@
 #include "content/public/browser/browser_child_process_observer.h"
 #include "third_party/skia/include/core/SkColor.h"
 
-class DecorationBackground;
-class DecorationCounter;
-class SkBitmap;
-class TabLayerContainer;
-
 namespace cc {
 class Layer;
 class SolidColorLayer;
-class TextureLayer;
-class UIResourceBitmap;
-}
-
-namespace gfx {
-class JavaBitmap;
 }
 
 namespace content {
@@ -46,10 +35,8 @@ class UIResourceProvider;
 
 namespace android {
 
-class LayerTitleCache;
 class SceneLayer;
 class TabContentManager;
-class ToolbarLayer;
 
 class CompositorView : public content::CompositorClient,
                        public content::BrowserChildProcessObserver {
@@ -70,15 +57,8 @@ class CompositorView : public content::CompositorClient,
                          const base::android::JavaParamRef<jobject>& object);
   void FinalizeLayers(JNIEnv* env,
                       const base::android::JavaParamRef<jobject>& jobj);
-  void SetLayoutViewport(JNIEnv* env,
-                         const base::android::JavaParamRef<jobject>& object,
-                         jfloat x,
-                         jfloat y,
-                         jfloat width,
-                         jfloat height,
-                         jfloat visible_x_offset,
-                         jfloat visible_y_offset,
-                         jfloat dp_to_pixel);
+  void SetLayoutBounds(JNIEnv* env,
+                       const base::android::JavaParamRef<jobject>& object);
   void SurfaceCreated(JNIEnv* env,
                       const base::android::JavaParamRef<jobject>& object);
   void SurfaceDestroyed(JNIEnv* env,

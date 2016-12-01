@@ -214,15 +214,13 @@ bool InputType::valueMissing(const String&) const {
   return false;
 }
 
-bool InputType::tooLong(
-    const String&,
-    HTMLTextFormControlElement::NeedsToCheckDirtyFlag) const {
+bool InputType::tooLong(const String&,
+                        TextControlElement::NeedsToCheckDirtyFlag) const {
   return false;
 }
 
-bool InputType::tooShort(
-    const String&,
-    HTMLTextFormControlElement::NeedsToCheckDirtyFlag) const {
+bool InputType::tooShort(const String&,
+                         TextControlElement::NeedsToCheckDirtyFlag) const {
   return false;
 }
 
@@ -526,6 +524,7 @@ void InputType::setValue(const String& sanitizedValue,
       element().dispatchFormControlChangeEvent();
       break;
     case DispatchNoEvent:
+      element().setTextAsOfLastFormControlChangeEvent(element().value());
       break;
   }
 }
@@ -599,7 +598,7 @@ bool InputType::shouldRespectHeightAndWidthAttributes() {
 }
 
 int InputType::maxLength() const {
-  return HTMLInputElement::maximumLength;
+  return -1;
 }
 
 int InputType::minLength() const {
@@ -643,6 +642,10 @@ const AtomicString& InputType::defaultAutocapitalize() const {
 }
 
 void InputType::copyNonAttributeProperties(const HTMLInputElement&) {}
+
+void InputType::onAttachWithLayoutObject() {}
+
+void InputType::onDetachWithLayoutObject() {}
 
 bool InputType::shouldAppearIndeterminate() const {
   return false;

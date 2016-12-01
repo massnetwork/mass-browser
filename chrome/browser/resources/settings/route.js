@@ -93,6 +93,7 @@ cr.define('settings', function() {
 
   // Navigable dialogs. These are the only non-section children of root pages.
   // These are disfavored. If we add anymore, we should add explicit support.
+  r.IMPORT_DATA = r.BASIC.createChild('/importData');
   r.SIGN_OUT = r.BASIC.createChild('/signOut');
   r.CLEAR_BROWSER_DATA = r.ADVANCED.createChild('/clearBrowserData');
   r.RESET_DIALOG = r.ADVANCED.createChild('/resetProfileSettings');
@@ -165,6 +166,7 @@ cr.define('settings', function() {
       r.SITE_SETTINGS.createChild('unsandboxedPlugins');
   r.SITE_SETTINGS_USB_DEVICES = r.SITE_SETTINGS.createChild('usbDevices');
   r.SITE_SETTINGS_ZOOM_LEVELS = r.SITE_SETTINGS.createChild('zoomLevels');
+  r.SITE_SETTINGS_PDF_DOCUMENTS = r.SITE_SETTINGS.createChild('pdfDocuments');
 
 <if expr="chromeos">
   r.DATETIME = r.ADVANCED.createSection('/dateTime', 'dateTime');
@@ -184,7 +186,7 @@ cr.define('settings', function() {
   r.EDIT_DICTIONARY = r.LANGUAGES.createChild('/editDictionary');
 </if>
 
-  r.DOWNLOADS = r.ADVANCED.createSection('/downloadsDirectory', 'downloads');
+  r.DOWNLOADS = r.ADVANCED.createSection('/downloads', 'downloads');
 
   r.PRINTING = r.ADVANCED.createSection('/printing', 'printing');
   r.CLOUD_PRINTERS = r.PRINTING.createChild('/cloudPrinters');
@@ -318,17 +320,24 @@ cr.define('settings', function() {
    * Navigates to a canonical route and pushes a new history entry.
    * @param {!settings.Route} route
    * @param {URLSearchParams=} opt_dynamicParameters Navigations to the same
-   *     search parameters in a different order will still push to history.
+   *     URL parameters in a different order will still push to history.
+   * @param {boolean=} opt_removeSearch Whether to strip the 'search' URL
+   *     parameter during navigation. Defaults to false.
    */
-  var navigateTo = function(route, opt_dynamicParameters) {
+  var navigateTo = function(route, opt_dynamicParameters, opt_removeSearch) {
     var params = opt_dynamicParameters || new URLSearchParams();
+    var removeSearch = !!opt_removeSearch;
+
+    var oldSearchParam = getQueryParameters().get('search') || '';
+    var newSearchParam = params.get('search') || '';
+
+    if (!removeSearch && oldSearchParam && !newSearchParam)
+      params.append('search', oldSearchParam);
 
     var url = route.path;
-    if (opt_dynamicParameters) {
-      var queryString = opt_dynamicParameters.toString();
-      if (queryString)
-        url += '?' + queryString;
-    }
+    var queryString = params.toString();
+    if (queryString)
+      url += '?' + queryString;
 
     // History serializes the state, so we don't push the actual route object.
     window.history.pushState(currentRoute_.path, '', url);

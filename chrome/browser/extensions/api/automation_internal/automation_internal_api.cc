@@ -357,9 +357,21 @@ AutomationInternalPerformActionFunction::RouteActionToAdapter(
       adapter->PerformAction(action);
       break;
     case api::automation_internal::ACTION_TYPE_FOCUS:
-      action.action = ui::AX_ACTION_SET_FOCUS;
+      action.action = ui::AX_ACTION_FOCUS;
       adapter->PerformAction(action);
       break;
+    case api::automation_internal::ACTION_TYPE_GETIMAGEDATA: {
+      api::automation_internal::GetImageDataParams get_image_data_params;
+      EXTENSION_FUNCTION_VALIDATE(
+          api::automation_internal::GetImageDataParams::Populate(
+              params->opt_args.additional_properties, &get_image_data_params));
+      action.action = ui::AX_ACTION_GET_IMAGE_DATA;
+      action.target_rect = gfx::Rect(
+          0, 0, get_image_data_params.max_width,
+          get_image_data_params.max_height);
+      adapter->PerformAction(action);
+      break;
+    }
     case api::automation_internal::ACTION_TYPE_MAKEVISIBLE:
       action.action = ui::AX_ACTION_SCROLL_TO_MAKE_VISIBLE;
       adapter->PerformAction(action);

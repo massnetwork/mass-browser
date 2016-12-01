@@ -104,7 +104,7 @@ bool ContentRendererClient::AllowPopup() {
 bool ContentRendererClient::HandleNavigation(
     RenderFrame* render_frame,
     bool is_content_initiated,
-    int opener_id,
+    bool render_view_was_created_by_renderer,
     blink::WebFrame* frame,
     const blink::WebURLRequest& request,
     blink::WebNavigationType type,
@@ -185,7 +185,7 @@ ContentRendererClient::GetImageSerializationProcessor() {
 
 std::unique_ptr<cc::RemoteCompositorBridge>
 ContentRendererClient::CreateRemoteCompositorBridge(
-    cc::RemoteProtoChannel* remote_proto_channel,
+    RemoteProtoChannel* remote_proto_channel,
     scoped_refptr<base::SingleThreadTaskRunner> compositor_main_task_runner) {
   return nullptr;
 }

@@ -19,6 +19,7 @@
 #include "base/metrics/field_trial.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/stl_util.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/sys_info.h"
@@ -27,6 +28,7 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "cc/base/switches.h"
+#include "components/variations/variations_associated_data.h"
 #include "content/browser/bad_message.h"
 #include "content/browser/child_process_security_policy_impl.h"
 #include "content/browser/dom_storage/session_storage_namespace_impl.h"
@@ -44,7 +46,6 @@
 #include "content/browser/renderer_host/render_widget_host_view_base.h"
 #include "content/common/browser_plugin/browser_plugin_messages.h"
 #include "content/common/content_switches_internal.h"
-#include "content/common/drag_messages.h"
 #include "content/common/frame_messages.h"
 #include "content/common/input_messages.h"
 #include "content/common/inter_process_time_ticks_converter.h"
@@ -79,15 +80,14 @@
 #include "content/public/common/result_codes.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/common/url_utils.h"
-#include "net/base/filename_util.h"
+#include "media/base/media_switches.h"
 #include "net/base/url_util.h"
 #include "net/url_request/url_request_context_getter.h"
-#include "storage/browser/fileapi/isolated_context.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/base/touch/touch_device.h"
-#include "ui/base/touch/touch_enabled.h"
 #include "ui/base/ui_base_switches.h"
+#include "ui/events/event_switches.h"
 #include "ui/gfx/animation/animation.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/image/image_skia.h"
@@ -103,9 +103,6 @@
 
 using base::TimeDelta;
 using blink::WebConsoleMessage;
-using blink::WebDragOperation;
-using blink::WebDragOperationNone;
-using blink::WebDragOperationsMask;
 using blink::WebInputEvent;
 using blink::WebMediaPlayerAction;
 using blink::WebPluginAction;
@@ -149,56 +146,6 @@ void GetPlatformSpecificPrefs(RendererPreferences* prefs) {
 #elif defined(OS_LINUX)
   prefs->system_font_family_name = gfx::Font().GetFontName();
 #endif
-}
-
-std::vector<DropData::Metadata> DropDataToMetaData(const DropData& drop_data) {
-  std::vector<DropData::Metadata> metadata;
-  if (!drop_data.text.is_null()) {
-    metadata.push_back(DropData::Metadata::CreateForMimeType(
-        DropData::Kind::STRING,
-        base::ASCIIToUTF16(ui::Clipboard::kMimeTypeText)));
-  }
-
-  if (drop_data.url.is_valid()) {
-    metadata.push_back(DropData::Metadata::CreateForMimeType(
-        DropData::Kind::STRING,
-        base::ASCIIToUTF16(ui::Clipboard::kMimeTypeURIList)));
-  }
-
-  if (!drop_data.html.is_null()) {
-    metadata.push_back(DropData::Metadata::CreateForMimeType(
-        DropData::Kind::STRING,
-        base::ASCIIToUTF16(ui::Clipboard::kMimeTypeHTML)));
-  }
-
-  // On Aura, filenames are available before drop.
-  for (const auto& file_info : drop_data.filenames) {
-    if (!file_info.path.empty()) {
-      metadata.push_back(DropData::Metadata::CreateForFilePath(file_info.path));
-    }
-  }
-
-  // On Android, only files' mime types are available before drop.
-  for (const auto& mime_type : drop_data.file_mime_types) {
-    if (!mime_type.empty()) {
-      metadata.push_back(DropData::Metadata::CreateForMimeType(
-          DropData::Kind::FILENAME, mime_type));
-    }
-  }
-
-  for (const auto& file_system_file : drop_data.file_system_files) {
-    if (!file_system_file.url.is_empty()) {
-      metadata.push_back(
-          DropData::Metadata::CreateForFileSystemUrl(file_system_file.url));
-    }
-  }
-
-  for (const auto& custom_data_item : drop_data.custom_data) {
-    metadata.push_back(DropData::Metadata::CreateForMimeType(
-        DropData::Kind::STRING, custom_data_item.first));
-  }
-
-  return metadata;
 }
 
 }  // namespace
@@ -375,13 +322,6 @@ bool RenderViewHostImpl::CreateRenderView(
 
   GetProcess()->GetRendererInterface()->CreateView(std::move(params));
 
-  // If the RWHV has not yet been set, the surface ID namespace will get
-  // passed down by the call to SetView().
-  if (GetWidget()->GetView()) {
-    Send(new ViewMsg_SetFrameSinkId(GetRoutingID(),
-                                    GetWidget()->GetView()->GetFrameSinkId()));
-  }
-
   // If it's enabled, tell the renderer to set up the Javascript bindings for
   // sending messages back to the browser.
   if (GetProcess()->IsForGuestsOnly())
@@ -412,6 +352,23 @@ void RenderViewHostImpl::SyncRendererPrefs() {
   GetPlatformSpecificPrefs(&renderer_preferences);
   Send(new ViewMsg_SetRendererPrefs(GetRoutingID(), renderer_preferences));
 }
+
+namespace {
+
+void SetFloatParameterFromMap(
+    const std::map<std::string, std::string>& settings,
+    const std::string& setting_name,
+    float* value) {
+  const auto& find_it = settings.find(setting_name);
+  if (find_it == settings.end())
+    return;
+  double parsed_value;
+  if (!base::StringToDouble(find_it->second, &parsed_value))
+    return;
+  *value = parsed_value;
+}
+
+}  // namespace
 
 WebPreferences RenderViewHostImpl::ComputeWebkitPrefs() {
   TRACE_EVENT0("browser", "RenderViewHostImpl::GetWebkitPrefs");
@@ -482,8 +439,6 @@ WebPreferences RenderViewHostImpl::ComputeWebkitPrefs() {
   prefs.user_gesture_required_for_media_playback = !command_line.HasSwitch(
       switches::kDisableGestureRequirementForMediaPlayback) &&
           (autoplay_group_name.empty() || autoplay_group_name != "Enabled");
-  prefs.autoplay_muted_videos_enabled =
-      base::FeatureList::IsEnabled(features::kAutoplayMutedVideos);
 
   prefs.progress_bar_completion = GetProgressBarCompletionPolicy();
 
@@ -495,10 +450,12 @@ WebPreferences RenderViewHostImpl::ComputeWebkitPrefs() {
   prefs.autoplay_experiment_mode = base::FieldTrialList::FindFullName(
       "MediaElementGestureOverrideExperiment");
 
-  prefs.touch_enabled = ui::AreTouchEventsEnabled();
-  prefs.device_supports_touch = prefs.touch_enabled &&
-      ui::GetTouchScreensAvailability() ==
-          ui::TouchScreensAvailability::ENABLED;
+  prefs.touch_event_api_enabled =
+      !command_line.HasSwitch(switches::kTouchEvents) ||
+      command_line.GetSwitchValueASCII(switches::kTouchEvents) !=
+          switches::kTouchEventsDisabled;
+  prefs.device_supports_touch = ui::GetTouchScreensAvailability() ==
+                                ui::TouchScreensAvailability::ENABLED;
   std::tie(prefs.available_pointer_types, prefs.available_hover_types) =
       ui::GetAvailablePointerAndHoverTypes();
   prefs.primary_pointer_type =
@@ -572,6 +529,23 @@ WebPreferences RenderViewHostImpl::ComputeWebkitPrefs() {
   if (delegate_ && delegate_->HideDownloadUI())
     prefs.hide_download_ui = true;
 
+  prefs.background_video_track_optimization_enabled =
+      base::FeatureList::IsEnabled(media::kBackgroundVideoTrackOptimization);
+
+  std::map<std::string, std::string> expensive_background_throttling_prefs;
+  variations::GetVariationParamsByFeature(
+      features::kExpensiveBackgroundTimerThrottling,
+      &expensive_background_throttling_prefs);
+  SetFloatParameterFromMap(expensive_background_throttling_prefs, "cpu_budget",
+                           &prefs.expensive_background_throttling_cpu_budget);
+  SetFloatParameterFromMap(
+      expensive_background_throttling_prefs, "initial_budget",
+      &prefs.expensive_background_throttling_initial_budget);
+  SetFloatParameterFromMap(expensive_background_throttling_prefs, "max_budget",
+                           &prefs.expensive_background_throttling_max_budget);
+  SetFloatParameterFromMap(expensive_background_throttling_prefs, "max_delay",
+                           &prefs.expensive_background_throttling_max_delay);
+
   GetContentClient()->browser()->OverrideWebkitPrefs(this, &prefs);
   return prefs;
 }
@@ -632,74 +606,6 @@ void RenderViewHostImpl::RenderProcessExited(RenderProcessHost* host,
 
   GetWidget()->RendererExited(status, exit_code);
   delegate_->RenderViewTerminated(this, status, exit_code);
-}
-
-void RenderViewHostImpl::DragTargetDragEnter(
-    const DropData& drop_data,
-    const gfx::Point& client_pt,
-    const gfx::Point& screen_pt,
-    WebDragOperationsMask operations_allowed,
-    int key_modifiers) {
-  DragTargetDragEnterWithMetaData(DropDataToMetaData(drop_data), client_pt,
-                                  screen_pt, operations_allowed, key_modifiers);
-}
-
-void RenderViewHostImpl::DragTargetDragEnterWithMetaData(
-    const std::vector<DropData::Metadata>& metadata,
-    const gfx::Point& client_pt,
-    const gfx::Point& screen_pt,
-    WebDragOperationsMask operations_allowed,
-    int key_modifiers) {
-  Send(new DragMsg_TargetDragEnter(GetRoutingID(), metadata, client_pt,
-                                   screen_pt, operations_allowed,
-                                   key_modifiers));
-}
-
-void RenderViewHostImpl::DragTargetDragOver(
-    const gfx::Point& client_pt,
-    const gfx::Point& screen_pt,
-    WebDragOperationsMask operations_allowed,
-    int key_modifiers) {
-  Send(new DragMsg_TargetDragOver(GetRoutingID(), client_pt, screen_pt,
-                                  operations_allowed, key_modifiers));
-}
-
-void RenderViewHostImpl::DragTargetDragLeave() {
-  Send(new DragMsg_TargetDragLeave(GetRoutingID()));
-}
-
-void RenderViewHostImpl::DragTargetDrop(const DropData& drop_data,
-                                        const gfx::Point& client_pt,
-                                        const gfx::Point& screen_pt,
-                                        int key_modifiers) {
-  DropData drop_data_with_permissions(drop_data);
-  GrantFileAccessFromDropData(&drop_data_with_permissions);
-  Send(new DragMsg_TargetDrop(GetRoutingID(), drop_data_with_permissions,
-                              client_pt, screen_pt, key_modifiers));
-}
-
-void RenderViewHostImpl::FilterDropData(DropData* drop_data) {
-#if DCHECK_IS_ON()
-  drop_data->view_id = GetRoutingID();
-#endif  // DCHECK_IS_ON()
-
-  GetProcess()->FilterURL(true, &drop_data->url);
-  if (drop_data->did_originate_from_renderer) {
-    drop_data->filenames.clear();
-  }
-}
-
-void RenderViewHostImpl::DragSourceEndedAt(
-    int client_x, int client_y, int screen_x, int screen_y,
-    WebDragOperation operation) {
-  Send(new DragMsg_SourceEnded(GetRoutingID(),
-                               gfx::Point(client_x, client_y),
-                               gfx::Point(screen_x, screen_y),
-                               operation));
-}
-
-void RenderViewHostImpl::DragSourceSystemDragEnded() {
-  Send(new DragMsg_SourceSystemDragEnded(GetRoutingID()));
 }
 
 bool RenderViewHostImpl::Send(IPC::Message* msg) {
@@ -856,8 +762,6 @@ bool RenderViewHostImpl::OnMessageReceived(const IPC::Message& msg) {
                         OnDidContentsPreferredSizeChange)
     IPC_MESSAGE_HANDLER(ViewHostMsg_RouteCloseEvent,
                         OnRouteCloseEvent)
-    IPC_MESSAGE_HANDLER(DragHostMsg_StartDragging, OnStartDragging)
-    IPC_MESSAGE_HANDLER(DragHostMsg_UpdateDragCursor, OnUpdateDragCursor)
     IPC_MESSAGE_HANDLER(ViewHostMsg_TakeFocus, OnTakeFocus)
     IPC_MESSAGE_HANDLER(ViewHostMsg_FocusedNodeChanged, OnFocusedNodeChanged)
     IPC_MESSAGE_HANDLER(ViewHostMsg_ClosePage_ACK, OnClosePageACK)
@@ -997,69 +901,6 @@ void RenderViewHostImpl::OnDidContentsPreferredSizeChange(
 void RenderViewHostImpl::OnRouteCloseEvent() {
   // Have the delegate route this to the active RenderViewHost.
   delegate_->RouteCloseEvent(this);
-}
-
-void RenderViewHostImpl::OnStartDragging(
-    const DropData& drop_data,
-    WebDragOperationsMask drag_operations_mask,
-    const SkBitmap& bitmap,
-    const gfx::Vector2d& bitmap_offset_in_dip,
-    const DragEventSourceInfo& event_info) {
-  RenderViewHostDelegateView* view = delegate_->GetDelegateView();
-  if (!view) {
-    // Need to clear drag and drop state in blink.
-    DragSourceSystemDragEnded();
-    return;
-  }
-
-  DropData filtered_data(drop_data);
-  RenderProcessHost* process = GetProcess();
-  ChildProcessSecurityPolicyImpl* policy =
-      ChildProcessSecurityPolicyImpl::GetInstance();
-
-  // Allow drag of Javascript URLs to enable bookmarklet drag to bookmark bar.
-  if (!filtered_data.url.SchemeIs(url::kJavaScriptScheme))
-    process->FilterURL(true, &filtered_data.url);
-  process->FilterURL(false, &filtered_data.html_base_url);
-  // Filter out any paths that the renderer didn't have access to. This prevents
-  // the following attack on a malicious renderer:
-  // 1. StartDragging IPC sent with renderer-specified filesystem paths that it
-  //    doesn't have read permissions for.
-  // 2. We initiate a native DnD operation.
-  // 3. DnD operation immediately ends since mouse is not held down. DnD events
-  //    still fire though, which causes read permissions to be granted to the
-  //    renderer for any file paths in the drop.
-  filtered_data.filenames.clear();
-  for (std::vector<ui::FileInfo>::const_iterator it =
-           drop_data.filenames.begin();
-       it != drop_data.filenames.end();
-       ++it) {
-    if (policy->CanReadFile(GetProcess()->GetID(), it->path))
-      filtered_data.filenames.push_back(*it);
-  }
-
-  storage::FileSystemContext* file_system_context =
-      BrowserContext::GetStoragePartition(GetProcess()->GetBrowserContext(),
-                                          GetSiteInstance())
-          ->GetFileSystemContext();
-  filtered_data.file_system_files.clear();
-  for (size_t i = 0; i < drop_data.file_system_files.size(); ++i) {
-    storage::FileSystemURL file_system_url =
-        file_system_context->CrackURL(drop_data.file_system_files[i].url);
-    if (policy->CanReadFileSystemFile(GetProcess()->GetID(), file_system_url))
-      filtered_data.file_system_files.push_back(drop_data.file_system_files[i]);
-  }
-
-  float scale = GetScaleFactorForView(GetWidget()->GetView());
-  gfx::ImageSkia image(gfx::ImageSkiaRep(bitmap, scale));
-  view->StartDragging(filtered_data, drag_operations_mask, image,
-      bitmap_offset_in_dip, event_info);
-}
-
-void RenderViewHostImpl::OnUpdateDragCursor(WebDragOperation current_op) {
-  RenderViewHostDelegateView* view = delegate_->GetDelegateView();
-  if (view)
-    view->UpdateDragCursor(current_op);
 }
 
 void RenderViewHostImpl::OnTakeFocus(bool reverse) {
@@ -1242,90 +1083,6 @@ void RenderViewHostImpl::PostRenderViewReady() {
 
 void RenderViewHostImpl::RenderViewReady() {
   delegate_->RenderViewReady(this);
-}
-
-void RenderViewHostImpl::GrantFileAccessFromDropData(DropData* drop_data) {
-  DCHECK_EQ(GetRoutingID(), drop_data->view_id);
-  const int renderer_id = GetProcess()->GetID();
-  ChildProcessSecurityPolicyImpl* policy =
-      ChildProcessSecurityPolicyImpl::GetInstance();
-
-#if defined(OS_CHROMEOS)
-  // The externalfile:// scheme is used in Chrome OS to open external files in a
-  // browser tab.
-  if (drop_data->url.SchemeIs(content::kExternalFileScheme))
-    policy->GrantRequestURL(renderer_id, drop_data->url);
-#endif
-
-  // The filenames vector represents a capability to access the given files.
-  storage::IsolatedContext::FileInfoSet files;
-  for (auto& filename : drop_data->filenames) {
-    // Make sure we have the same display_name as the one we register.
-    if (filename.display_name.empty()) {
-      std::string name;
-      files.AddPath(filename.path, &name);
-      filename.display_name = base::FilePath::FromUTF8Unsafe(name);
-    } else {
-      files.AddPathWithName(filename.path,
-                            filename.display_name.AsUTF8Unsafe());
-    }
-    // A dragged file may wind up as the value of an input element, or it
-    // may be used as the target of a navigation instead.  We don't know
-    // which will happen at this point, so generously grant both access
-    // and request permissions to the specific file to cover both cases.
-    // We do not give it the permission to request all file:// URLs.
-    policy->GrantRequestSpecificFileURL(renderer_id,
-                                        net::FilePathToFileURL(filename.path));
-
-    // If the renderer already has permission to read these paths, we don't need
-    // to re-grant them. This prevents problems with DnD for files in the CrOS
-    // file manager--the file manager already had read/write access to those
-    // directories, but dragging a file would cause the read/write access to be
-    // overwritten with read-only access, making them impossible to delete or
-    // rename until the renderer was killed.
-    if (!policy->CanReadFile(renderer_id, filename.path))
-      policy->GrantReadFile(renderer_id, filename.path);
-  }
-
-  storage::IsolatedContext* isolated_context =
-      storage::IsolatedContext::GetInstance();
-  DCHECK(isolated_context);
-
-  if (!files.fileset().empty()) {
-    std::string filesystem_id =
-        isolated_context->RegisterDraggedFileSystem(files);
-    if (!filesystem_id.empty()) {
-      // Grant the permission iff the ID is valid.
-      policy->GrantReadFileSystem(renderer_id, filesystem_id);
-    }
-    drop_data->filesystem_id = base::UTF8ToUTF16(filesystem_id);
-  }
-
-  storage::FileSystemContext* file_system_context =
-      BrowserContext::GetStoragePartition(GetProcess()->GetBrowserContext(),
-                                          GetSiteInstance())
-          ->GetFileSystemContext();
-  for (auto& file_system_file : drop_data->file_system_files) {
-    storage::FileSystemURL file_system_url =
-        file_system_context->CrackURL(file_system_file.url);
-
-    std::string register_name;
-    std::string filesystem_id = isolated_context->RegisterFileSystemForPath(
-        file_system_url.type(), file_system_url.filesystem_id(),
-        file_system_url.path(), &register_name);
-
-    if (!filesystem_id.empty()) {
-      // Grant the permission iff the ID is valid.
-      policy->GrantReadFileSystem(renderer_id, filesystem_id);
-    }
-
-    // Note: We are using the origin URL provided by the sender here. It may be
-    // different from the receiver's.
-    file_system_file.url =
-        GURL(storage::GetIsolatedFileSystemRootURIString(
-                 file_system_url.origin(), filesystem_id, std::string())
-                 .append(register_name));
-  }
 }
 
 }  // namespace content

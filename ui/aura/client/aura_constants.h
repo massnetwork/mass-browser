@@ -5,6 +5,9 @@
 #ifndef UI_AURA_CLIENT_AURA_CONSTANTS_H_
 #define UI_AURA_CLIENT_AURA_CONSTANTS_H_
 
+#include <string>
+
+#include "base/strings/string16.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/aura/aura_export.h"
 #include "ui/aura/window.h"
@@ -12,6 +15,9 @@
 
 namespace ui {
 class InputMethod;
+namespace mojom {
+enum class WindowType;
+}
 }
 
 namespace aura {
@@ -25,6 +31,12 @@ AURA_EXPORT extern const WindowProperty<bool>* const kAlwaysOnTopKey;
 // A property key to store whether animations are disabled for the window. Type
 // of value is an int.
 AURA_EXPORT extern const WindowProperty<bool>* const kAnimationsDisabledKey;
+
+// A property key to store the app icon, typically larger for shelf icons, etc.
+AURA_EXPORT extern const WindowProperty<gfx::ImageSkia*>* const kAppIconKey;
+
+// A property key to store the string id of the app associated with this window.
+AURA_EXPORT extern const WindowProperty<std::string*>* const kAppIdKey;
 
 // A property key to store the type of window that will be used to record
 // pointer metrics. See AppType in ash/shared/app_types.h for more details.
@@ -61,6 +73,9 @@ AURA_EXPORT extern const WindowProperty<Window*>* const kHostWindowKey;
 // A property key to store the window modality.
 AURA_EXPORT extern const WindowProperty<ui::ModalType>* const kModalKey;
 
+// A property key to store the name of the window; mostly used for debugging.
+AURA_EXPORT extern const WindowProperty<std::string*>* const kNameKey;
+
 // A property key to store the restore bounds for a window.
 AURA_EXPORT extern const WindowProperty<gfx::Rect*>* const kRestoreBoundsKey;
 
@@ -74,6 +89,9 @@ AURA_EXPORT extern const WindowProperty<ui::WindowShowState>* const
 AURA_EXPORT extern const WindowProperty<ui::WindowShowState>* const
     kShowStateKey;
 
+// A property key to store the title of the window; sometimes shown to users.
+AURA_EXPORT extern const WindowProperty<base::string16*>* const kTitleKey;
+
 // The inset of the topmost view in the client view from the top of the
 // non-client view. The topmost view depends on the window type. The topmost
 // view is the tab strip for tabbed browser windows, the toolbar for popups,
@@ -83,8 +101,11 @@ AURA_EXPORT extern const aura::WindowProperty<int>* const kTopViewInset;
 // The color of the window header.
 AURA_EXPORT extern const aura::WindowProperty<SkColor>* const kTopViewColor;
 
-// A property key to store window icon.
+// A property key to store the window icon, typically 16x16 for title bars.
 AURA_EXPORT extern const WindowProperty<gfx::ImageSkia*>* const kWindowIconKey;
+
+AURA_EXPORT extern const aura::WindowProperty<ui::mojom::WindowType>* const
+    kWindowTypeKey;
 
 // Alphabetical sort.
 

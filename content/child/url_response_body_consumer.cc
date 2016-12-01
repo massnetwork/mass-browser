@@ -26,10 +26,9 @@ class URLResponseBodyConsumer::ReceivedData final
 
   const char* payload() const override { return payload_; }
   int length() const override { return length_; }
-  // TODO(yhirano): These return incorrect values. Remove these from
+  // TODO(yhirano): This returns an incorrect value. Remove it from
   // ReceivedData before enabling Mojo-Loading.
   int encoded_data_length() const override { return length_; }
-  int encoded_body_length() const override { return length_; }
 
  private:
   const char* const payload_;
@@ -49,7 +48,13 @@ URLResponseBodyConsumer::URLResponseBodyConsumer(
       resource_dispatcher_(resource_dispatcher),
       handle_(std::move(handle)),
       handle_watcher_(task_runner),
-      has_seen_end_of_data_(!handle_.is_valid()) {
+      has_seen_end_of_data_(!handle_.is_valid()) {}
+
+URLResponseBodyConsumer::~URLResponseBodyConsumer() {}
+
+void URLResponseBodyConsumer::Start(base::SingleThreadTaskRunner* task_runner) {
+  if (has_been_cancelled_)
+    return;
   handle_watcher_.Start(
       handle_.get(), MOJO_HANDLE_SIGNAL_READABLE,
       base::Bind(&URLResponseBodyConsumer::OnReadable, base::Unretained(this)));
@@ -57,8 +62,6 @@ URLResponseBodyConsumer::URLResponseBodyConsumer(
       FROM_HERE, base::Bind(&URLResponseBodyConsumer::OnReadable, AsWeakPtr(),
                             MOJO_RESULT_OK));
 }
-
-URLResponseBodyConsumer::~URLResponseBodyConsumer() {}
 
 void URLResponseBodyConsumer::OnComplete(
     const ResourceRequestCompletionStatus& status) {
@@ -82,6 +85,9 @@ void URLResponseBodyConsumer::Reclaim(uint32_t size) {
 void URLResponseBodyConsumer::OnReadable(MojoResult unused) {
   if (has_been_cancelled_ || has_seen_end_of_data_)
     return;
+
+  // Protect |this| as RequestPeer::OnReceivedData may call deref.
+  scoped_refptr<URLResponseBodyConsumer> protect(this);
 
   // TODO(yhirano): Suppress notification when deferred.
   while (!has_been_cancelled_) {

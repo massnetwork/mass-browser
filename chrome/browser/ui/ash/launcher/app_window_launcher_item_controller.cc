@@ -21,8 +21,6 @@ AppWindowLauncherItemController::AppWindowLauncherItemController(
     const std::string& launch_id,
     ChromeLauncherController* controller)
     : LauncherItemController(type, app_id, launch_id, controller),
-      app_id_(app_id),
-      launch_id_(launch_id),
       observed_windows_(this) {}
 
 AppWindowLauncherItemController::~AppWindowLauncherItemController() {}
@@ -70,10 +68,6 @@ void AppWindowLauncherItemController::SetActiveWindow(aura::Window* window) {
   ui::BaseWindow* app_window = GetAppWindow(window);
   if (app_window)
     last_active_window_ = app_window;
-}
-
-bool AppWindowLauncherItemController::IsOpen() const {
-  return !windows_.empty();
 }
 
 bool AppWindowLauncherItemController::IsVisible() const {

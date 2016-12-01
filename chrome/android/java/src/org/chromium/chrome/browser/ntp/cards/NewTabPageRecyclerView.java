@@ -12,6 +12,7 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Region;
 import android.support.v4.view.animation.FastOutLinearInInterpolator;
+import android.support.v4.view.animation.LinearOutSlowInInterpolator;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.util.AttributeSet;
@@ -24,13 +25,16 @@ import android.view.inputmethod.InputConnection;
 
 import org.chromium.base.Log;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.ntp.ContextMenuHandler.TouchDisableableView;
+import org.chromium.chrome.browser.ntp.ContextMenuManager.TouchDisableableView;
 import org.chromium.chrome.browser.ntp.NewTabPageLayout;
 import org.chromium.chrome.browser.ntp.snippets.SectionHeaderViewHolder;
-import org.chromium.chrome.browser.ntp.snippets.SnippetArticle;
+import org.chromium.chrome.browser.ntp.snippets.SnippetsConfig;
+import org.chromium.chrome.browser.preferences.ChromePreferenceManager;
 import org.chromium.chrome.browser.util.ViewUtils;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,11 +45,20 @@ public class NewTabPageRecyclerView extends RecyclerView implements TouchDisable
     private static final String TAG = "NtpCards";
     private static final Interpolator DISMISS_INTERPOLATOR = new FastOutLinearInInterpolator();
     private static final int DISMISS_ANIMATION_TIME_MS = 300;
+    private static final Interpolator PEEKING_CARD_INTERPOLATOR = new LinearOutSlowInInterpolator();
+    private static final int PEEKING_CARD_ANIMATION_TIME_MS = 1000;
+    private static final int PEEKING_CARD_ANIMATION_START_DELAY_MS = 300;
 
     private final GestureDetector mGestureDetector;
     private final LinearLayoutManager mLayoutManager;
     private final int mToolbarHeight;
     private final int mMaxHeaderHeight;
+    /** How much of the first card is visible above the fold with the increased visibility UI. */
+    private final int mPeekingCardBounceDistance;
+    /** The peeking card animates in the first time it is made visible. */
+    private boolean mFirstCardAnimationRun;
+    /** We have tracked that the user has caused an impression after viewing the animation. */
+    private boolean mCardImpressionAfterAnimationTracked;
 
     /**
      * Total height of the items being dismissed.  Tracked to allow the bottom space to compensate
@@ -91,6 +104,8 @@ public class NewTabPageRecyclerView extends RecyclerView implements TouchDisable
         mToolbarHeight = res.getDimensionPixelSize(R.dimen.toolbar_height_no_shadow)
                 + res.getDimensionPixelSize(R.dimen.toolbar_progress_bar_height);
         mMaxHeaderHeight = res.getDimensionPixelSize(R.dimen.snippets_article_header_height);
+        mPeekingCardBounceDistance =
+                res.getDimensionPixelSize(R.dimen.snippets_peeking_card_bounce_distance);
 
         setHasFixedSize(true);
     }
@@ -109,11 +124,6 @@ public class NewTabPageRecyclerView extends RecyclerView implements TouchDisable
     @Override
     public void setTouchEnabled(boolean enabled) {
         mTouchEnabled = enabled;
-    }
-
-    @Override
-    public View asView() {
-        return this;
     }
 
     @Override
@@ -260,8 +270,9 @@ public class NewTabPageRecyclerView extends RecyclerView implements TouchDisable
             return;
         }
 
-        // If we have the card offset field trial enabled, don't peek at all.
-        if (CardsVariationParameters.getFirstCardOffsetDp() != 0) {
+        // Peeking is disabled in the card offset field trial and the increased visibility feature.
+        if (CardsVariationParameters.getFirstCardOffsetDp() != 0
+                || SnippetsConfig.isIncreasedCardVisibilityEnabled()) {
             peekingCard.updatePeek(0, /* shouldAnimate */ false);
             return;
         }
@@ -373,7 +384,8 @@ public class NewTabPageRecyclerView extends RecyclerView implements TouchDisable
 
     /** Called when an item has finished being removed from the view. */
     public void onItemDismissFinished(ViewHolder viewHolder) {
-        assert mCompensationHeightMap.containsKey(viewHolder);
+        if (!mCompensationHeightMap.containsKey(viewHolder)) return;
+
         mCompensationHeight -= mCompensationHeightMap.remove(viewHolder);
 
         assert mCompensationHeight >= 0;
@@ -434,7 +446,7 @@ public class NewTabPageRecyclerView extends RecyclerView implements TouchDisable
             View peekingCardView = peekingCardViewHolder.itemView;
             View headerView = firstHeaderViewHolder.itemView;
             final int peekingHeight = getResources().getDimensionPixelSize(
-                    R.dimen.snippets_padding_and_peeking_card_height);
+                    R.dimen.snippets_padding);
 
             // |A + B - C| gives the offset of the peeking card relative to the Recycler View,
             // so scrolling to this point would put the peeking card at the top of the
@@ -467,36 +479,30 @@ public class NewTabPageRecyclerView extends RecyclerView implements TouchDisable
 
     /**
      * Animates the card being swiped to the right as if the user had dismissed it. Any changes to
-     * the animation here should be reflected also in
-     * {@link #updateViewStateForDismiss(float, ViewHolder)} and reset in
-     * {@link CardViewHolder#onBindViewHolder()}.
-     * @param suggestion The item to be dismissed.
+     * the animation here should be reflected also in {@link #updateViewStateForDismiss} and reset
+     * in {@link CardViewHolder#onBindViewHolder()}.
      */
-    public void dismissItemWithAnimation(SnippetArticle suggestion) {
-        // We need to recompute the position, as it might have changed.
-        final int position = getNewTabPageAdapter().getSuggestionPosition(suggestion);
+    public void dismissItemWithAnimation(final ViewHolder viewHolder) {
+        // We need to check the position, as the view holder might have been removed.
+        final int position = viewHolder.getAdapterPosition();
         if (position == RecyclerView.NO_POSITION) {
             // The item does not exist anymore, so ignore.
             return;
         }
 
-        final View itemView = mLayoutManager.findViewByPosition(position);
-        if (itemView == null) {
-            // The view is not visible anymore, skip the animation.
-            getNewTabPageAdapter().dismissItem(position);
-            return;
-        }
-
-        final ViewHolder viewHolder = getChildViewHolder(itemView);
         if (!((NewTabPageViewHolder) viewHolder).isDismissable()) {
             // The item is not dismissable (anymore), so ignore.
             return;
         }
 
-        AnimatorSet animation = new AnimatorSet();
-        animation.playTogether(ObjectAnimator.ofFloat(itemView, View.ALPHA, 0f),
-                ObjectAnimator.ofFloat(itemView, View.TRANSLATION_X, (float) itemView.getWidth()));
+        List<Animator> animations = new ArrayList<>();
+        addDismissalAnimators(animations, viewHolder.itemView);
 
+        final ViewHolder dismissSibling = getNewTabPageAdapter().getDismissSibling(viewHolder);
+        if (dismissSibling != null) addDismissalAnimators(animations, dismissSibling.itemView);
+
+        AnimatorSet animation = new AnimatorSet();
+        animation.playTogether(animations);
         animation.setDuration(DISMISS_ANIMATION_TIME_MS);
         animation.setInterpolator(DISMISS_INTERPOLATOR);
         animation.addListener(new AnimatorListenerAdapter() {
@@ -515,8 +521,17 @@ public class NewTabPageRecyclerView extends RecyclerView implements TouchDisable
     }
 
     /**
+     * @param animations in/out list holding the animators to play.
+     * @param view  view to animate.
+     */
+    private void addDismissalAnimators(List<Animator> animations, View view) {
+        animations.add(ObjectAnimator.ofFloat(view, View.ALPHA, 0f));
+        animations.add(ObjectAnimator.ofFloat(view, View.TRANSLATION_X, (float) view.getWidth()));
+    }
+
+    /**
      * Update the view's state as it is being swiped away. Any changes to the animation here should
-     * be reflected also in {@link #dismissItemWithAnimation(SnippetArticle)} and reset in
+     * be reflected also in {@link #dismissItemWithAnimation(ViewHolder)} and reset in
      * {@link CardViewHolder#onBindViewHolder()}.
      * @param dX The amount of horizontal displacement caused by user's action.
      * @param viewHolder The view holder containing the view to be updated.
@@ -529,5 +544,46 @@ public class NewTabPageRecyclerView extends RecyclerView implements TouchDisable
         float input = Math.abs(dX) / viewHolder.itemView.getMeasuredWidth();
         float alpha = 1 - DISMISS_INTERPOLATOR.getInterpolation(input);
         viewHolder.itemView.setAlpha(alpha);
+    }
+
+    /**
+     * To be triggered when a snippet is bound to a ViewHolder.
+     */
+    public void onSnippetBound(View cardView) {
+        // We only run if the feature is enabled and once per NTP.
+        if (!SnippetsConfig.isIncreasedCardVisibilityEnabled() || mFirstCardAnimationRun) return;
+        mFirstCardAnimationRun = true;
+
+        // We only want an animation to run if we are not scrolled.
+        if (computeVerticalScrollOffset() != 0) return;
+
+        // We only show the animation a certain number of times to a user.
+        ChromePreferenceManager manager = ChromePreferenceManager.getInstance(getContext());
+        int animCount = manager.getNewTabPageFirstCardAnimationRunCount();
+        if (animCount > CardsVariationParameters.getFirstCardAnimationMaxRuns()) return;
+        manager.setNewTabPageFirstCardAnimationRunCount(animCount + 1);
+
+        // We do not show the animation if the user has previously seen it then scrolled.
+        if (manager.getCardsImpressionAfterAnimation()) return;
+
+        // The peeking card bounces up twice from its position.
+        ObjectAnimator animator = ObjectAnimator.ofFloat(cardView, View.TRANSLATION_Y,
+                0f, -mPeekingCardBounceDistance, 0f, -mPeekingCardBounceDistance, 0f);
+        animator.setStartDelay(PEEKING_CARD_ANIMATION_START_DELAY_MS);
+        animator.setDuration(PEEKING_CARD_ANIMATION_TIME_MS);
+        animator.setInterpolator(PEEKING_CARD_INTERPOLATOR);
+        animator.start();
+    }
+
+    /**
+     * To be triggered when a snippet impression is triggered.
+     */
+    public void onSnippetImpression() {
+        // If the user has seen the first card animation and causes a snippet impression, remember
+        // for future runs.
+        if (!mFirstCardAnimationRun && !mCardImpressionAfterAnimationTracked) return;
+
+        ChromePreferenceManager.getInstance(getContext()).setCardsImpressionAfterAnimation(true);
+        mCardImpressionAfterAnimationTracked = true;
     }
 }

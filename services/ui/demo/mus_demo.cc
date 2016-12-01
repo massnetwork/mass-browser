@@ -7,8 +7,9 @@
 #include "base/memory/ptr_util.h"
 #include "base/time/time.h"
 #include "services/service_manager/public/cpp/connector.h"
+#include "services/service_manager/public/cpp/service_context.h"
 #include "services/ui/demo/bitmap_uploader.h"
-#include "services/ui/public/cpp/gpu_service.h"
+#include "services/ui/public/cpp/gpu/gpu_service.h"
 #include "services/ui/public/cpp/window.h"
 #include "services/ui/public/cpp/window_tree_client.h"
 #include "third_party/skia/include/core/SkCanvas.h"
@@ -61,12 +62,16 @@ void DrawSquare(const gfx::Rect& bounds, double angle, SkCanvas* canvas) {
 
 MusDemo::MusDemo() {}
 
-MusDemo::~MusDemo() {}
+MusDemo::~MusDemo() {
+  display::Screen::SetScreenInstance(nullptr);
+}
 
-void MusDemo::OnStart(const service_manager::ServiceInfo& info) {
-  gpu_service_ = GpuService::Create(connector());
+void MusDemo::OnStart() {
+  screen_ = base::MakeUnique<display::ScreenBase>();
+  display::Screen::SetScreenInstance(screen_.get());
+  gpu_service_ = GpuService::Create(context()->connector());
   window_tree_client_ = base::MakeUnique<WindowTreeClient>(this, this);
-  window_tree_client_->ConnectAsWindowManager(connector());
+  window_tree_client_->ConnectAsWindowManager(context()->connector());
 }
 
 bool MusDemo::OnConnect(const service_manager::ServiceInfo& remote_info,

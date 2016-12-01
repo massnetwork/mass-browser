@@ -29,7 +29,6 @@ class ProfileSyncService;
 }  // namespace browser_sync
 
 namespace content {
-class WebContents;
 class WebUI;
 }  // namespace content
 
@@ -139,7 +138,7 @@ class PeopleHandler : public SettingsPageUIHandler,
   void HandleSetDatatypes(const base::ListValue* args);
   void HandleSetEncryption(const base::ListValue* args);
   void HandleShowSetupUI(const base::ListValue* args);
-  void HandleDoSignOutOnAuthError(const base::ListValue* args);
+  void HandleAttemptUserExit(const base::ListValue* args);
   void HandleStartSignin(const base::ListValue* args);
   void HandleStopSyncing(const base::ListValue* args);
   void HandleGetSyncStatus(const base::ListValue* args);

@@ -165,6 +165,7 @@ pagehide
 pageshow
 paste
 pause
+paymentrequest
 periodicsync
 play
 playing
@@ -255,6 +256,8 @@ vrdisplayconnect
 vrdisplaydisconnect
 vrdisplayactivate
 vrdisplaydeactivate
+vrdisplayblur
+vrdisplayfocus
 vrdisplaypresentchange
 waiting
 waitingforkey

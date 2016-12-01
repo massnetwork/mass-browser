@@ -15,6 +15,7 @@ import page_sets
 from telemetry import benchmark
 from telemetry import story
 from telemetry.timeline import chrome_trace_category_filter
+from telemetry.timeline import chrome_trace_config
 from telemetry.web_perf import timeline_based_measurement
 
 
@@ -82,9 +83,6 @@ class _InfiniteScrollBenchmark(perf_benchmark.PerfBenchmark):
 
   def SetExtraBrowserOptions(self, options):
     options.AppendExtraBrowserArgs([
-        # TODO(perezju): Temporary workaround to disable periodic memory dumps.
-        # See: http://crbug.com/513692
-        '--enable-memory-benchmarking',
         # Disable push notifications for Facebook.
         '--disable-notifications',
     ])
@@ -104,6 +102,9 @@ class _InfiniteScrollBenchmark(perf_benchmark.PerfBenchmark):
     # TODO(ulan): Add frame time discrepancy once it is ported to TBMv2,
     # see crbug.com/606841.
     options.SetTimelineBasedMetrics(['v8AndMemoryMetrics'])
+    # Setting an empty memory dump config disables periodic dumps.
+    options.config.chrome_trace_config.SetMemoryDumpConfig(
+        chrome_trace_config.MemoryDumpConfig())
     return options
 
   @classmethod
@@ -228,3 +229,62 @@ class V8Adword(perf_benchmark.PerfBenchmark):
   @classmethod
   def ShouldTearDownStateAfterEachStoryRun(cls):
     return True
+
+
+class _Top25RuntimeStats(perf_benchmark.PerfBenchmark):
+  options = {'pageset_repeat': 1}
+
+  def CreateTimelineBasedMeasurementOptions(self):
+    # TODO(fmeawad): most of the cat_filter information is extracted from
+    # page_cycler_v2 TimelineBasedMeasurementOptionsForLoadingMetric because
+    # used by the loadingMetric because the runtimeStatsMetric uses the
+    # interactive time calculated internally by the loadingMetric.
+    # It is better to share the code so that we can keep them in sync.
+    cat_filter = chrome_trace_category_filter.ChromeTraceCategoryFilter()
+
+    # "blink.console" is used for marking ranges in
+    # cache_temperature.MarkTelemetryInternal.
+    cat_filter.AddIncludedCategory('blink.console')
+
+    # "navigation" and "blink.user_timing" are needed to capture core
+    # navigation events.
+    cat_filter.AddIncludedCategory('navigation')
+    cat_filter.AddIncludedCategory('blink.user_timing')
+
+    # "loading" is needed for first-meaningful-paint computation.
+    cat_filter.AddIncludedCategory('loading')
+
+    # "toplevel" category is used to capture TaskQueueManager events
+    # necessary to compute time-to-interactive.
+    cat_filter.AddIncludedCategory('toplevel')
+
+    # V8 needed categories
+    cat_filter.AddIncludedCategory('v8')
+    cat_filter.AddDisabledByDefault('disabled-by-default-v8.runtime_stats')
+
+    tbm_options = timeline_based_measurement.Options(
+        overhead_level=cat_filter)
+    tbm_options.SetTimelineBasedMetrics(['runtimeStatsMetric'])
+    return tbm_options
+
+  @classmethod
+  def ShouldDisable(cls, possible_browser):
+    if possible_browser.browser_type == 'reference':
+      return True
+    return False
+
+
+@benchmark.Disabled('android', 'win', 'reference')  # crbug.com/664318
+class V8Top25RuntimeStats(_Top25RuntimeStats):
+  """Runtime Stats benchmark for a 25 top V8 web pages.
+
+  Designed to represent a mix between top websites and a set of pages that
+  have unique V8 characteristics.
+  """
+
+  @classmethod
+  def Name(cls):
+    return 'v8.runtime_stats.top_25'
+
+  def CreateStorySet(self, options):
+    return page_sets.V8Top25StorySet()

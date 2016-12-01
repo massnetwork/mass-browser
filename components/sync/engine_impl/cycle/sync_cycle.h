@@ -24,8 +24,6 @@
 
 namespace syncer {
 
-class ModelSafeWorker;
-class NudgeTracker;
 class ProtocolEvent;
 
 // A class representing an attempt to synchronize the local syncable data
@@ -46,6 +44,9 @@ class SyncCycle {
     // Some of the client's types were throttled.
     virtual void OnTypesThrottled(ModelTypeSet types,
                                   const base::TimeDelta& throttle_duration) = 0;
+
+    // Some of the client's types were backed off.
+    virtual void OnTypesBackedOff(ModelTypeSet types) = 0;
 
     // Silenced intervals can be out of phase with individual cycles, so the
     // delegate is the only thing that can give an authoritative answer for

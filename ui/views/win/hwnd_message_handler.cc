@@ -21,7 +21,6 @@
 #include "base/trace_event/trace_event.h"
 #include "base/win/scoped_gdi_object.h"
 #include "base/win/windows_version.h"
-#include "ui/base/touch/touch_enabled.h"
 #include "ui/base/view_prop.h"
 #include "ui/base/win/internal_constants.h"
 #include "ui/base/win/lock_state.h"
@@ -1344,8 +1343,7 @@ LRESULT HWNDMessageHandler::OnCreate(CREATESTRUCT* create_struct) {
   // Get access to a modifiable copy of the system menu.
   GetSystemMenu(hwnd(), false);
 
-  if (ui::AreTouchEventsEnabled())
-    RegisterTouchWindow(hwnd(), TWF_WANTPALM);
+  RegisterTouchWindow(hwnd(), TWF_WANTPALM);
 
   // We need to allow the delegate to size its contents since the window may not
   // receive a size notification when its initial bounds are specified at window
@@ -2227,9 +2225,23 @@ void HWNDMessageHandler::OnWindowPosChanging(WINDOWPOS* window_pos) {
     }
   } else if (!GetParent(hwnd())) {
     RECT window_rect;
+    const bool have_new_window_rect =
+        !(window_pos->flags & SWP_NOMOVE) && !(window_pos->flags & SWP_NOSIZE);
+    if (have_new_window_rect) {
+      // We should use new window rect for detecting monitor and it's
+      // parameters, if it is available. If we use |GetWindowRect()| instead,
+      // we can break our same monitor detection logic (see |same_monitor|
+      // below) and consequently Windows "Move to other monitor" shortcuts
+      // (Win+Shift+Arrows). See crbug.com/656001.
+      window_rect.left = window_pos->x;
+      window_rect.top = window_pos->y;
+      window_rect.right = window_pos->x + window_pos->cx - 1;
+      window_rect.bottom = window_pos->y + window_pos->cy - 1;
+    }
+
     HMONITOR monitor;
     gfx::Rect monitor_rect, work_area;
-    if (GetWindowRect(hwnd(), &window_rect) &&
+    if ((have_new_window_rect || GetWindowRect(hwnd(), &window_rect)) &&
         GetMonitorAndRects(window_rect, &monitor, &monitor_rect, &work_area)) {
       bool work_area_changed = (monitor_rect == last_monitor_rect_) &&
                                (work_area != last_work_area_);
@@ -2248,9 +2260,7 @@ void HWNDMessageHandler::OnWindowPosChanging(WINDOWPOS* window_pos) {
       // non-client area of the window (that should be hidden in normal case).
       // We should restore window position if problem occurs.
       const bool incorrect_maximized_bounds =
-          IsMaximized() &&
-          !(window_pos->flags & SWP_NOMOVE) &&
-          !(window_pos->flags & SWP_NOSIZE) &&
+          IsMaximized() && have_new_window_rect &&
           (expected_maximized_bounds.x() != window_pos->x ||
            expected_maximized_bounds.y() != window_pos->y ||
            expected_maximized_bounds.width() != window_pos->cx ||
@@ -2266,8 +2276,9 @@ void HWNDMessageHandler::OnWindowPosChanging(WINDOWPOS* window_pos) {
       const bool fullscreen_without_hack =
           IsFullscreen() && !background_fullscreen_hack_;
 
-      if (incorrect_maximized_bounds ||
-          (same_monitor && (fullscreen_without_hack || work_area_changed))) {
+      if (same_monitor &&
+          (incorrect_maximized_bounds || fullscreen_without_hack ||
+           work_area_changed)) {
         // A rect for the monitor we're on changed.  Normally Windows notifies
         // us about this (and thus we're reaching here due to the SetWindowPos()
         // call in OnSettingChange() above), but with some software (e.g.

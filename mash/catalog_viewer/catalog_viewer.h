@@ -12,6 +12,7 @@
 #include "base/macros.h"
 #include "mash/public/interfaces/launchable.mojom.h"
 #include "mojo/public/cpp/bindings/binding_set.h"
+#include "services/service_manager/public/cpp/interface_factory.h"
 #include "services/service_manager/public/cpp/service.h"
 #include "services/tracing/public/cpp/provider.h"
 
@@ -36,7 +37,7 @@ class CatalogViewer
 
  private:
   // service_manager::Service:
-  void OnStart(const service_manager::ServiceInfo& info) override;
+  void OnStart() override;
   bool OnConnect(const service_manager::ServiceInfo& remote_info,
                  service_manager::InterfaceRegistry* registry) override;
 

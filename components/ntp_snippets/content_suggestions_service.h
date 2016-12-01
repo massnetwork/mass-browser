@@ -19,32 +19,27 @@
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/browser/history_service_observer.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/ntp_snippets/callbacks.h"
 #include "components/ntp_snippets/category_factory.h"
 #include "components/ntp_snippets/category_status.h"
 #include "components/ntp_snippets/content_suggestions_provider.h"
 #include "components/ntp_snippets/user_classifier.h"
+#include "components/signin/core/browser/signin_manager.h"
 
 class PrefService;
 class PrefRegistrySimple;
 
-namespace gfx {
-class Image;
-}  // namespace gfx
-
 namespace ntp_snippets {
 
-class NTPSnippetsService;
+class RemoteSuggestionsProvider;
 
 // Retrieves suggestions from a number of ContentSuggestionsProviders and serves
 // them grouped into categories. There can be at most one provider per category.
 class ContentSuggestionsService : public KeyedService,
                                   public ContentSuggestionsProvider::Observer,
+                                  public SigninManagerBase::Observer,
                                   public history::HistoryServiceObserver {
  public:
-  using ImageFetchedCallback = base::Callback<void(const gfx::Image&)>;
-  using DismissedSuggestionsCallback = base::Callback<void(
-      std::vector<ContentSuggestion> dismissed_suggestions)>;
-
   class Observer {
    public:
     // Fired every time the service receives a new set of data for the given
@@ -71,6 +66,11 @@ class ContentSuggestionsService : public KeyedService,
     virtual void OnSuggestionInvalidated(
         const ContentSuggestion::ID& suggestion_id) = 0;
 
+    // Fired when the previously sent data is not valid anymore and a refresh
+    // of all the suggestions is required. Called for example when the sign in
+    // state changes and personalised suggestions have to be shown or discarded.
+    virtual void OnFullRefreshRequired() = 0;
+
     // Sent when the service is shutting down. After the service has shut down,
     // it will not provide any data anymore, though calling the getters is still
     // safe.
@@ -86,6 +86,7 @@ class ContentSuggestionsService : public KeyedService,
   };
 
   ContentSuggestionsService(State state,
+                            SigninManagerBase* signin_manager,
                             history::HistoryService* history_service,
                             PrefService* pref_service);
   ~ContentSuggestionsService() override;
@@ -134,6 +135,13 @@ class ContentSuggestionsService : public KeyedService,
 
   // Returns whether |category| is dismissed.
   bool IsCategoryDismissed(Category category) const;
+
+  // Fetches additional contents for the given |category|. If the fetch was
+  // completed, the given |callback| is called with the updated content.
+  // This includes new and old data.
+  void Fetch(const Category& category,
+             const std::set<std::string>& known_suggestion_ids,
+             const FetchDoneCallback& callback);
 
   // Observer accessors.
   void AddObserver(Observer* observer);
@@ -184,10 +192,14 @@ class ContentSuggestionsService : public KeyedService,
 
   CategoryFactory* category_factory() { return &category_factory_; }
 
-  // The reference to the NTPSnippetsService provider should only be set by the
-  // factory and only be used for scheduling, periodic fetching and debugging.
-  NTPSnippetsService* ntp_snippets_service() { return ntp_snippets_service_; }
-  void set_ntp_snippets_service(NTPSnippetsService* ntp_snippets_service) {
+  // The reference to the RemoteSuggestionsProvider provider should only be set
+  // by the factory and only be used for scheduling, periodic fetching and
+  // debugging.
+  RemoteSuggestionsProvider* ntp_snippets_service() {
+    return ntp_snippets_service_;
+  }
+  void set_ntp_snippets_service(
+      RemoteSuggestionsProvider* ntp_snippets_service) {
     ntp_snippets_service_ = ntp_snippets_service;
   }
 
@@ -206,6 +218,13 @@ class ContentSuggestionsService : public KeyedService,
   void OnSuggestionInvalidated(
       ContentSuggestionsProvider* provider,
       const ContentSuggestion::ID& suggestion_id) override;
+
+  // SigninManagerBase::Observer implementation
+  void GoogleSigninSucceeded(const std::string& account_id,
+                             const std::string& username,
+                             const std::string& password) override;
+  void GoogleSignedOut(const std::string& account_id,
+                       const std::string& username) override;
 
   // history::HistoryServiceObserver implementation.
   void OnURLsDeleted(history::HistoryService* history_service,
@@ -232,6 +251,8 @@ class ContentSuggestionsService : public KeyedService,
 
   // Fires the OnCategoryStatusChanged event for the given |category|.
   void NotifyCategoryStatusChanged(Category category);
+
+  void OnSignInStateChanged();
 
   void SortCategories();
 
@@ -276,6 +297,11 @@ class ContentSuggestionsService : public KeyedService,
   std::map<Category, std::vector<ContentSuggestion>, Category::CompareByID>
       suggestions_by_category_;
 
+  // Observer for the SigninManager. All observers are notified when the signin
+  // state changes so that they can refresh their list of suggestions.
+  ScopedObserver<SigninManagerBase, SigninManagerBase::Observer>
+      signin_observer_;
+
   // Observer for the HistoryService. All providers are notified when history is
   // deleted.
   ScopedObserver<history::HistoryService, history::HistoryServiceObserver>
@@ -286,9 +312,10 @@ class ContentSuggestionsService : public KeyedService,
   const std::vector<ContentSuggestion> no_suggestions_;
 
   // Keep a direct reference to this special provider to redirect scheduling,
-  // background fetching and debugging calls to it. If the NTPSnippetsService is
-  // loaded, it is also present in |providers_|, otherwise this is a nullptr.
-  NTPSnippetsService* ntp_snippets_service_;
+  // background fetching and debugging calls to it. If the
+  // RemoteSuggestionsProvider is loaded, it is also present in |providers_|,
+  // otherwise this is a nullptr.
+  RemoteSuggestionsProvider* ntp_snippets_service_;
 
   PrefService* pref_service_;
 

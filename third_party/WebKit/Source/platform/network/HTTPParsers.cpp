@@ -34,6 +34,7 @@
 
 #include "net/http/http_response_headers.h"
 #include "net/http/http_util.h"
+#include "platform/json/JSONParser.h"
 #include "platform/network/ResourceResponse.h"
 #include "platform/weborigin/Suborigin.h"
 #include "public/platform/WebString.h"
@@ -330,7 +331,8 @@ bool parseHTTPRefresh(const String& refresh,
       ++pos;
     skipWhiteSpace(refresh, pos, matcher);
     unsigned urlStartPos = pos;
-    if (refresh.find("url", urlStartPos, TextCaseInsensitive) == urlStartPos) {
+    if (refresh.find("url", urlStartPos, TextCaseASCIIInsensitive) ==
+        urlStartPos) {
       urlStartPos += 3;
       skipWhiteSpace(refresh, urlStartPos, matcher);
       if (refresh[urlStartPos] == '=') {
@@ -430,7 +432,7 @@ void findCharsetInMediaType(const String& mediaType,
   unsigned length = mediaType.length();
 
   while (pos < length) {
-    pos = mediaType.find("charset", pos, TextCaseInsensitive);
+    pos = mediaType.find("charset", pos, TextCaseASCIIInsensitive);
     if (pos == kNotFound || !pos) {
       charsetLen = 0;
       return;
@@ -894,6 +896,18 @@ bool parseMultipartHeadersFromBody(const char* bytes,
     }
   }
   return true;
+}
+
+// See https://tools.ietf.org/html/draft-ietf-httpbis-jfv-01, Section 4.
+std::unique_ptr<JSONArray> parseJSONHeader(const String& header,
+                                           int maxParseDepth) {
+  StringBuilder sb;
+  sb.append("[");
+  sb.append(header);
+  sb.append("]");
+  std::unique_ptr<JSONValue> headerValue =
+      parseJSON(sb.toString(), maxParseDepth);
+  return JSONArray::from(std::move(headerValue));
 }
 
 }  // namespace blink

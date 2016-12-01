@@ -23,7 +23,6 @@
 #include "base/path_service.h"
 #include "base/strings/string16.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/trace_event/trace_event.h"
 #include "base/win/scoped_handle.h"
@@ -154,10 +153,10 @@ int MainDllLoader::Launch(HINSTANCE instance,
     ChromeWatcherMainFunction watcher_main =
         reinterpret_cast<ChromeWatcherMainFunction>(
             ::GetProcAddress(watcher_dll, kChromeWatcherDLLEntrypoint));
-    return watcher_main(
-        chrome::GetBrowserExitCodesRegistryPath().c_str(),
-        parent_process.Take(), main_thread_id, on_initialized_event.Take(),
-        watcher_data_directory.value().c_str(), channel_name.c_str());
+    return watcher_main(chrome::GetBrowserExitCodesRegistryPath().c_str(),
+                        parent_process.Take(), main_thread_id,
+                        on_initialized_event.Take(),
+                        watcher_data_directory.value().c_str());
   }
 
   // Initialize the sandbox services.

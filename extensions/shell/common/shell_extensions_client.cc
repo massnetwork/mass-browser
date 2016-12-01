@@ -76,8 +76,9 @@ base::LazyInstance<ShellPermissionMessageProvider>
 }  // namespace
 
 ShellExtensionsClient::ShellExtensionsClient()
-    : extensions_api_permissions_(ExtensionsAPIPermissions()) {
-}
+    : extensions_api_permissions_(ExtensionsAPIPermissions()),
+      webstore_base_url_(extension_urls::kChromeWebstoreBaseURL),
+      webstore_update_url_(extension_urls::kChromeWebstoreUpdateURL) {}
 
 ShellExtensionsClient::~ShellExtensionsClient() {
 }
@@ -181,12 +182,12 @@ bool ShellExtensionsClient::ShouldSuppressFatalErrors() const {
 void ShellExtensionsClient::RecordDidSuppressFatalError() {
 }
 
-std::string ShellExtensionsClient::GetWebstoreBaseURL() const {
-  return extension_urls::kChromeWebstoreBaseURL;
+const GURL& ShellExtensionsClient::GetWebstoreBaseURL() const {
+  return webstore_base_url_;
 }
 
-std::string ShellExtensionsClient::GetWebstoreUpdateURL() const {
-  return extension_urls::kChromeWebstoreUpdateURL;
+const GURL& ShellExtensionsClient::GetWebstoreUpdateURL() const {
+  return webstore_update_url_;
 }
 
 bool ShellExtensionsClient::IsBlacklistUpdateURL(const GURL& url) const {

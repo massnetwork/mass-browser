@@ -39,8 +39,8 @@ class XScopedEventSelector;
 namespace views {
 class DesktopDragDropClientAuraX11;
 class DesktopWindowTreeHostObserverX11;
+class NonClientFrameView;
 class X11DesktopWindowMoveClient;
-class X11WindowEventFilter;
 
 class VIEWS_EXPORT DesktopWindowTreeHostX11
     : public DesktopWindowTreeHost,
@@ -138,6 +138,7 @@ class VIEWS_EXPORT DesktopWindowTreeHostX11
       Widget::MoveLoopEscapeBehavior escape_behavior) override;
   void EndMoveLoop() override;
   void SetVisibilityChangedAnimationsEnabled(bool value) override;
+  NonClientFrameView* CreateNonClientFrameView() override;
   bool ShouldUseNativeFrame() const override;
   bool ShouldWindowContentsBeTransparent() const override;
   void FrameTypeChanged() override;
@@ -148,7 +149,6 @@ class VIEWS_EXPORT DesktopWindowTreeHostX11
                       const gfx::ImageSkia& app_icon) override;
   void InitModalType(ui::ModalType modal_type) override;
   void FlashFrame(bool flash_frame) override;
-  void OnRootViewLayout() override;
   bool IsAnimatingClosed() const override;
   bool IsTranslucentWindowOpacitySupported() const override;
   void SizeConstraintsChanged() override;

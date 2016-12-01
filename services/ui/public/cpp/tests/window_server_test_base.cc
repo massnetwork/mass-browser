@@ -12,6 +12,7 @@
 #include "base/test/test_timeouts.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "services/service_manager/public/cpp/connector.h"
+#include "services/service_manager/public/cpp/interface_registry.h"
 #include "services/ui/public/cpp/window.h"
 #include "services/ui/public/cpp/window_tree_client.h"
 
@@ -34,6 +35,7 @@ WindowServerTestBase::WindowServerTestBase()
       window_manager_client_(nullptr) {}
 
 WindowServerTestBase::~WindowServerTestBase() {
+  display::Screen::SetScreenInstance(nullptr);
   window_tree_clients_.clear();
 }
 
@@ -79,6 +81,7 @@ void WindowServerTestBase::DeleteWindowTreeClient(
 void WindowServerTestBase::SetUp() {
   WindowServerServiceTestBase::SetUp();
 
+  display::Screen::SetScreenInstance(&test_screen_);
   std::unique_ptr<WindowTreeClient> window_manager_window_tree_client =
       base::MakeUnique<WindowTreeClient>(this, this);
   window_manager_window_tree_client->ConnectAsWindowManager(connector());

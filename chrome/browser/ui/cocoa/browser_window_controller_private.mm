@@ -33,10 +33,11 @@
 #import "chrome/browser/ui/cocoa/floating_bar_backing_view.h"
 #import "chrome/browser/ui/cocoa/framed_browser_window.h"
 #include "chrome/browser/ui/cocoa/fullscreen_low_power_coordinator.h"
-#import "chrome/browser/ui/cocoa/fullscreen_toolbar_controller.h"
+#import "chrome/browser/ui/cocoa/fullscreen/fullscreen_toolbar_controller.h"
 #import "chrome/browser/ui/cocoa/fullscreen_window.h"
 #import "chrome/browser/ui/cocoa/infobars/infobar_container_controller.h"
 #include "chrome/browser/ui/cocoa/last_active_browser_cocoa.h"
+#include "chrome/browser/ui/cocoa/location_bar/location_bar_view_mac.h"
 #import "chrome/browser/ui/cocoa/profiles/avatar_button_controller.h"
 #import "chrome/browser/ui/cocoa/profiles/avatar_icon_controller.h"
 #import "chrome/browser/ui/cocoa/status_bubble_mac.h"
@@ -130,7 +131,7 @@ void RecordFullscreenStyle(FullscreenStyle style) {
   // This ensures the fullscreen button is appropriately positioned. It must
   // be done before calling layoutSubviews because the new avatar button's
   // position depends on the fullscreen button's position, as well as
-  // TabStripController's rightIndentForControls.
+  // TabStripController's trailingIndentForControls.
   // The fullscreen button's position may depend on the old avatar button's
   // width, but that does not require calling layoutSubviews first.
   NSWindow* window = [self window];
@@ -292,15 +293,16 @@ willPositionSheet:(NSWindow*)sheet
   BOOL requiresRelayout =
       !NSEqualRects([[self tabStripView] frame], layout.frame);
 
-  // Check if the left indent has changed.
-  if (layout.leftIndent != [tabStripController_ leftIndentForControls]) {
-    [tabStripController_ setLeftIndentForControls:layout.leftIndent];
+  // Check if the leading indent has changed.
+  if (layout.leadingIndent != [tabStripController_ leadingIndentForControls]) {
+    [tabStripController_ setLeadingIndentForControls:layout.leadingIndent];
     requiresRelayout = YES;
   }
 
-  // Check if the right indent has changed.
-  if (layout.rightIndent != [tabStripController_ rightIndentForControls]) {
-    [tabStripController_ setRightIndentForControls:layout.rightIndent];
+  // Check if the trailing indent has changed.
+  if (layout.trailingIndent !=
+      [tabStripController_ trailingIndentForControls]) {
+    [tabStripController_ setTrailingIndentForControls:layout.trailingIndent];
     requiresRelayout = YES;
   }
 
@@ -447,47 +449,6 @@ willPositionSheet:(NSWindow*)sheet
     manager->UpdateAnchorPosition();
 }
 
-- (void)adjustUIForExitingFullscreenAndStopOmniboxSliding {
-  [fullscreenToolbarController_ exitFullscreenMode];
-  fullscreenToolbarController_.reset();
-
-  // Force the bookmark bar z-order to update.
-  [[bookmarkBarController_ view] removeFromSuperview];
-  [self layoutSubviews];
-}
-
-- (void)adjustUIForSlidingFullscreenStyle:(FullscreenSlidingStyle)style {
-  // The UI should only be adjusted in fullscreen mode.
-  if (![self isInAnyFullscreenMode])
-    return;
-
-  if (!fullscreenToolbarController_) {
-    fullscreenToolbarController_.reset(
-        [self newFullscreenToolbarControllerWithStyle:style]);
-    [fullscreenToolbarController_ enterFullscreenMode];
-  } else {
-    fullscreenToolbarController_.get().slidingStyle = style;
-  }
-
-  if (!floatingBarBackingView_.get() &&
-      ([self hasTabStrip] || [self hasToolbar] || [self hasLocationBar])) {
-    floatingBarBackingView_.reset(
-        [[FloatingBarBackingView alloc] initWithFrame:NSZeroRect]);
-    [floatingBarBackingView_
-        setAutoresizingMask:(NSViewWidthSizable | NSViewMinYMargin)];
-  }
-
-  // Force the bookmark bar z-order to update.
-  [[bookmarkBarController_ view] removeFromSuperview];
-  [self layoutSubviews];
-}
-
-- (FullscreenToolbarController*)newFullscreenToolbarControllerWithStyle:
-    (FullscreenSlidingStyle)style {
-  return [[FullscreenToolbarController alloc] initWithBrowserController:self
-                                                                  style:style];
-}
-
 - (void)enterImmersiveFullscreen {
   RecordFullscreenWindowLocation([self window]);
   RecordFullscreenStyle(IMMERSIVE_FULLSCREEN);
@@ -514,9 +475,7 @@ willPositionSheet:(NSWindow*)sheet
   [self moveViewsForImmersiveFullscreen:YES
                           regularWindow:[self window]
                        fullscreenWindow:fullscreenWindow_.get()];
-
-  FullscreenSlidingStyle style = FullscreenSlidingStyle::OMNIBOX_TABS_HIDDEN;
-  [self adjustUIForSlidingFullscreenStyle:style];
+  [self adjustUIForEnteringFullscreen];
 
   [fullscreenWindow_ display];
 
@@ -629,13 +588,6 @@ willPositionSheet:(NSWindow*)sheet
 - (NSSize)window:(NSWindow*)window
     willUseFullScreenContentSize:(NSSize)proposedSize {
   return proposedSize;
-}
-
-- (NSApplicationPresentationOptions)window:(NSWindow*)window
-    willUseFullScreenPresentationOptions:(NSApplicationPresentationOptions)opt {
-  return (opt |
-          NSApplicationPresentationAutoHideDock |
-          NSApplicationPresentationAutoHideMenuBar);
 }
 
 - (void)windowWillEnterFullScreen:(NSNotification*)notification {
@@ -787,7 +739,7 @@ willPositionSheet:(NSWindow*)sheet
 - (void)windowDidFailToEnterFullScreen:(NSWindow*)window {
   [self deregisterForContentViewResizeNotifications];
   [self resetCustomAppKitFullscreenVariables];
-  [self adjustUIForExitingFullscreenAndStopOmniboxSliding];
+  [self adjustUIForExitingFullscreen];
   fullscreenLowPowerCoordinator_.reset();
 }
 
@@ -814,17 +766,34 @@ willPositionSheet:(NSWindow*)sheet
 
 - (void)adjustUIForExitingFullscreen {
   exclusiveAccessController_->Destroy();
-  [self adjustUIForExitingFullscreenAndStopOmniboxSliding];
+  [fullscreenToolbarController_ exitFullscreenMode];
+  fullscreenToolbarController_.reset();
+
+  // Force the bookmark bar z-order to update.
+  [[bookmarkBarController_ view] removeFromSuperview];
+  [self layoutSubviews];
 }
 
 - (void)adjustUIForEnteringFullscreen {
-  FullscreenSlidingStyle style = FullscreenSlidingStyle::OMNIBOX_TABS_PRESENT;
-  if ([self isFullscreenForTabContentOrExtension])
-    style = FullscreenSlidingStyle::OMNIBOX_TABS_NONE;
-  else if (!shouldShowFullscreenToolbar_)
-    style = FullscreenSlidingStyle::OMNIBOX_TABS_HIDDEN;
+  DCHECK([self isInAnyFullscreenMode]);
+  if (!fullscreenToolbarController_) {
+    fullscreenToolbarController_.reset(
+        [[FullscreenToolbarController alloc] initWithBrowserController:self]);
+  }
 
-  [self adjustUIForSlidingFullscreenStyle:style];
+  [fullscreenToolbarController_ enterFullscreenMode];
+
+  if (!floatingBarBackingView_.get() &&
+      ([self hasTabStrip] || [self hasToolbar] || [self hasLocationBar])) {
+    floatingBarBackingView_.reset(
+        [[FloatingBarBackingView alloc] initWithFrame:NSZeroRect]);
+    [floatingBarBackingView_
+        setAutoresizingMask:(NSViewWidthSizable | NSViewMinYMargin)];
+  }
+
+  // Force the bookmark bar z-order to update.
+  [[bookmarkBarController_ view] removeFromSuperview];
+  [self layoutSubviews];
 }
 
 - (CGFloat)toolbarDividerOpacity {
@@ -894,11 +863,12 @@ willPositionSheet:(NSWindow*)sheet
   [layout setWindowSize:windowSize];
 
   [layout setInAnyFullscreen:[self isInAnyFullscreenMode]];
-  [layout setSlidingStyle:fullscreenToolbarController_.get().slidingStyle];
-  [layout
-      setFullscreenMenubarOffset:[fullscreenToolbarController_ menubarOffset]];
-  [layout setFullscreenToolbarFraction:[fullscreenToolbarController_
-                                           toolbarFraction]];
+
+  FullscreenToolbarLayout fullscreenToolbarLayout =
+      [fullscreenToolbarController_ computeLayout];
+  [layout setFullscreenToolbarStyle:fullscreenToolbarLayout.toolbarStyle];
+  [layout setFullscreenMenubarOffset:fullscreenToolbarLayout.menubarOffset];
+  [layout setFullscreenToolbarFraction:fullscreenToolbarLayout.toolbarFraction];
 
   [layout setHasTabStrip:[self hasTabStrip]];
   [layout setFullscreenButtonFrame:[self fullscreenButtonFrame]];
@@ -948,8 +918,7 @@ willPositionSheet:(NSWindow*)sheet
   [infoBarContainerController_
       setInfobarArrowX:[self locationBarBridge]->GetPageInfoBubblePoint().x];
 
-  if (!NSIsEmptyRect(output.downloadShelfFrame))
-    [[downloadShelfController_ view] setFrame:output.downloadShelfFrame];
+  [[downloadShelfController_ view] setFrame:output.downloadShelfFrame];
 
   [self layoutTabContentArea:output.contentAreaFrame];
 
@@ -1001,6 +970,8 @@ willPositionSheet:(NSWindow*)sheet
     [subviews addObject:[downloadShelfController_ view]];
   if ([self tabContentArea])
     [subviews addObject:[self tabContentArea]];
+  if ([infoBarContainerController_ view])
+    [subviews addObject:[infoBarContainerController_ view]];
   if ([self placeBookmarkBarBelowInfoBar]) {
     if ([bookmarkBarController_ view])
       [subviews addObject:[bookmarkBarController_ view]];
@@ -1014,8 +985,6 @@ willPositionSheet:(NSWindow*)sheet
   }
   if ([toolbarController_ view])
     [subviews addObject:[toolbarController_ view]];
-  if ([infoBarContainerController_ view])
-    [subviews addObject:[infoBarContainerController_ view]];
   if ([findBarCocoaController_ view])
     [subviews addObject:[findBarCocoaController_ view]];
 
@@ -1193,13 +1162,6 @@ willPositionSheet:(NSWindow*)sheet
   if (WebContents* contents = [self webContents])
     return PermissionRequestManager::FromWebContents(contents);
   return nil;
-}
-
-- (BOOL)isFullscreenForTabContentOrExtension {
-  FullscreenController* controller =
-      browser_->exclusive_access_manager()->fullscreen_controller();
-  return controller->IsWindowFullscreenForTabOrPending() ||
-         controller->IsExtensionFullscreenOrPending();
 }
 
 - (FullscreenToolbarVisibilityLockController*)

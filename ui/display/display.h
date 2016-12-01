@@ -9,6 +9,7 @@
 
 #include "base/compiler_specific.h"
 #include "ui/display/display_export.h"
+#include "ui/display/types/display_constants.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/icc_profile.h"
 
@@ -65,9 +66,7 @@ class DISPLAY_EXPORT Display final {
     TOUCH_SUPPORT_UNAVAILABLE,
   };
 
-  enum : int64_t { kInvalidDisplayID = -1 };
-
-  // Creates a display with kInvalidDisplayID as default.
+  // Creates a display with kInvalidDisplayId as default.
   Display();
   explicit Display(int64_t id);
   Display(int64_t id, const gfx::Rect& bounds);
@@ -144,7 +143,7 @@ class DISPLAY_EXPORT Display final {
   std::string ToString() const;
 
   // True if the display contains valid display id.
-  bool is_valid() const { return id_ != kInvalidDisplayID; }
+  bool is_valid() const { return id_ != kInvalidDisplayId; }
 
   // True if the display corresponds to internal panel.
   bool IsInternal() const;
@@ -196,13 +195,13 @@ class DISPLAY_EXPORT Display final {
   gfx::Rect bounds_;
   gfx::Rect work_area_;
   float device_scale_factor_;
-  Rotation rotation_;
-  TouchSupport touch_support_;
+  Rotation rotation_ = ROTATE_0;
+  TouchSupport touch_support_ = TOUCH_SUPPORT_UNKNOWN;
   gfx::Size maximum_cursor_size_;
   gfx::ICCProfile icc_profile_;
   int color_depth_;
   int depth_per_component_;
-  bool is_monochrome_;
+  bool is_monochrome_ = false;
 
 #if !defined(OS_IOS)
   friend struct mojo::StructTraits<display::mojom::DisplayDataView,

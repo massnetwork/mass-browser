@@ -30,8 +30,6 @@
 #include "extensions/browser/view_type_utils.h"
 #include "net/base/net_errors.h"
 
-using content::ResourceType;
-
 namespace GetFrame = extensions::api::web_navigation::GetFrame;
 namespace GetAllFrames = extensions::api::web_navigation::GetAllFrames;
 
@@ -325,8 +323,8 @@ void WebNavigationTabObserver::DidFinishLoad(
   // srcdoc iframes will report a url of about:blank, still let it through.
   if (navigation_state_.GetUrl(render_frame_host) != validated_url &&
       (navigation_state_.GetUrl(render_frame_host) !=
-           GURL(content::kAboutSrcDocURL) ||
-       validated_url != GURL(url::kAboutBlankURL))) {
+           content::kAboutSrcDocURL ||
+       validated_url != url::kAboutBlankURL)) {
     return;
   }
 

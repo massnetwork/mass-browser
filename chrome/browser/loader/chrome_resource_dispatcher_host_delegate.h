@@ -14,8 +14,8 @@
 #include "base/memory/ref_counted.h"
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
 #include "content/public/browser/resource_dispatcher_host_delegate.h"
+#include "extensions/features/features.h"
 
-class DelayedResourceQueue;
 class DownloadRequestLimiter;
 
 namespace content {
@@ -106,7 +106,7 @@ class ChromeResourceDispatcherHostDelegate
       ScopedVector<content::ResourceThrottle>* throttles);
 
  private:
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   struct StreamTargetInfo {
     std::string extension_id;
     std::string view_id;
@@ -115,7 +115,7 @@ class ChromeResourceDispatcherHostDelegate
 
   scoped_refptr<DownloadRequestLimiter> download_request_limiter_;
   scoped_refptr<safe_browsing::SafeBrowsingService> safe_browsing_;
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   scoped_refptr<extensions::UserScriptListener> user_script_listener_;
   std::map<net::URLRequest*, StreamTargetInfo> stream_target_info_;
 #endif

@@ -26,40 +26,39 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /**
- * @implements {WebInspector.TargetManager.Observer}
+ * @implements {SDK.TargetManager.Observer}
  * @unrestricted
  */
-WebInspector.InspectElementModeController = class {
+Elements.InspectElementModeController = class {
   constructor() {
-    this._toggleSearchAction = WebInspector.actionRegistry.action('elements.toggle-element-search');
+    this._toggleSearchAction = UI.actionRegistry.action('elements.toggle-element-search');
     if (Runtime.experiments.isEnabled('layoutEditor')) {
       this._layoutEditorButton =
-          new WebInspector.ToolbarToggle(WebInspector.UIString('Toggle Layout Editor'), 'layout-editor-toolbar-item');
+          new UI.ToolbarToggle(Common.UIString('Toggle Layout Editor'), 'largeicon-layout-editor');
       this._layoutEditorButton.addEventListener('click', this._toggleLayoutEditor, this);
     }
 
-    this._mode = DOMAgent.InspectMode.None;
-    WebInspector.targetManager.addEventListener(
-        WebInspector.TargetManager.Events.SuspendStateChanged, this._suspendStateChanged, this);
-    WebInspector.targetManager.observeTargets(this, WebInspector.Target.Capability.DOM);
+    this._mode = Protocol.DOM.InspectMode.None;
+    SDK.targetManager.addEventListener(SDK.TargetManager.Events.SuspendStateChanged, this._suspendStateChanged, this);
+    SDK.targetManager.observeTargets(this, SDK.Target.Capability.DOM);
   }
 
   /**
    * @override
-   * @param {!WebInspector.Target} target
+   * @param {!SDK.Target} target
    */
   targetAdded(target) {
     // When DevTools are opening in the inspect element mode, the first target comes in
     // much later than the InspectorFrontendAPI.enterInspectElementMode event.
-    if (this._mode === DOMAgent.InspectMode.None)
+    if (this._mode === Protocol.DOM.InspectMode.None)
       return;
-    var domModel = WebInspector.DOMModel.fromTarget(target);
+    var domModel = SDK.DOMModel.fromTarget(target);
     domModel.setInspectMode(this._mode);
   }
 
   /**
    * @override
-   * @param {!WebInspector.Target} target
+   * @param {!SDK.Target} target
    */
   targetRemoved(target) {
   }
@@ -68,47 +67,48 @@ WebInspector.InspectElementModeController = class {
    * @return {boolean}
    */
   isInInspectElementMode() {
-    return this._mode === DOMAgent.InspectMode.SearchForNode ||
-        this._mode === DOMAgent.InspectMode.SearchForUAShadowDOM;
+    return this._mode === Protocol.DOM.InspectMode.SearchForNode ||
+        this._mode === Protocol.DOM.InspectMode.SearchForUAShadowDOM;
   }
 
   /**
    * @return {boolean}
    */
   isInLayoutEditorMode() {
-    return this._mode === DOMAgent.InspectMode.ShowLayoutEditor;
+    return this._mode === Protocol.DOM.InspectMode.ShowLayoutEditor;
   }
 
   stopInspection() {
-    if (this._mode && this._mode !== DOMAgent.InspectMode.None)
+    if (this._mode && this._mode !== Protocol.DOM.InspectMode.None)
       this._toggleInspectMode();
   }
 
   _toggleLayoutEditor() {
-    var mode = this.isInLayoutEditorMode() ? DOMAgent.InspectMode.None : DOMAgent.InspectMode.ShowLayoutEditor;
+    var mode = this.isInLayoutEditorMode() ? Protocol.DOM.InspectMode.None : Protocol.DOM.InspectMode.ShowLayoutEditor;
     this._setMode(mode);
   }
 
   _toggleInspectMode() {
-    if (WebInspector.targetManager.allTargetsSuspended())
+    if (SDK.targetManager.allTargetsSuspended())
       return;
 
     var mode;
-    if (this.isInInspectElementMode())
-      mode = DOMAgent.InspectMode.None;
-    else
-      mode = WebInspector.moduleSetting('showUAShadowDOM').get() ? DOMAgent.InspectMode.SearchForUAShadowDOM :
-                                                                   DOMAgent.InspectMode.SearchForNode;
+    if (this.isInInspectElementMode()) {
+      mode = Protocol.DOM.InspectMode.None;
+    } else {
+      mode = Common.moduleSetting('showUAShadowDOM').get() ? Protocol.DOM.InspectMode.SearchForUAShadowDOM :
+                                                             Protocol.DOM.InspectMode.SearchForNode;
+    }
 
     this._setMode(mode);
   }
 
   /**
-   * @param {!DOMAgent.InspectMode} mode
+   * @param {!Protocol.DOM.InspectMode} mode
    */
   _setMode(mode) {
     this._mode = mode;
-    for (var domModel of WebInspector.DOMModel.instances())
+    for (var domModel of SDK.DOMModel.instances())
       domModel.setInspectMode(mode);
 
     if (this._layoutEditorButton) {
@@ -121,10 +121,10 @@ WebInspector.InspectElementModeController = class {
   }
 
   _suspendStateChanged() {
-    if (!WebInspector.targetManager.allTargetsSuspended())
+    if (!SDK.targetManager.allTargetsSuspended())
       return;
 
-    this._mode = DOMAgent.InspectMode.None;
+    this._mode = Protocol.DOM.InspectMode.None;
     this._toggleSearchAction.setToggled(false);
     if (this._layoutEditorButton)
       this._layoutEditorButton.setToggled(false);
@@ -132,41 +132,41 @@ WebInspector.InspectElementModeController = class {
 };
 
 /**
- * @implements {WebInspector.ActionDelegate}
+ * @implements {UI.ActionDelegate}
  * @unrestricted
  */
-WebInspector.InspectElementModeController.ToggleSearchActionDelegate = class {
+Elements.InspectElementModeController.ToggleSearchActionDelegate = class {
   /**
    * @override
-   * @param {!WebInspector.Context} context
+   * @param {!UI.Context} context
    * @param {string} actionId
    * @return {boolean}
    */
   handleAction(context, actionId) {
-    if (!WebInspector.inspectElementModeController)
+    if (!Elements.inspectElementModeController)
       return false;
-    WebInspector.inspectElementModeController._toggleInspectMode();
+    Elements.inspectElementModeController._toggleInspectMode();
     return true;
   }
 };
 
 /**
- * @implements {WebInspector.ToolbarItem.Provider}
+ * @implements {UI.ToolbarItem.Provider}
  * @unrestricted
  */
-WebInspector.InspectElementModeController.LayoutEditorButtonProvider = class {
+Elements.InspectElementModeController.LayoutEditorButtonProvider = class {
   /**
    * @override
-   * @return {?WebInspector.ToolbarItem}
+   * @return {?UI.ToolbarItem}
    */
   item() {
-    if (!WebInspector.inspectElementModeController)
+    if (!Elements.inspectElementModeController)
       return null;
 
-    return WebInspector.inspectElementModeController._layoutEditorButton;
+    return Elements.inspectElementModeController._layoutEditorButton;
   }
 };
 
-/** @type {?WebInspector.InspectElementModeController} */
-WebInspector.inspectElementModeController =
-    Runtime.queryParam('isSharedWorker') ? null : new WebInspector.InspectElementModeController();
+/** @type {?Elements.InspectElementModeController} */
+Elements.inspectElementModeController =
+    Runtime.queryParam('isSharedWorker') ? null : new Elements.InspectElementModeController();

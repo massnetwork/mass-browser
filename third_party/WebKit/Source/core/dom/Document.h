@@ -41,6 +41,10 @@
 #include "core/dom/DocumentTiming.h"
 #include "core/dom/ExecutionContext.h"
 #include "core/dom/MutationObserver.h"
+#include "core/dom/StyleReattachData.h"
+#include "core/dom/SynchronousMutationNotifier.h"
+#include "core/dom/SynchronousMutationObserver.h"
+#include "core/dom/Text.h"
 #include "core/dom/TextLinkColors.h"
 #include "core/dom/TreeScope.h"
 #include "core/dom/UserActionElementSet.h"
@@ -51,12 +55,16 @@
 #include "core/frame/HostsUsingFeatures.h"
 #include "core/html/parser/ParserSynchronizationPolicy.h"
 #include "core/page/PageVisibilityState.h"
+#include "core/style/ComputedStyle.h"
 #include "platform/Length.h"
 #include "platform/Timer.h"
+#include "platform/WebTaskRunner.h"
+#include "platform/scroll/ScrollTypes.h"
 #include "platform/weborigin/KURL.h"
 #include "platform/weborigin/ReferrerPolicy.h"
 #include "public/platform/WebFocusType.h"
 #include "public/platform/WebInsecureRequestPolicy.h"
+#include "wtf/Compiler.h"
 #include "wtf/HashSet.h"
 #include "wtf/PassRefPtr.h"
 #include <memory>
@@ -69,7 +77,6 @@ class AXObjectCache;
 class Attr;
 class CDATASection;
 class CSSStyleSheet;
-class CancellableTaskFactory;
 class CanvasFontCache;
 class CharacterData;
 class ChromeClient;
@@ -149,6 +156,7 @@ class ScriptRunner;
 class ScriptableDocumentParser;
 class ScriptedAnimationController;
 class ScriptedIdleTaskController;
+class Scrollbar;
 class SecurityOrigin;
 class SegmentedString;
 class SelectorQueryCache;
@@ -159,7 +167,6 @@ class StringOrDictionary;
 class StyleEngine;
 class StyleResolver;
 class StyleSheetList;
-class Text;
 class TextAutosizer;
 class Touch;
 class TouchList;
@@ -257,6 +264,7 @@ class CORE_EXPORT Document : public ContainerNode,
                              public TreeScope,
                              public SecurityContext,
                              public ExecutionContext,
+                             public SynchronousMutationNotifier,
                              public Supplementable<Document> {
   DEFINE_WRAPPERTYPEINFO();
   USING_GARBAGE_COLLECTED_MIXIN(Document);
@@ -321,7 +329,8 @@ class CORE_EXPORT Document : public ContainerNode,
 
   Location* location() const;
 
-  Element* createElement(const AtomicString& name, ExceptionState&);
+  Element* createElement(const AtomicString& name,
+                         ExceptionState& = ASSERT_NO_EXCEPTION);
   DocumentFragment* createDocumentFragment();
   Text* createTextNode(const String& data);
   Comment* createComment(const String& data);
@@ -345,8 +354,8 @@ class CORE_EXPORT Document : public ContainerNode,
   Range* caretRangeFromPoint(int x, int y);
   Element* scrollingElement();
 
-  void addNonAttachedStyle(Element&, RefPtr<ComputedStyle>);
-  ComputedStyle* getNonAttachedStyle(Element&);
+  void addStyleReattachData(Element&, StyleReattachData&);
+  StyleReattachData getStyleReattachData(Element&);
 
   String readyState() const;
 
@@ -470,11 +479,6 @@ class CORE_EXPORT Document : public ContainerNode,
 
   void scheduleUseShadowTreeUpdate(SVGUseElement&);
   void unscheduleUseShadowTreeUpdate(SVGUseElement&);
-
-  // FIXME: SVG filters should change to store the filter on the ComputedStyle
-  // instead of the LayoutObject so we can get rid of this hack.
-  void scheduleSVGFilterLayerUpdateHack(Element&);
-  void unscheduleSVGFilterLayerUpdateHack(Element&);
 
   void evaluateMediaQueryList();
 
@@ -724,7 +728,7 @@ class CORE_EXPORT Document : public ContainerNode,
   void hoveredNodeDetached(Element&);
   void activeChainNodeDetached(Element&);
 
-  void updateHoverActiveState(const HitTestRequest&, Element*);
+  void updateHoverActiveState(const HitTestRequest&, Element*, Scrollbar*);
 
   // Updates for :target (CSS3 selector).
   void setCSSTarget(Element*);
@@ -762,7 +766,7 @@ class CORE_EXPORT Document : public ContainerNode,
   void didInsertText(Node*, unsigned offset, unsigned length);
   void didRemoveText(Node*, unsigned offset, unsigned length);
   void didMergeTextNodes(Text& oldNode, unsigned offset);
-  void didSplitTextNode(Text& oldNode);
+  void didSplitTextNode(const Text& oldNode);
 
   void clearDOMWindow() { m_domWindow = nullptr; }
   LocalDOMWindow* domWindow() const { return m_domWindow; }
@@ -822,6 +826,10 @@ class CORE_EXPORT Document : public ContainerNode,
   // Returns the owning element in the parent document. Returns nullptr if
   // this is the top level document or the owner is remote.
   HTMLFrameOwnerElement* localOwner() const;
+
+  void willChangeFrameOwnerProperties(int marginWidth,
+                                      int marginHeight,
+                                      ScrollbarMode);
 
   // Returns true if this document belongs to a frame that the parent document
   // made invisible (for instance by setting as style display:none).
@@ -930,7 +938,7 @@ class CORE_EXPORT Document : public ContainerNode,
   ScriptRunner* scriptRunner() { return m_scriptRunner.get(); }
 
   Element* currentScript() const {
-    return !m_currentScriptStack.isEmpty() ? m_currentScriptStack.last().get()
+    return !m_currentScriptStack.isEmpty() ? m_currentScriptStack.back().get()
                                            : nullptr;
   }
   void currentScriptForBinding(HTMLScriptElementOrSVGScriptElement&) const;
@@ -975,9 +983,6 @@ class CORE_EXPORT Document : public ContainerNode,
   // Returns the HTMLLinkElement currently in use for the Web Manifest.
   // Returns null if there is no such element.
   HTMLLinkElement* linkManifest() const;
-
-  void setUseSecureKeyboardEntryWhenActive(bool);
-  bool useSecureKeyboardEntryWhenActive() const;
 
   void updateFocusAppearanceSoon(SelectionBehaviorOnFocus);
   void cancelFocusAppearanceUpdate();
@@ -1137,7 +1142,7 @@ class CORE_EXPORT Document : public ContainerNode,
 
   Element* createElement(const AtomicString& localName,
                          const StringOrDictionary&,
-                         ExceptionState&);
+                         ExceptionState& = ASSERT_NO_EXCEPTION);
   Element* createElementNS(const AtomicString& namespaceURI,
                            const AtomicString& qualifiedName,
                            const StringOrDictionary&,
@@ -1227,15 +1232,12 @@ class CORE_EXPORT Document : public ContainerNode,
   bool hasViewportUnits() const { return m_hasViewportUnits; }
   void notifyResizeForViewportUnits();
 
+  void updateActiveStyle();
   void updateStyleInvalidationIfNeeded();
 
   DECLARE_VIRTUAL_TRACE();
 
   DECLARE_VIRTUAL_TRACE_WRAPPERS();
-
-  bool hasSVGFilterElementsRequiringLayerUpdate() const {
-    return m_layerUpdateSVGFilterElements.size();
-  }
 
   AtomicString convertLocalName(const AtomicString&);
 
@@ -1245,10 +1247,10 @@ class CORE_EXPORT Document : public ContainerNode,
 
   v8::Local<v8::Object> wrap(v8::Isolate*,
                              v8::Local<v8::Object> creationContext) override;
-  v8::Local<v8::Object> associateWithWrapper(
+  WARN_UNUSED_RESULT v8::Local<v8::Object> associateWithWrapper(
       v8::Isolate*,
       const WrapperTypeInfo*,
-      v8::Local<v8::Object> wrapper) override WARN_UNUSED_RETURN;
+      v8::Local<v8::Object> wrapper) override;
 
   HostsUsingFeatures::Value& HostsUsingFeaturesValue() {
     return m_hostsUsingFeaturesValue;
@@ -1310,6 +1312,13 @@ class CORE_EXPORT Document : public ContainerNode,
   void setHasReceivedUserGesture() { m_hasReceivedUserGesture = true; }
   bool hasReceivedUserGesture() const { return m_hasReceivedUserGesture; }
 
+  // Document maintains a counter of visible non-secure password
+  // fields in the page. Used to notify the embedder when all visible
+  // non-secure passwords fields are no longer visible.
+  void incrementPasswordCount();
+  void decrementPasswordCount();
+  unsigned passwordCount() const;
+
  protected:
   Document(const DocumentInit&, DocumentClassFlags = DefaultDocumentClass);
 
@@ -1355,8 +1364,6 @@ class CORE_EXPORT Document : public ContainerNode,
   bool needsFullLayoutTreeUpdate() const;
 
   void inheritHtmlAndBodyElementStyles(StyleRecalcChange);
-
-  bool dirtyElementsForLayerUpdate();
 
   void updateUseShadowTreesIfNeeded();
   void evaluateMediaQueryListIfNeeded();
@@ -1441,7 +1448,7 @@ class CORE_EXPORT Document : public ContainerNode,
   Member<DocumentParser> m_parser;
   Member<ContextFeatures> m_contextFeatures;
 
-  HeapHashMap<Member<Element>, RefPtr<ComputedStyle>> m_nonAttachedStyle;
+  HeapHashMap<Member<Element>, StyleReattachData> m_styleReattachDataMap;
 
   bool m_wellFormed;
 
@@ -1471,8 +1478,7 @@ class CORE_EXPORT Document : public ContainerNode,
   // This is cheaper than making setCompatibilityMode virtual.
   bool m_compatibilityModeLocked;
 
-  std::unique_ptr<CancellableTaskFactory>
-      m_executeScriptsWaitingForResourcesTask;
+  TaskHandle m_executeScriptsWaitingForResourcesTaskHandle;
 
   bool m_hasAutofocused;
   TaskRunnerTimer<Document> m_clearFocusedElementTimer;
@@ -1579,8 +1585,6 @@ class CORE_EXPORT Document : public ContainerNode,
   GC_PLUGIN_IGNORE("461878")
   NthIndexCache* m_nthIndexCache = nullptr;
 
-  bool m_useSecureKeyboardEntryWhenActive;
-
   DocumentClassFlags m_documentClasses;
 
   bool m_isViewSource;
@@ -1638,7 +1642,6 @@ class CORE_EXPORT Document : public ContainerNode,
   TaskRunnerTimer<Document> m_didAssociateFormControlsTimer;
 
   HeapHashSet<Member<SVGUseElement>> m_useElementsNeedingUpdate;
-  HeapHashSet<Member<Element>> m_layerUpdateSVGFilterElements;
 
   DOMTimerCoordinator m_timers;
 
@@ -1665,6 +1668,8 @@ class CORE_EXPORT Document : public ContainerNode,
   WouldLoadReason m_wouldLoadReason;
 
   Member<PropertyRegistry> m_propertyRegistry;
+
+  unsigned m_passwordCount;
 };
 
 extern template class CORE_EXTERN_TEMPLATE_EXPORT Supplement<Document>;

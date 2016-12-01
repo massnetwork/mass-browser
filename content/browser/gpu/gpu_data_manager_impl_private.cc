@@ -4,6 +4,8 @@
 
 #include "content/browser/gpu/gpu_data_manager_impl_private.h"
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <utility>
 
@@ -38,6 +40,7 @@
 #include "gpu/config/gpu_util.h"
 #include "gpu/ipc/common/memory_stats.h"
 #include "gpu/ipc/service/switches.h"
+#include "media/media_features.h"
 #include "ui/base/ui_base_switches.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_switches.h"
@@ -179,7 +182,7 @@ void UpdateStats(const gpu::GPUInfo& gpu_info,
       command_line.HasSwitch(switches::kDisableGpu),
       command_line.HasSwitch(switches::kDisableGpuRasterization),
       command_line.HasSwitch(switches::kDisableExperimentalWebGL),
-      (!command_line.HasSwitch(switches::kEnableUnsafeES3APIs) ||
+      (!command_line.HasSwitch(switches::kEnableES3APIs) ||
        command_line.HasSwitch(switches::kDisableES3APIs))};
 #if defined(OS_WIN)
   const std::string kGpuBlacklistFeatureHistogramNamesWin[] = {
@@ -347,12 +350,23 @@ bool GpuDataManagerImplPrivate::GpuAccessAllowed(
 
   // We only need to block GPU process if more features are disallowed other
   // than those in the preliminary gpu feature flags because the latter work
-  // through renderer commandline switches.
-  std::set<int> features = preliminary_blacklisted_features_;
-  gpu::MergeFeatureSets(&features, blacklisted_features_);
-  if (features.size() > preliminary_blacklisted_features_.size()) {
+  // through renderer commandline switches. WebGL and WebGL2 should not matter
+  // because their context creation can always be rejected on the GPU process
+  // side.
+  std::set<int> feature_diffs;
+  std::set_difference(blacklisted_features_.begin(),
+                      blacklisted_features_.end(),
+                      preliminary_blacklisted_features_.begin(),
+                      preliminary_blacklisted_features_.end(),
+                      std::inserter(feature_diffs, feature_diffs.begin()));
+  if (feature_diffs.size()) {
+    // TODO(zmo): Other features might also be OK to ignore here.
+    feature_diffs.erase(gpu::GPU_FEATURE_TYPE_WEBGL);
+    feature_diffs.erase(gpu::GPU_FEATURE_TYPE_WEBGL2);
+  }
+  if (feature_diffs.size()) {
     if (reason) {
-      *reason = "Features are disabled upon full but not preliminary GPU info.";
+      *reason = "Features are disabled on full but not preliminary GPU info.";
     }
     return false;
   }
@@ -676,7 +690,7 @@ void GpuDataManagerImplPrivate::AppendRendererCommandLine(
 
   if (ShouldDisableAcceleratedVideoDecode(command_line))
     command_line->AppendSwitch(switches::kDisableAcceleratedVideoDecode);
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   if (IsFeatureBlacklisted(gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_ENCODE) &&
       !command_line->HasSwitch(switches::kDisableWebRtcHWEncoding))
     command_line->AppendSwitch(switches::kDisableWebRtcHWEncoding);
@@ -746,6 +760,11 @@ void GpuDataManagerImplPrivate::AppendGpuCommandLine(
     }
   }
 
+  if (gpu_driver_bugs_.find(gpu::CREATE_DEFAULT_GL_CONTEXT) !=
+      gpu_driver_bugs_.end()) {
+    command_line->AppendSwitch(switches::kCreateDefaultGLContext);
+  }
+
 #if defined(OS_WIN)
   if (IsFeatureBlacklisted(gpu::GPU_FEATURE_TYPE_ACCELERATED_VPX_DECODE) &&
       gpu_preferences) {
@@ -754,7 +773,7 @@ void GpuDataManagerImplPrivate::AppendGpuCommandLine(
   }
 #endif
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   if (IsFeatureBlacklisted(gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_ENCODE) &&
       !command_line->HasSwitch(switches::kDisableWebRtcHWEncoding)) {
     if (gpu_preferences) {
@@ -765,9 +784,13 @@ void GpuDataManagerImplPrivate::AppendGpuCommandLine(
   }
 #endif
 
-  if (IsFeatureBlacklisted(gpu::GPU_FEATURE_TYPE_WEBGL2) &&
-      !command_line->HasSwitch(switches::kDisableES3APIs)) {
-    command_line->AppendSwitch(switches::kDisableES3APIs);
+  if (gpu_preferences) { // enable_es3_apis
+    bool blacklisted = IsFeatureBlacklisted(gpu::GPU_FEATURE_TYPE_WEBGL2);
+    bool enabled = base::CommandLine::ForCurrentProcess()->HasSwitch(
+        switches::kEnableES3APIs);
+    bool disabled = base::CommandLine::ForCurrentProcess()->HasSwitch(
+        switches::kDisableES3APIs);
+    gpu_preferences->enable_es3_apis = (enabled || !blacklisted) && !disabled;
   }
 
   // Pass GPU and driver information to GPU process. We try to avoid full GPU

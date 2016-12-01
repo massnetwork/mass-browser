@@ -26,16 +26,18 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/download_interrupt_reasons.h"
 #include "extensions/common/constants.h"
+#include "extensions/features/features.h"
 #include "net/base/filename_util.h"
+#include "ppapi/features/features.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "url/origin.h"
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/webstore_installer.h"
 #include "extensions/common/feature_switch.h"
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 #include "chrome/browser/plugins/plugin_prefs.h"
 #include "content/public/browser/plugin_service.h"
 #include "content/public/common/webplugininfo.h"
@@ -443,7 +445,7 @@ void DownloadTargetDeterminer::DetermineMimeTypeDone(
   DoLoop();
 }
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // The code below is used by DoDetermineIfHandledSafely to determine if the
 // file type is handled by a sandboxed plugin.
 namespace {
@@ -503,7 +505,7 @@ void IsHandledBySafePlugin(content::ResourceContext* resource_context,
 }
 
 }  // namespace
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 DownloadTargetDeterminer::Result
     DownloadTargetDeterminer::DoDetermineIfHandledSafely() {
@@ -522,7 +524,7 @@ DownloadTargetDeterminer::Result
     return CONTINUE;
   }
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   BrowserThread::PostTask(
       BrowserThread::IO,
       FROM_HERE,
@@ -540,7 +542,7 @@ DownloadTargetDeterminer::Result
 #endif
 }
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 void DownloadTargetDeterminer::DetermineIfHandledSafelyDone(
     bool is_handled_safely) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
@@ -875,7 +877,7 @@ DownloadFileType::DangerLevel DownloadTargetDeterminer::GetDangerLevel(
     return DownloadFileType::NOT_DANGEROUS;
   }
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   // Extensions that are not from the gallery are considered dangerous.
   // When off-store install is disabled we skip this, since in this case, we
   // will not offer to install the extension.

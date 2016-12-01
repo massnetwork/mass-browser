@@ -15,7 +15,6 @@ namespace ntp_snippets {
 extern const base::Feature kArticleSuggestionsFeature;
 extern const base::Feature kBookmarkSuggestionsFeature;
 extern const base::Feature kRecentOfflineTabSuggestionsFeature;
-extern const base::Feature kDownloadSuggestionsFeature;
 extern const base::Feature kPhysicalWebPageSuggestionsFeature;
 extern const base::Feature kForeignSessionsSuggestionsFeature;;
 
@@ -33,10 +32,22 @@ extern const base::Feature kSectionDismissalFeature;
 // false, all the per-provider features are ignored.
 extern const base::Feature kContentSuggestionsFeature;
 
+// Feature to allow UI as specified here: https://crbug.com/660837.
+extern const base::Feature kIncreasedVisibility;
+
+// Feature to enable the Fetch More action
+extern const base::Feature kFetchMoreFeature;
+
 // Returns a feature param as an int instead of a string.
 int GetParamAsInt(const base::Feature& feature,
                   const std::string& param_name,
                   int default_value);
+
+// Returns a feature param as a bool instead of a string.
+// TODO(jkrcal): Use this function in other code in the ntp_snippets component.
+bool GetParamAsBool(const base::Feature& feature,
+                    const std::string& param_name,
+                    bool default_value);
 
 }  // namespace ntp_snippets
 

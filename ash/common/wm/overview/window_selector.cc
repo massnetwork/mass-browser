@@ -97,7 +97,7 @@ struct WindowSelectorItemTargetComparator {
       : target(target_window) {}
 
   bool operator()(WindowSelectorItem* window) const {
-    return window->GetWindow() == target;
+    return window->Contains(target);
   }
 
   const WmWindow* target;
@@ -203,7 +203,7 @@ views::Widget* CreateTextFilter(views::TextfieldController* controller,
 
   views::Textfield* textfield = new views::Textfield;
   textfield->set_controller(controller);
-  textfield->SetBorder(views::Border::NullBorder());
+  textfield->SetBorder(views::NullBorder());
   textfield->SetBackgroundColor(kTextFilterBackgroundColor);
   textfield->SetTextColor(kTextFilterTextColor);
   views::ImageView* image_view = new views::ImageView;
@@ -567,10 +567,8 @@ void WindowSelector::OnWindowActivated(WmWindow* gained_active,
   auto iter = std::find_if(windows.begin(), windows.end(),
                            WindowSelectorItemTargetComparator(gained_active));
 
-  if (iter != windows.end()) {
-    (*iter)->ShowWindowOnExit();
-  } else if (showing_text_filter_ &&
-             lost_active == GetTextFilterWidgetWindow()) {
+  if (iter == windows.end() && showing_text_filter_ &&
+      lost_active == GetTextFilterWidgetWindow()) {
     return;
   }
 

@@ -22,7 +22,6 @@
 #include "v8/include/v8.h"
 
 class SkBitmap;
-class SkCanvas;
 
 namespace base {
 class DictionaryValue;
@@ -31,13 +30,12 @@ class DictionaryValue;
 namespace blink {
 class WebDeviceMotionData;
 class WebDeviceOrientationData;
+class WebFrame;
 class WebView;
-struct WebRect;
 }
 
 namespace test_runner {
 class AppBannerService;
-class WebViewTestProxyBase;
 }
 
 namespace content {
@@ -163,6 +161,7 @@ class BlinkTestRunner : public RenderViewObserver,
     const blink::WebPluginParams& params) override;
   float GetDeviceScaleFactor() const override;
   void RunIdleTasks(const base::Closure& callback) override;
+  void ForceTextInputStateUpdate(blink::WebFrame* frame) override;
 
   // Resets a RenderView to a known state for layout tests. It is used both when
   // a RenderView is created and when reusing an existing RenderView for the

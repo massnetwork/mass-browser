@@ -4,6 +4,8 @@
 
 #include "chrome/browser/ntp_snippets/download_suggestions_provider.h"
 
+#include <memory>
+
 #include "base/bind.h"
 #include "base/observer_list.h"
 #include "base/strings/string_number_conversions.h"
@@ -25,7 +27,6 @@ using ntp_snippets::CategoryFactory;
 using ntp_snippets::ContentSuggestion;
 using ntp_snippets::ContentSuggestionsProvider;
 using ntp_snippets::MockContentSuggestionsProviderObserver;
-using ntp_snippets::OfflinePageProxy;
 using ntp_snippets::test::CaptureDismissedSuggestions;
 using ntp_snippets::test::FakeOfflinePageModel;
 using ntp_snippets::CategoryStatus;
@@ -33,6 +34,7 @@ using offline_pages::ClientId;
 using offline_pages::OfflinePageItem;
 using test::FakeDownloadItem;
 using testing::_;
+using testing::AllOf;
 using testing::AnyNumber;
 using testing::ElementsAre;
 using testing::IsEmpty;
@@ -95,6 +97,36 @@ MATCHER_P(HasUrl, url, "") {
   return arg.url().spec() == url;
 }
 
+MATCHER_P3(HasDownloadSuggestionExtra,
+           is_download_asset,
+           target_file_path,
+           mime_type,
+           "") {
+  if (arg.download_suggestion_extra() == nullptr) {
+    *result_listener << "has no download_suggestion_extra";
+    return false;
+  }
+  auto extra = *arg.download_suggestion_extra();
+  *result_listener << "expected download asset?: " << is_download_asset
+                   << "\n actual is download asset?: "
+                   << extra.is_download_asset;
+  if (extra.is_download_asset != is_download_asset) {
+    return false;
+  }
+  *result_listener << "expected target_file_path: "
+                   << target_file_path
+                   << "\nactual target_file_path: "
+                   << extra.target_file_path.value();
+  if (extra.target_file_path.value() !=
+      base::FilePath::StringType(target_file_path)) {
+    return false;
+  }
+  *result_listener << "expected mime_type: " << mime_type
+                   << "\nactual mime_type: "
+                   << extra.mime_type;
+  return extra.mime_type == mime_type;
+}
+
 OfflinePageItem CreateDummyOfflinePage(int id) {
   return ntp_snippets::test::CreateDummyOfflinePageItem(
       id, offline_pages::kAsyncNamespace);
@@ -103,8 +135,10 @@ OfflinePageItem CreateDummyOfflinePage(int id) {
 std::vector<OfflinePageItem> CreateDummyOfflinePages(
     const std::vector<int>& ids) {
   std::vector<OfflinePageItem> result;
-  for (int id : ids)
+  for (int id : ids) {
     result.push_back(CreateDummyOfflinePage(id));
+  }
+
   return result;
 }
 
@@ -120,18 +154,20 @@ std::unique_ptr<FakeDownloadItem> CreateDummyAssetDownload(int id) {
   std::string id_string = base::IntToString(id);
   item->SetTargetFilePath(
       base::FilePath::FromUTF8Unsafe("folder/file" + id_string + ".mhtml"));
-  item->SetURL(GURL("http://dummy_file.com/" + id_string));
-  item->SetEndTime(base::Time::Now());
+  item->SetURL(GURL("http://download.com/redirected" + id_string));
+  item->SetOriginalUrl(GURL("http://download.com/" + id_string));
+  item->SetStartTime(base::Time::Now());
   item->SetFileExternallyRemoved(false);
   item->SetState(DownloadItem::DownloadState::COMPLETE);
+  item->SetMimeType("application/pdf");
   return item;
 }
 
 std::unique_ptr<FakeDownloadItem> CreateDummyAssetDownload(
     int id,
-    const base::Time end_time) {
+    const base::Time& start_time) {
   std::unique_ptr<FakeDownloadItem> item = CreateDummyAssetDownload(id);
-  item->SetEndTime(end_time);
+  item->SetStartTime(start_time);
   return item;
 }
 
@@ -152,8 +188,9 @@ class ObservedMockDownloadManager : public MockDownloadManager {
  public:
   ObservedMockDownloadManager() {}
   ~ObservedMockDownloadManager() override {
-    for (auto& observer : observers_)
+    for (auto& observer : observers_) {
       observer.ManagerGoingDown(this);
+    }
   }
 
   // Observer accessors.
@@ -166,8 +203,9 @@ class ObservedMockDownloadManager : public MockDownloadManager {
   }
 
   void NotifyDownloadCreated(DownloadItem* item) {
-    for (auto& observer : observers_)
+    for (auto& observer : observers_) {
       observer.OnDownloadCreated(this, item);
+    }
   }
 
   std::vector<std::unique_ptr<FakeDownloadItem>>* mutable_items() {
@@ -180,8 +218,9 @@ class ObservedMockDownloadManager : public MockDownloadManager {
 
   void GetAllDownloads(std::vector<DownloadItem*>* all_downloads) override {
     all_downloads->clear();
-    for (const auto& item : items_)
+    for (const auto& item : items_) {
       all_downloads->push_back(item.get());
+    }
   }
 
  private:
@@ -213,13 +252,14 @@ class DownloadSuggestionsProviderTest : public testing::Test {
     EXPECT_CALL(observer_, OnSuggestionInvalidated(_, _)).Times(AnyNumber());
   }
 
-  DownloadSuggestionsProvider* CreateProvider() {
+  DownloadSuggestionsProvider* CreateProvider(bool show_assets,
+                                              bool show_offline_pages) {
     DCHECK(!provider_);
-    scoped_refptr<OfflinePageProxy> proxy(
-        new OfflinePageProxy(&offline_pages_model_));
+    DCHECK(show_assets || show_offline_pages);
     provider_ = base::MakeUnique<DownloadSuggestionsProvider>(
-        &observer_, &category_factory_, proxy, &downloads_manager_,
-        pref_service(),
+        &observer_, &category_factory_,
+        show_offline_pages ? &offline_pages_model_ : nullptr,
+        show_assets ? &downloads_manager_ : nullptr, pref_service(),
         /*download_manager_ui_enabled=*/false);
     return provider_.get();
   }
@@ -231,9 +271,14 @@ class DownloadSuggestionsProviderTest : public testing::Test {
         ntp_snippets::KnownCategories::DOWNLOADS);
   }
 
-  void FireOfflinePageModelChanged(const std::vector<OfflinePageItem>& items) {
+  void FireOfflinePageModelLoaded() {
     DCHECK(provider_);
-    provider_->OfflinePageModelChanged(items);
+    provider_->OfflinePageModelLoaded(&offline_pages_model_);
+  }
+
+  void FireOfflinePageModelChanged() {
+    DCHECK(provider_);
+    provider_->OfflinePageModelChanged(&offline_pages_model_);
   }
 
   void FireOfflinePageDeleted(const OfflinePageItem& item) {
@@ -248,8 +293,9 @@ class DownloadSuggestionsProviderTest : public testing::Test {
 
   void FireDownloadsCreated(
       const std::vector<std::unique_ptr<FakeDownloadItem>>& items) {
-    for (const auto& item : items)
+    for (const auto& item : items) {
       FireDownloadCreated(item.get());
+    }
   }
 
   ContentSuggestion::ID GetDummySuggestionId(int id, bool is_offline_page) {
@@ -295,11 +341,18 @@ TEST_F(DownloadSuggestionsProviderTest,
   IgnoreOnCategoryStatusChangedToAvailable();
 
   *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
-  EXPECT_CALL(*observer(), OnNewSuggestions(_, downloads_category(),
-                                            UnorderedElementsAre(
-                                                HasUrl("http://dummy.com/1"),
-                                                HasUrl("http://dummy.com/2"))));
-  CreateProvider();
+  EXPECT_CALL(*observer(),
+              OnNewSuggestions(
+                  _, downloads_category(),
+                  UnorderedElementsAre(AllOf(HasUrl("http://dummy.com/1"),
+                                             HasDownloadSuggestionExtra(
+                                                 /*is_download_asset=*/false,
+                                                 FILE_PATH_LITERAL(""), "")),
+                                       AllOf(HasUrl("http://dummy.com/2"),
+                                             HasDownloadSuggestionExtra(
+                                                 /*is_download_asset=*/false,
+                                                 FILE_PATH_LITERAL(""), "")))));
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
 }
 
 TEST_F(DownloadSuggestionsProviderTest,
@@ -309,22 +362,35 @@ TEST_F(DownloadSuggestionsProviderTest,
 
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(0)));
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
 
   std::vector<std::unique_ptr<FakeDownloadItem>> asset_downloads =
       CreateDummyAssetDownloads({1, 2});
 
   EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("file:///folder/file1.mhtml"))));
+              OnNewSuggestions(_, downloads_category(),
+                               UnorderedElementsAre(AllOf(
+                                   HasUrl("http://download.com/1"),
+                                   HasDownloadSuggestionExtra(
+                                       /*is_download_asset=*/true,
+                                       FILE_PATH_LITERAL("folder/file1.mhtml"),
+                                       "application/pdf")))));
   FireDownloadCreated(asset_downloads[0].get());
 
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(
+                           AllOf(HasUrl("http://download.com/1"),
+                                 HasDownloadSuggestionExtra(
+                                     /*is_download_asset=*/true,
+                                     FILE_PATH_LITERAL("folder/file1.mhtml"),
+                                     "application/pdf")),
+                           AllOf(HasUrl("http://download.com/2"),
+                                 HasDownloadSuggestionExtra(
+                                     /*is_download_asset=*/true,
+                                     FILE_PATH_LITERAL("folder/file2.mhtml"),
+                                     "application/pdf")))));
   FireDownloadCreated(asset_downloads[1].get());
 }
 
@@ -337,26 +403,26 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldMixInBothSources) {
                                             UnorderedElementsAre(
                                                 HasUrl("http://dummy.com/1"),
                                                 HasUrl("http://dummy.com/2"))));
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
 
   std::vector<std::unique_ptr<FakeDownloadItem>> asset_downloads =
       CreateDummyAssetDownloads({1, 2});
 
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"))));
   FireDownloadCreated(asset_downloads[0].get());
 
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
   FireDownloadCreated(asset_downloads[1].get());
 }
 
@@ -378,7 +444,7 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldSortSuggestions) {
               OnNewSuggestions(_, downloads_category(),
                                ElementsAre(HasUrl("http://dummy.com/2"),
                                            HasUrl("http://dummy.com/1"))));
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
 
   std::vector<std::unique_ptr<FakeDownloadItem>> asset_downloads;
   asset_downloads.push_back(CreateDummyAssetDownload(3, next_week));
@@ -386,16 +452,16 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldSortSuggestions) {
 
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(),
-                               ElementsAre(HasUrl("file:///folder/file3.mhtml"),
+                               ElementsAre(HasUrl("http://download.com/3"),
                                            HasUrl("http://dummy.com/2"),
                                            HasUrl("http://dummy.com/1"))));
   FireDownloadCreated(asset_downloads[0].get());
 
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(),
-                               ElementsAre(HasUrl("file:///folder/file3.mhtml"),
+                               ElementsAre(HasUrl("http://download.com/3"),
                                            HasUrl("http://dummy.com/2"),
-                                           HasUrl("file:///folder/file4.mhtml"),
+                                           HasUrl("http://download.com/4"),
                                            HasUrl("http://dummy.com/1"))));
   FireDownloadCreated(asset_downloads[1].get());
 }
@@ -407,16 +473,16 @@ TEST_F(DownloadSuggestionsProviderTest,
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(Lt(4ul))))
       .Times(2);
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
 
   *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1, 2});
   FireDownloadsCreated(downloads_manager()->items());
 
@@ -438,15 +504,15 @@ TEST_F(DownloadSuggestionsProviderTest,
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(Lt(4ul))))
       .Times(2);
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
   *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1, 2});
   FireDownloadsCreated(downloads_manager()->items());
 
@@ -455,12 +521,12 @@ TEST_F(DownloadSuggestionsProviderTest,
   provider()->DismissSuggestion(
       GetDummySuggestionId(1, /*is_offline_page=*/false));
 
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
-  FireOfflinePageModelChanged(offline_pages_model()->items());
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/2"))));
+  FireOfflinePageModelChanged();
 }
 
 TEST_F(DownloadSuggestionsProviderTest, ShouldReturnDismissedSuggestions) {
@@ -469,15 +535,15 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldReturnDismissedSuggestions) {
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(Lt(4ul))))
       .Times(2);
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
   *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1, 2});
   FireDownloadsCreated(downloads_manager()->items());
 
@@ -488,7 +554,7 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldReturnDismissedSuggestions) {
 
   EXPECT_THAT(GetDismissedSuggestions(),
               UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                   HasUrl("file:///folder/file1.mhtml")));
+                                   HasUrl("http://download.com/1")));
 }
 
 TEST_F(DownloadSuggestionsProviderTest, ShouldClearDismissedSuggestions) {
@@ -497,15 +563,15 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldClearDismissedSuggestions) {
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(Lt(4ul))))
       .Times(2);
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
   *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1, 2});
   FireDownloadsCreated(downloads_manager()->items());
 
@@ -514,13 +580,13 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldClearDismissedSuggestions) {
   provider()->DismissSuggestion(
       GetDummySuggestionId(1, /*is_offline_page=*/false));
 
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
   provider()->ClearDismissedSuggestionsForDebugging(downloads_category());
   EXPECT_THAT(GetDismissedSuggestions(), IsEmpty());
 }
@@ -532,28 +598,28 @@ TEST_F(DownloadSuggestionsProviderTest,
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(Lt(4ul))))
       .Times(2);
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
   *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1, 2});
   FireDownloadsCreated(downloads_manager()->items());
 
   provider()->DismissSuggestion(
       GetDummySuggestionId(1, /*is_offline_page=*/true));
 
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
-  FireOfflinePageModelChanged(offline_pages_model()->items());
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
+  FireOfflinePageModelChanged();
 }
 
 TEST_F(DownloadSuggestionsProviderTest, ShouldReplaceDismissedItemWithNewData) {
@@ -562,15 +628,15 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldReplaceDismissedItemWithNewData) {
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(Lt(5ul))))
       .Times(5);
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"),
-                                       HasUrl("file:///folder/file3.mhtml"),
-                                       HasUrl("file:///folder/file4.mhtml"),
-                                       HasUrl("file:///folder/file5.mhtml"))));
-  CreateProvider();
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"),
+                                            HasUrl("http://download.com/3"),
+                                            HasUrl("http://download.com/4"),
+                                            HasUrl("http://download.com/5"))));
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   // Currently the provider stores five items in its internal cache, so six
   // items are needed to check whether all downloads are fetched on dismissal.
   *(downloads_manager()->mutable_items()) =
@@ -582,15 +648,15 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldReplaceDismissedItemWithNewData) {
 
   // The provider is not notified about the 6th item, however, it must report
   // it now.
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("file:///folder/file2.mhtml"),
-                                       HasUrl("file:///folder/file3.mhtml"),
-                                       HasUrl("file:///folder/file4.mhtml"),
-                                       HasUrl("file:///folder/file5.mhtml"),
-                                       HasUrl("file:///folder/file6.mhtml"))));
-  FireOfflinePageModelChanged(offline_pages_model()->items());
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://download.com/2"),
+                                            HasUrl("http://download.com/3"),
+                                            HasUrl("http://download.com/4"),
+                                            HasUrl("http://download.com/5"),
+                                            HasUrl("http://download.com/6"))));
+  FireOfflinePageModelChanged();
 }
 
 TEST_F(DownloadSuggestionsProviderTest,
@@ -599,27 +665,27 @@ TEST_F(DownloadSuggestionsProviderTest,
 
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(Lt(3ul))));
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"))));
   *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1});
   FireDownloadsCreated(downloads_manager()->items());
 
   // We add another item manually, so that when it gets deleted it is not
   // present in DownloadsManager list.
   std::unique_ptr<FakeDownloadItem> removed_item = CreateDummyAssetDownload(2);
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("http://dummy.com/1"),
-                                       HasUrl("http://dummy.com/2"),
-                                       HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://dummy.com/1"),
+                                            HasUrl("http://dummy.com/2"),
+                                            HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
   FireDownloadCreated(removed_item.get());
 
   EXPECT_CALL(*observer(),
@@ -641,15 +707,15 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldReplaceRemovedItemWithNewData) {
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(Lt(5ul))))
       .Times(5);
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"),
-                                       HasUrl("file:///folder/file3.mhtml"),
-                                       HasUrl("file:///folder/file4.mhtml"),
-                                       HasUrl("file:///folder/file5.mhtml"))));
-  CreateProvider();
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"),
+                                            HasUrl("http://download.com/3"),
+                                            HasUrl("http://download.com/4"),
+                                            HasUrl("http://download.com/5"))));
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   *(downloads_manager()->mutable_items()) =
       CreateDummyAssetDownloads({1, 2, 3, 4, 5});
   FireDownloadsCreated(downloads_manager()->items());
@@ -659,29 +725,29 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldReplaceRemovedItemWithNewData) {
   // the provider to show the new item.
   std::unique_ptr<FakeDownloadItem> removed_item = CreateDummyAssetDownload(
       100, base::Time::Now() + base::TimeDelta::FromDays(1));
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(_, downloads_category(),
-                               UnorderedElementsAre(
-                                   HasUrl("file:///folder/file1.mhtml"),
-                                   HasUrl("file:///folder/file2.mhtml"),
-                                   HasUrl("file:///folder/file3.mhtml"),
-                                   HasUrl("file:///folder/file4.mhtml"),
-                                   HasUrl("file:///folder/file100.mhtml"))));
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(
+          _, downloads_category(),
+          UnorderedElementsAre(
+              HasUrl("http://download.com/1"), HasUrl("http://download.com/2"),
+              HasUrl("http://download.com/3"), HasUrl("http://download.com/4"),
+              HasUrl("http://download.com/100"))));
   FireDownloadCreated(removed_item.get());
 
   // |OnDownloadDestroyed| notification is called in |DownloadItem|'s
   // destructor.
   removed_item.reset();
 
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(
-                  _, downloads_category(),
-                  UnorderedElementsAre(HasUrl("file:///folder/file1.mhtml"),
-                                       HasUrl("file:///folder/file2.mhtml"),
-                                       HasUrl("file:///folder/file3.mhtml"),
-                                       HasUrl("file:///folder/file4.mhtml"),
-                                       HasUrl("file:///folder/file5.mhtml"))));
-  FireOfflinePageModelChanged(offline_pages_model()->items());
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"),
+                                            HasUrl("http://download.com/3"),
+                                            HasUrl("http://download.com/4"),
+                                            HasUrl("http://download.com/5"))));
+  FireOfflinePageModelChanged();
 }
 
 TEST_F(DownloadSuggestionsProviderTest, ShouldPruneOfflinePagesDismissedIDs) {
@@ -695,7 +761,7 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldPruneOfflinePagesDismissedIDs) {
                                                 HasUrl("http://dummy.com/1"),
                                                 HasUrl("http://dummy.com/2"),
                                                 HasUrl("http://dummy.com/3"))));
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
 
   provider()->DismissSuggestion(
       GetDummySuggestionId(1, /*is_offline_page=*/true));
@@ -705,12 +771,18 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldPruneOfflinePagesDismissedIDs) {
       GetDummySuggestionId(3, /*is_offline_page=*/true));
   EXPECT_THAT(GetDismissedSuggestions(), SizeIs(3));
 
-  // Prune on getting all offline pages. Note that the first suggestion is not
-  // removed from |offline_pages_model| storage, because otherwise
-  // |GetDismissedSuggestions| cannot return it.
+  // Prune on getting all offline pages.
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), IsEmpty()));
-  FireOfflinePageModelChanged(CreateDummyOfflinePages({2, 3}));
+
+  *(offline_pages_model()->mutable_items()) =
+      CreateDummyOfflinePages({2, 3});
+  FireOfflinePageModelChanged();
+
+  // The first suggestion is added back to the |offline_pages_model| storage,
+  // because otherwise |GetDismissedSuggestions| cannot return it.
+  *(offline_pages_model()->mutable_items()) =
+      CreateDummyOfflinePages({1, 2, 3});
   EXPECT_THAT(GetDismissedSuggestions(), SizeIs(2));
 
   // Prune when offline page is deleted.
@@ -725,7 +797,7 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldPruneAssetDownloadsDismissedIDs) {
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(Lt(3ul))))
       .Times(3);
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1, 2});
   FireDownloadsCreated(downloads_manager()->items());
 
@@ -739,13 +811,19 @@ TEST_F(DownloadSuggestionsProviderTest, ShouldPruneAssetDownloadsDismissedIDs) {
   EXPECT_THAT(GetDismissedSuggestions(), SizeIs(1));
 }
 
-TEST_F(DownloadSuggestionsProviderTest, ShouldNotFetchAssetDownloadsOnStartup) {
+TEST_F(DownloadSuggestionsProviderTest,
+       ShouldFetchAssetDownloadsOnStartupButOnlyOnce) {
   IgnoreOnCategoryStatusChangedToAvailable();
 
+  // Downloads manager was created before the provider, so |OnDownloadCreated|
+  // calls "were" missed, but the provider must show missed items anyway.
   *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1, 2});
-  EXPECT_CALL(*observer(),
-              OnNewSuggestions(_, downloads_category(), IsEmpty()));
-  CreateProvider();
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
 }
 
 TEST_F(DownloadSuggestionsProviderTest,
@@ -756,7 +834,7 @@ TEST_F(DownloadSuggestionsProviderTest,
               OnNewSuggestions(_, downloads_category(), IsEmpty()));
   EXPECT_CALL(*observer(),
               OnNewSuggestions(_, downloads_category(), SizeIs(1)));
-  CreateProvider();
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
   *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1});
   FireDownloadsCreated(downloads_manager()->items());
 
@@ -765,4 +843,89 @@ TEST_F(DownloadSuggestionsProviderTest,
                   _, GetDummySuggestionId(1, /*is_offline_page=*/false)));
   (*downloads_manager()->mutable_items())[0]->SetFileExternallyRemoved(true);
   (*downloads_manager()->mutable_items())[0]->NotifyDownloadUpdated();
+}
+
+TEST_F(DownloadSuggestionsProviderTest,
+       ShouldNotShowOfflinePagesWhenTurnedOff) {
+  IgnoreOnCategoryStatusChangedToAvailable();
+  IgnoreOnSuggestionInvalidated();
+
+  *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
+  EXPECT_CALL(*observer(),
+              OnNewSuggestions(_, downloads_category(), IsEmpty()));
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/false);
+
+  std::vector<std::unique_ptr<FakeDownloadItem>> asset_downloads =
+      CreateDummyAssetDownloads({1});
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://download.com/1"))));
+  FireDownloadCreated(asset_downloads[0].get());
+  // TODO(vitaliii): Notify the provider that an offline page has been updated.
+}
+
+TEST_F(DownloadSuggestionsProviderTest, ShouldNotShowAssetsWhenTurnedOff) {
+  IgnoreOnCategoryStatusChangedToAvailable();
+  IgnoreOnSuggestionInvalidated();
+
+  *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
+  *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1, 2});
+  EXPECT_CALL(*observer(), OnNewSuggestions(_, downloads_category(),
+                                            UnorderedElementsAre(
+                                                HasUrl("http://dummy.com/1"),
+                                                HasUrl("http://dummy.com/2"))));
+  CreateProvider(/*show_assets=*/false, /*show_offline_pages=*/true);
+  downloads_manager()->NotifyDownloadCreated(
+      downloads_manager()->items()[0].get());
+  // This notification should not reach the provider, because the asset
+  // downloads data source is not provided. If it is and the provider reacts to
+  // the notification, the test will fail because the observer is a strict mock.
+  (*downloads_manager()->mutable_items())[0]->NotifyDownloadUpdated();
+}
+
+TEST_F(DownloadSuggestionsProviderTest, ShouldLoadOfflinePagesOnModelLoaded) {
+  IgnoreOnCategoryStatusChangedToAvailable();
+  IgnoreOnSuggestionInvalidated();
+
+  offline_pages_model()->set_is_loaded(false);
+  EXPECT_CALL(*observer(),
+              OnNewSuggestions(_, downloads_category(), IsEmpty()));
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
+
+  *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
+  offline_pages_model()->set_is_loaded(true);
+  EXPECT_CALL(*observer(), OnNewSuggestions(_, downloads_category(),
+                                            UnorderedElementsAre(
+                                                HasUrl("http://dummy.com/1"),
+                                                HasUrl("http://dummy.com/2"))));
+  FireOfflinePageModelLoaded();
+}
+
+TEST_F(DownloadSuggestionsProviderTest,
+       ShouldLoadOfflinePagesIfMissesOnModelLoaded) {
+  IgnoreOnCategoryStatusChangedToAvailable();
+  IgnoreOnSuggestionInvalidated();
+
+  *(offline_pages_model()->mutable_items()) = CreateDummyOfflinePages({1, 2});
+  offline_pages_model()->set_is_loaded(true);
+  EXPECT_CALL(*observer(), OnNewSuggestions(_, downloads_category(),
+                                            UnorderedElementsAre(
+                                                HasUrl("http://dummy.com/1"),
+                                                HasUrl("http://dummy.com/2"))));
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/true);
+}
+
+TEST_F(DownloadSuggestionsProviderTest,
+       ShouldLoadAndSubmitMissedAssetsEvenIfOfflinePagesAreTurnedOff) {
+  IgnoreOnCategoryStatusChangedToAvailable();
+  IgnoreOnSuggestionInvalidated();
+
+  *(downloads_manager()->mutable_items()) = CreateDummyAssetDownloads({1, 2});
+  EXPECT_CALL(
+      *observer(),
+      OnNewSuggestions(_, downloads_category(),
+                       UnorderedElementsAre(HasUrl("http://download.com/1"),
+                                            HasUrl("http://download.com/2"))));
+  CreateProvider(/*show_assets=*/true, /*show_offline_pages=*/false);
 }

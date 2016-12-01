@@ -58,7 +58,8 @@ static bool MakeDecoderContextCurrent(
   return true;
 }
 
-#if (defined(OS_CHROMEOS) && defined(ARCH_CPU_X86_FAMILY)) || defined(OS_MACOSX)
+#if (defined(OS_CHROMEOS) && defined(ARCH_CPU_X86_FAMILY)) || \
+    defined(OS_MACOSX) || defined(OS_WIN)
 static bool BindImage(const base::WeakPtr<gpu::GpuCommandBufferStub>& stub,
                       uint32_t client_texture_id,
                       uint32_t texture_target,
@@ -171,7 +172,8 @@ GpuVideoDecodeAccelerator::GpuVideoDecodeAccelerator(
   get_gl_context_cb_ = base::Bind(&GetGLContext, stub_->AsWeakPtr());
   make_context_current_cb_ =
       base::Bind(&MakeDecoderContextCurrent, stub_->AsWeakPtr());
-#if (defined(OS_CHROMEOS) && defined(ARCH_CPU_X86_FAMILY)) || defined(OS_MACOSX)
+#if (defined(OS_CHROMEOS) && defined(ARCH_CPU_X86_FAMILY)) || \
+    defined(OS_MACOSX) || defined(OS_WIN)
   bind_image_cb_ = base::Bind(&BindImage, stub_->AsWeakPtr());
 #endif
   get_gles2_decoder_cb_ = base::Bind(&GetGLES2Decoder, stub_->AsWeakPtr());
@@ -204,6 +206,7 @@ bool GpuVideoDecodeAccelerator::OnMessageReceived(const IPC::Message& msg) {
                         OnReusePictureBuffer)
     IPC_MESSAGE_HANDLER(AcceleratedVideoDecoderMsg_Flush, OnFlush)
     IPC_MESSAGE_HANDLER(AcceleratedVideoDecoderMsg_Reset, OnReset)
+    IPC_MESSAGE_HANDLER(AcceleratedVideoDecoderMsg_SetSurface, OnSetSurface)
     IPC_MESSAGE_HANDLER(AcceleratedVideoDecoderMsg_Destroy, OnDestroy)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
@@ -497,6 +500,11 @@ void GpuVideoDecodeAccelerator::OnReset() {
   video_decode_accelerator_->Reset();
 }
 
+void GpuVideoDecodeAccelerator::OnSetSurface(int32_t surface_id) {
+  DCHECK(video_decode_accelerator_);
+  video_decode_accelerator_->SetSurface(surface_id);
+}
+
 void GpuVideoDecodeAccelerator::OnDestroy() {
   DCHECK(video_decode_accelerator_);
   OnWillDestroyStub();
@@ -519,7 +527,6 @@ void GpuVideoDecodeAccelerator::SetTextureCleared(const Picture& picture) {
     GLenum target = texture_ref->texture()->target();
     gpu::gles2::TextureManager* texture_manager =
         stub_->decoder()->GetContextGroup()->texture_manager();
-    DCHECK(!texture_ref->texture()->IsLevelCleared(target, 0));
     texture_manager->SetLevelCleared(texture_ref.get(), target, 0, true);
   }
   uncleared_textures_.erase(it);

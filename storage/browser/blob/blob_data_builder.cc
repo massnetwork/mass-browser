@@ -57,6 +57,9 @@ uint64_t BlobDataBuilder::GetFutureFileID(const DataElement& element) {
 }
 
 BlobDataBuilder::BlobDataBuilder(const std::string& uuid) : uuid_(uuid) {}
+
+BlobDataBuilder::BlobDataBuilder(BlobDataBuilder&&) = default;
+BlobDataBuilder& BlobDataBuilder::operator=(BlobDataBuilder&&) = default;
 BlobDataBuilder::~BlobDataBuilder() {}
 
 void BlobDataBuilder::AppendIPCDataElement(const DataElement& ipc_data) {
@@ -65,7 +68,7 @@ void BlobDataBuilder::AppendIPCDataElement(const DataElement& ipc_data) {
     case DataElement::TYPE_BYTES:
       DCHECK(!ipc_data.offset());
       AppendData(ipc_data.bytes(),
-                 base::checked_cast<size_t, uint64_t>(length));
+                 base::checked_cast<size_t>(length));
       break;
     case DataElement::TYPE_FILE:
       AppendFile(ipc_data.path(), ipc_data.offset(), length,

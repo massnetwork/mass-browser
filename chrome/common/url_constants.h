@@ -15,6 +15,8 @@
 #include "build/build_config.h"
 #include "chrome/common/features.h"
 #include "content/public/common/url_constants.h"
+#include "media/media_features.h"
+#include "printing/features/features.h"
 
 namespace chrome {
 
@@ -66,7 +68,6 @@ extern const char kChromeUIOmniboxURL[];
 extern const char kChromeUIPasswordManagerInternalsHost[];
 extern const char kChromeUIPluginsURL[];
 extern const char kChromeUIPolicyURL[];
-extern const char kChromeUIProfileSigninConfirmationURL[];
 extern const char kChromeUIMdUserManagerUrl[];
 extern const char kChromeUIPrintURL[];
 extern const char kChromeUIQuitURL[];
@@ -75,6 +76,7 @@ extern const char kChromeUIMdSettingsURL[];
 extern const char kChromeUISettingsURL[];
 extern const char kChromeUIContentSettingsURL[];
 extern const char kChromeUISettingsFrameURL[];
+extern const char kChromeUISigninEmailConfirmationURL[];
 extern const char kChromeUISigninErrorURL[];
 extern const char kChromeUISiteEngagementHost[];
 extern const char kChromeUISuggestionsURL[];
@@ -86,7 +88,6 @@ extern const char kChromeUIThumbnailURL[];
 extern const char kChromeUIThumbnailListURL[];
 extern const char kChromeUIUberFrameURL[];
 extern const char kChromeUIUserActionsURL[];
-extern const char kChromeUIUserManagerURL[];
 extern const char kChromeUIVersionURL[];
 extern const char kChromeUIWelcomeURL[];
 extern const char kChromeUIWelcomeWin10URL[];
@@ -129,7 +130,7 @@ extern const char kChromeUIMetroFlowURL[];
 extern const char kChromeUITabModalConfirmDialogURL[];
 #endif
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 extern const char kChromeUIWebRtcLogsURL[];
 #endif
 
@@ -209,8 +210,6 @@ extern const char kChromeUIOmniboxHost[];
 extern const char kChromeUIPluginsHost[];
 extern const char kChromeUIComponentsHost[];
 extern const char kChromeUIPolicyHost[];
-extern const char kChromeUIProfileSigninConfirmationHost[];
-extern const char kChromeUIUserManagerHost[];
 extern const char kChromeUIMdUserManagerHost[];
 extern const char kChromeUIPredictorsHost[];
 extern const char kChromeUIProfilerHost[];
@@ -220,6 +219,7 @@ extern const char kChromeUIRestartHost[];
 extern const char kChromeUISettingsHost[];
 extern const char kChromeUISettingsFrameHost[];
 extern const char kChromeUIShorthangHost[];
+extern const char kChromeUISigninEmailConfirmationHost[];
 extern const char kChromeUISigninErrorHost[];
 extern const char kChromeUISignInInternalsHost[];
 extern const char kChromeUISuggestionsHost[];
@@ -248,7 +248,7 @@ extern const char kChromeUIWelcomeHost[];
 extern const char kChromeUIWelcomeWin10Host[];
 extern const char kChromeUIWorkersHost[];
 
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 extern const char kChromeUIPrintHost[];
 #endif  // ENABLE_PRINT_PREVIEW
 
@@ -314,7 +314,7 @@ extern const char kChromeUIMetroFlowHost[];
 extern const char kChromeUITabModalConfirmDialogHost[];
 #endif
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 extern const char kChromeUIWebRtcLogsHost[];
 #endif
 

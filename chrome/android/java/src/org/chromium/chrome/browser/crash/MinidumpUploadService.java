@@ -16,6 +16,8 @@ import org.chromium.base.annotations.CalledByNative;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.chrome.browser.preferences.ChromePreferenceManager;
 import org.chromium.chrome.browser.preferences.privacy.PrivacyPreferencesManager;
+import org.chromium.components.minidump_uploader.CrashFileManager;
+import org.chromium.components.minidump_uploader.MinidumpUploadCallable;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -220,6 +222,10 @@ public class MinidumpUploadService extends IntentService {
             return;
         }
         int tries = CrashFileManager.readAttemptNumber(minidumpFileName);
+        // -1 means no attempt number was read.
+        if (tries == -1) {
+            tries = 0;
+        }
 
         // Since we do not rename a file after reaching max number of tries,
         // files that have maxed out tries will NOT reach this.

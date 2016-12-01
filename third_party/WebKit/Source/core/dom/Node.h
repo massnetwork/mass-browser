@@ -38,6 +38,7 @@
 #include "core/style/ComputedStyleConstants.h"
 #include "platform/geometry/LayoutRect.h"
 #include "platform/heap/Handle.h"
+#include "wtf/Compiler.h"
 #include "wtf/Forward.h"
 
 // This needs to be here because Element.cpp also depends on it.
@@ -77,8 +78,8 @@ class StyleChangeReasonForTracing;
 class Text;
 class TouchEvent;
 
-const int nodeStyleChangeShift = 19;
-const int nodeCustomElementShift = 21;
+const int nodeStyleChangeShift = 18;
+const int nodeCustomElementShift = 20;
 
 enum StyleChangeType {
   NoStyleChange = 0,
@@ -198,7 +199,6 @@ class CORE_EXPORT Node : public EventTarget {
   Node* firstChild() const;
   Node* lastChild() const;
   Node* getRootNode(const GetRootNodeOptions&) const;
-  Text* nextTextSibling() const;
   Node& treeRoot() const;
   Node& shadowIncludingRoot() const;
   // closed-shadow-hidden is defined at
@@ -472,16 +472,6 @@ class CORE_EXPORT Node : public EventTarget {
 
   void updateDistribution();
 
-  bool svgFilterNeedsLayerUpdate() const {
-    return getFlag(SVGFilterNeedsLayerUpdateFlag);
-  }
-  void setSVGFilterNeedsLayerUpdate() {
-    setFlag(SVGFilterNeedsLayerUpdateFlag);
-  }
-  void clearSVGFilterNeedsLayerUpdate() {
-    clearFlag(SVGFilterNeedsLayerUpdateFlag);
-  }
-
   void setIsLink(bool f);
 
   bool hasEventTargetData() const { return getFlag(HasEventTargetDataFlag); }
@@ -494,7 +484,7 @@ class CORE_EXPORT Node : public EventTarget {
   virtual void setDragged(bool flag);
   virtual void setHovered(bool flag = true);
 
-  virtual short tabIndex() const;
+  virtual int tabIndex() const;
 
   virtual Node* focusDelegate();
   // This is called only when the node is focused.
@@ -728,12 +718,12 @@ class CORE_EXPORT Node : public EventTarget {
 
   void dispatchSubtreeModifiedEvent();
   DispatchEventResult dispatchDOMActivateEvent(int detail,
-                                               Event* underlyingEvent);
+                                               Event& underlyingEvent);
 
-  DispatchEventResult dispatchMouseEvent(const PlatformMouseEvent&,
-                                         const AtomicString& eventType,
-                                         int clickCount = 0,
-                                         Node* relatedTarget = nullptr);
+  void dispatchMouseEvent(const PlatformMouseEvent&,
+                          const AtomicString& eventType,
+                          int clickCount = 0,
+                          Node* relatedTarget = nullptr);
 
   void dispatchSimulatedClick(
       Event* underlyingEvent,
@@ -789,10 +779,10 @@ class CORE_EXPORT Node : public EventTarget {
 
   v8::Local<v8::Object> wrap(v8::Isolate*,
                              v8::Local<v8::Object> creationContext) override;
-  v8::Local<v8::Object> associateWithWrapper(
+  WARN_UNUSED_RESULT v8::Local<v8::Object> associateWithWrapper(
       v8::Isolate*,
       const WrapperTypeInfo*,
-      v8::Local<v8::Object> wrapper) override WARN_UNUSED_RETURN;
+      v8::Local<v8::Object> wrapper) override;
 
  private:
   enum NodeFlags {
@@ -823,30 +813,29 @@ class CORE_EXPORT Node : public EventTarget {
     IsFinishedParsingChildrenFlag = 1 << 12,
 
     // Flags related to recalcStyle.
-    SVGFilterNeedsLayerUpdateFlag = 1 << 13,
-    HasCustomStyleCallbacksFlag = 1 << 14,
-    ChildNeedsStyleInvalidationFlag = 1 << 15,
-    NeedsStyleInvalidationFlag = 1 << 16,
-    ChildNeedsDistributionRecalcFlag = 1 << 17,
-    ChildNeedsStyleRecalcFlag = 1 << 18,
+    HasCustomStyleCallbacksFlag = 1 << 13,
+    ChildNeedsStyleInvalidationFlag = 1 << 14,
+    NeedsStyleInvalidationFlag = 1 << 15,
+    ChildNeedsDistributionRecalcFlag = 1 << 16,
+    ChildNeedsStyleRecalcFlag = 1 << 17,
     StyleChangeMask =
         1 << nodeStyleChangeShift | 1 << (nodeStyleChangeShift + 1),
 
     CustomElementStateMask = 0x3 << nodeCustomElementShift,
 
-    HasNameOrIsEditingTextFlag = 1 << 23,
-    HasEventTargetDataFlag = 1 << 24,
+    HasNameOrIsEditingTextFlag = 1 << 22,
+    HasEventTargetDataFlag = 1 << 23,
 
-    V0CustomElementFlag = 1 << 25,
-    V0CustomElementUpgradedFlag = 1 << 26,
+    V0CustomElementFlag = 1 << 24,
+    V0CustomElementUpgradedFlag = 1 << 25,
 
-    NeedsReattachLayoutTree = 1 << 27,
-    ChildNeedsReattachLayoutTree = 1 << 28,
+    NeedsReattachLayoutTree = 1 << 26,
+    ChildNeedsReattachLayoutTree = 1 << 27,
 
     DefaultNodeFlags = IsFinishedParsingChildrenFlag | NeedsReattachStyleChange
   };
 
-  // 3 bits remaining.
+  // 4 bits remaining.
 
   bool getFlag(NodeFlags mask) const { return m_nodeFlags & mask; }
   void setFlag(bool f, NodeFlags mask) {
@@ -854,6 +843,13 @@ class CORE_EXPORT Node : public EventTarget {
   }
   void setFlag(NodeFlags mask) { m_nodeFlags |= mask; }
   void clearFlag(NodeFlags mask) { m_nodeFlags &= ~mask; }
+
+  // TODO(mustaq): This is a hack to fix sites with flash objects. We should
+  // instead route all PlatformMouseEvents through EventHandler. See
+  // crbug.com/665924.
+  void createAndDispatchPointerEvent(const AtomicString& mouseEventName,
+                                     const PlatformMouseEvent&,
+                                     LocalDOMWindow* view);
 
  protected:
   enum ConstructionType {

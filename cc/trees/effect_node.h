@@ -7,7 +7,7 @@
 
 #include "cc/base/cc_export.h"
 #include "cc/output/filter_operations.h"
-#include "third_party/skia/include/core/SkXfermode.h"
+#include "third_party/skia/include/core/SkBlendMode.h"
 #include "ui/gfx/geometry/point_f.h"
 #include "ui/gfx/geometry/size_f.h"
 
@@ -20,10 +20,6 @@ class TracedValue;
 namespace cc {
 
 class RenderSurfaceImpl;
-
-namespace proto {
-class TreeNode;
-}  // namespace proto
 
 struct CC_EXPORT EffectNode {
   EffectNode();
@@ -40,7 +36,7 @@ struct CC_EXPORT EffectNode {
   FilterOperations background_filters;
   gfx::PointF filters_origin;
 
-  SkXfermode::Mode blend_mode;
+  SkBlendMode blend_mode;
 
   gfx::Vector2dF surface_contents_scale;
 
@@ -48,6 +44,13 @@ struct CC_EXPORT EffectNode {
 
   bool has_render_surface;
   RenderSurfaceImpl* render_surface;
+  // Only applicable if has render surface. A true value means a clip needs to
+  // be applied to the output of the surface when it is drawn onto its parent
+  // surface.
+  // TODO(crbug.com/504464): There is ongoing work to delay render surface
+  // decision to later phase of the pipeline. This flag shall be removed and
+  // computed during render surface decision.
+  bool surface_is_clipped;
   bool has_copy_request;
   bool hidden_by_backface_visibility;
   bool double_sided;
@@ -72,8 +75,6 @@ struct CC_EXPORT EffectNode {
 
   bool operator==(const EffectNode& other) const;
 
-  void ToProtobuf(proto::TreeNode* proto) const;
-  void FromProtobuf(const proto::TreeNode& proto);
   void AsValueInto(base::trace_event::TracedValue* value) const;
 };
 

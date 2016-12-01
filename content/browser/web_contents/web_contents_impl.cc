@@ -71,7 +71,7 @@
 #include "content/browser/renderer_host/render_widget_host_input_event_router.h"
 #include "content/browser/renderer_host/render_widget_host_view_base.h"
 #include "content/browser/renderer_host/text_input_manager.h"
-#include "content/browser/screen_orientation/screen_orientation_dispatcher_host_impl.h"
+#include "content/browser/screen_orientation/screen_orientation.h"
 #include "content/browser/site_instance_impl.h"
 #include "content/browser/web_contents/web_contents_view_child_frame.h"
 #include "content/browser/web_contents/web_contents_view_guest.h"
@@ -80,6 +80,7 @@
 #include "content/browser/webui/web_ui_impl.h"
 #include "content/common/browser_plugin/browser_plugin_constants.h"
 #include "content/common/browser_plugin/browser_plugin_messages.h"
+#include "content/common/drag_messages.h"
 #include "content/common/frame_messages.h"
 #include "content/common/input_messages.h"
 #include "content/common/page_messages.h"
@@ -103,7 +104,7 @@
 #include "content/public/browser/notification_types.h"
 #include "content/public/browser/render_widget_host_iterator.h"
 #include "content/public/browser/resource_request_details.h"
-#include "content/public/browser/screen_orientation_dispatcher_host.h"
+#include "content/public/browser/screen_orientation_provider.h"
 #include "content/public/browser/security_style_explanations.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/user_metrics.h"
@@ -128,6 +129,7 @@
 #include "net/http/http_transaction_factory.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_getter.h"
+#include "ppapi/features/features.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "third_party/WebKit/public/platform/WebSecurityStyle.h"
 #include "third_party/WebKit/public/web/WebSandboxFlags.h"
@@ -155,7 +157,7 @@
 #include "ui/aura/mus/mus_util.h"
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 #include "content/browser/media/session/pepper_playback_observer.h"
 #endif  // ENABLE_PLUGINS
 
@@ -463,7 +465,7 @@ WebContentsImpl::WebContentsImpl(BrowserContext* browser_context)
 #else
   media_web_contents_observer_.reset(new MediaWebContentsObserver(this));
 #endif
-#if defined (ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   pepper_playback_observer_.reset(new PepperPlaybackObserver(this));
 #endif
   loader_io_thread_notifier_.reset(new LoaderIOThreadNotifier(this));
@@ -482,9 +484,9 @@ WebContentsImpl::~WebContentsImpl() {
     entry.second->CloseAllBindings();
 
   WebContentsImpl* outermost = GetOutermostWebContents();
-  if (GetFocusedWebContents() == this && this != outermost) {
+  if (this != outermost && ContainsOrIsFocusedWebContents()) {
     // If the current WebContents is in focus, unset it.
-    outermost->node_->SetFocusedWebContents(outermost);
+    outermost->SetAsFocusedWebContentsIfNecessary();
   }
 
   for (FrameTreeNode* node : frame_tree_.Nodes()) {
@@ -548,7 +550,7 @@ WebContentsImpl::~WebContentsImpl() {
     }
   }
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   // Call this before WebContentsDestroyed() is broadcasted since
   // AudioFocusManager will be destroyed after that.
   pepper_playback_observer_.reset();
@@ -736,7 +738,7 @@ bool WebContentsImpl::OnMessageReceived(RenderViewHost* render_view_host,
     IPC_MESSAGE_HANDLER(FrameHostMsg_Find_Reply, OnFindReply)
     IPC_MESSAGE_HANDLER(ViewHostMsg_AppCacheAccessed, OnAppCacheAccessed)
     IPC_MESSAGE_HANDLER(ViewHostMsg_WebUISend, OnWebUISend)
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
     IPC_MESSAGE_HANDLER(FrameHostMsg_PepperInstanceCreated,
                         OnPepperInstanceCreated)
     IPC_MESSAGE_HANDLER(FrameHostMsg_PepperInstanceDeleted,
@@ -928,10 +930,9 @@ RenderWidgetHostView* WebContentsImpl::GetTopLevelRenderWidgetHostView() {
 
 RenderWidgetHostView* WebContentsImpl::GetFullscreenRenderWidgetHostView()
     const {
-  RenderWidgetHost* const widget_host =
-      RenderWidgetHostImpl::FromID(fullscreen_widget_process_id_,
-                                   fullscreen_widget_routing_id_);
-  return widget_host ? widget_host->GetView() : NULL;
+  if (auto widget_host = GetFullscreenRenderWidgetHost())
+    return widget_host->GetView();
+  return nullptr;
 }
 
 WebContentsView* WebContentsImpl::GetView() const {
@@ -1259,8 +1260,7 @@ void WebContentsImpl::SetAudioMuted(bool mute) {
   for (auto& observer : observers_)
     observer.DidUpdateAudioMutingState(mute);
 
-  // Notification for UI updates in response to the changed muting state.
-  NotifyNavigationStateChanged(INVALIDATE_TYPE_TAB);
+  OnAudioStateChanged(!mute && audio_stream_monitor_.IsCurrentlyAudible());
 }
 
 bool WebContentsImpl::IsConnectedToBluetoothDevice() const {
@@ -1318,6 +1318,13 @@ void WebContentsImpl::NotifyNavigationStateChanged(
 
   if (GetOuterWebContents())
     GetOuterWebContents()->NotifyNavigationStateChanged(changed_flags);
+}
+
+void WebContentsImpl::OnAudioStateChanged(bool is_audible) {
+  SendPageMessage(new PageMsg_AudioStateChanged(MSG_ROUTING_NONE, is_audible));
+
+  // Notification for UI updates in response to the changed audio state.
+  NotifyNavigationStateChanged(INVALIDATE_TYPE_TAB);
 }
 
 base::TimeTicks WebContentsImpl::GetLastActiveTime() const {
@@ -1558,7 +1565,8 @@ void WebContentsImpl::Init(const WebContents::CreateParams& params) {
 
   GetRenderManager()->Init(site_instance.get(), view_routing_id,
                            params.main_frame_routing_id,
-                           main_frame_widget_routing_id);
+                           main_frame_widget_routing_id,
+                           params.renderer_initiated_creation);
 
   // blink::FrameTree::setName always keeps |unique_name| empty in case of a
   // main frame - let's do the same thing here.
@@ -1601,7 +1609,7 @@ void WebContentsImpl::Init(const WebContents::CreateParams& params) {
   gfx::Size initial_size = params.initial_size;
   view_->CreateView(initial_size, params.context);
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   plugin_content_origin_whitelist_.reset(
       new PluginContentOriginWhitelist(this));
 #endif
@@ -1610,8 +1618,7 @@ void WebContentsImpl::Init(const WebContents::CreateParams& params) {
                  NOTIFICATION_RENDER_WIDGET_HOST_DESTROYED,
                  NotificationService::AllBrowserContextsAndSources());
 
-  screen_orientation_dispatcher_host_.reset(
-      new ScreenOrientationDispatcherHostImpl(this));
+  screen_orientation_.reset(new ScreenOrientation(this));
 
   manifest_manager_host_.reset(new ManifestManagerHost(this));
 
@@ -1863,6 +1870,10 @@ RenderWidgetHostImpl* WebContentsImpl::GetFocusedRenderWidgetHost(
   return RenderWidgetHostImpl::From(view->GetRenderWidgetHost());
 }
 
+RenderWidgetHostImpl* WebContentsImpl::GetRenderWidgetHostWithPageFocus() {
+  return GetFocusedWebContents()->GetMainFrame()->GetRenderWidgetHost();
+}
+
 void WebContentsImpl::EnterFullscreenMode(const GURL& origin) {
   // This method is being called to enter renderer-initiated fullscreen mode.
   // Make sure any existing fullscreen widget is shut down first.
@@ -1920,6 +1931,10 @@ void WebContentsImpl::ExitFullscreenMode(bool will_cause_resize) {
 
 bool WebContentsImpl::IsFullscreenForCurrentTab() const {
   return delegate_ ? delegate_->IsFullscreenForTabOrPending(this) : false;
+}
+
+bool WebContentsImpl::IsFullscreen() {
+  return IsFullscreenForCurrentTab();
 }
 
 blink::WebDisplayMode WebContentsImpl::GetDisplayMode(
@@ -2059,10 +2074,15 @@ void WebContentsImpl::CreateNewWindow(
       // delete the RenderView that had already been created.
       Send(new ViewMsg_Close(route_id));
     }
+    // Note: even though we're not creating a WebContents here, it could have
+    // been created by the embedder so ensure that the RenderFrameHost is
+    // properly initialized.
     // It's safe to only target the frame because the render process will not
     // have a chance to create more frames at this point.
-    ResourceDispatcherHostImpl::ResumeBlockedRequestsForRouteFromUI(
-        GlobalFrameRoutingId(render_process_id, main_frame_route_id));
+    RenderFrameHostImpl* rfh =
+        RenderFrameHostImpl::FromID(render_process_id, main_frame_route_id);
+    if (rfh)
+      rfh->Init();
     return;
   }
 
@@ -2423,6 +2443,10 @@ device::WakeLockServiceContext* WebContentsImpl::GetWakeLockServiceContext() {
   return wake_lock_service_context_.get();
 }
 
+ScreenOrientationProvider* WebContentsImpl::GetScreenOrientationProvider() {
+  return screen_orientation_.get()->GetScreenOrientationProvider();
+}
+
 void WebContentsImpl::OnShowValidationMessage(
     const gfx::Rect& anchor_in_root_view,
     const base::string16& main_text,
@@ -2456,7 +2480,7 @@ void WebContentsImpl::SendScreenRects() {
         MSG_ROUTING_NONE, rwhv->GetBoundsInRootWindow()));
   }
 
-  if (browser_plugin_embedder_)
+  if (browser_plugin_embedder_ && !is_being_destroyed_)
     browser_plugin_embedder_->DidSendScreenRects();
 }
 
@@ -2474,6 +2498,12 @@ TextInputManager* WebContentsImpl::GetTextInputManager() {
     text_input_manager_.reset(new TextInputManager());
 
   return text_input_manager_.get();
+}
+
+bool WebContentsImpl::OnUpdateDragCursor() {
+  if (browser_plugin_embedder_)
+    return browser_plugin_embedder_->OnUpdateDragCursor();
+  return false;
 }
 
 BrowserAccessibilityManager*
@@ -2941,14 +2971,20 @@ void WebContentsImpl::Close() {
   Close(GetRenderViewHost());
 }
 
-void WebContentsImpl::DragSourceEndedAt(int client_x, int client_y,
-    int screen_x, int screen_y, blink::WebDragOperation operation) {
+void WebContentsImpl::DragSourceEndedAt(int client_x,
+                                        int client_y,
+                                        int screen_x,
+                                        int screen_y,
+                                        blink::WebDragOperation operation,
+                                        RenderWidgetHost* source_rwh) {
   if (browser_plugin_embedder_.get())
-    browser_plugin_embedder_->DragSourceEndedAt(client_x, client_y,
-        screen_x, screen_y, operation);
-  if (GetRenderViewHost())
-    GetRenderViewHost()->DragSourceEndedAt(client_x, client_y, screen_x,
-                                           screen_y, operation);
+    browser_plugin_embedder_->DragSourceEndedAt(
+        client_x, client_y, screen_x, screen_y, operation);
+  if (source_rwh) {
+    source_rwh->DragSourceEndedAt(gfx::Point(client_x, client_y),
+                                  gfx::Point(screen_x, screen_y),
+                                  operation);
+  }
 }
 
 void WebContentsImpl::LoadStateChanged(
@@ -2999,9 +3035,9 @@ void WebContentsImpl::NotifyWebContentsFocused() {
     observer.OnWebContentsFocused();
 }
 
-void WebContentsImpl::SystemDragEnded() {
-  if (GetRenderViewHost())
-    GetRenderViewHost()->DragSourceSystemDragEnded();
+void WebContentsImpl::SystemDragEnded(RenderWidgetHost* source_rwh) {
+  if (source_rwh)
+    source_rwh->DragSourceSystemDragEnded();
   if (browser_plugin_embedder_.get())
     browser_plugin_embedder_->SystemDragEnded();
 }
@@ -3721,7 +3757,7 @@ void WebContentsImpl::OnWebUISend(const GURL& source_url,
     delegate_->WebUISend(this, source_url, name, args);
 }
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 void WebContentsImpl::OnPepperInstanceCreated(int32_t pp_instance) {
   for (auto& observer : observers_)
     observer.PepperInstanceCreated();
@@ -3786,7 +3822,7 @@ void WebContentsImpl::OnBrowserPluginMessage(RenderFrameHost* render_frame_host,
   CreateBrowserPluginEmbedderIfNecessary();
   browser_plugin_embedder_->OnMessageReceived(message, render_frame_host);
 }
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 void WebContentsImpl::OnUpdateFaviconURL(
     const std::vector<FaviconURL>& candidates) {
@@ -3805,6 +3841,10 @@ void WebContentsImpl::OnUpdateFaviconURL(
 
 void WebContentsImpl::OnPasswordInputShownOnHttp() {
   controller_.ssl_manager()->DidShowPasswordInputOnHttp();
+}
+
+void WebContentsImpl::OnAllPasswordInputsHiddenOnHttp() {
+  controller_.ssl_manager()->DidHideAllPasswordInputsOnHttp();
 }
 
 void WebContentsImpl::OnCreditCardInputShownOnHttp() {
@@ -3969,6 +4009,18 @@ void WebContentsImpl::NotifyViewSwapped(RenderViewHost* old_host,
 
 void WebContentsImpl::NotifyFrameSwapped(RenderFrameHost* old_host,
                                          RenderFrameHost* new_host) {
+  // Copies the background color from an old WebContents to a new one that
+  // replaces it on the screen. This allows the new WebContents to use the
+  // old one's background color as the starting background color, before having
+  // loaded any contents. As a result, we avoid flashing white when navigating
+  // from a site whith a dark background to another site with a dark background.
+  if (old_host && new_host) {
+    RenderWidgetHostView* old_view = old_host->GetView();
+    RenderWidgetHostView* new_view = new_host->GetView();
+    if (old_view && new_view)
+      new_view->SetBackgroundColor(old_view->background_color());
+  }
+
   for (auto& observer : observers_)
     observer.RenderFrameHostChanged(old_host, new_host);
 }
@@ -4180,6 +4232,17 @@ WebContentsImpl* WebContentsImpl::GetFocusedWebContents() {
     outermost->node_->SetFocusedWebContents(outermost);
   }
   return outermost->node_->focused_web_contents();
+}
+
+bool WebContentsImpl::ContainsOrIsFocusedWebContents() {
+  for (WebContentsImpl* focused_contents = GetFocusedWebContents();
+       focused_contents;
+       focused_contents = focused_contents->GetOuterWebContents()) {
+    if (focused_contents == this)
+      return true;
+  }
+
+  return false;
 }
 
 WebContentsImpl* WebContentsImpl::GetOutermostWebContents() {
@@ -4601,39 +4664,42 @@ void WebContentsImpl::EnsureOpenerProxiesExist(RenderFrameHost* source_rfh) {
   }
 }
 
+void WebContentsImpl::SetAsFocusedWebContentsIfNecessary() {
+  // Only change focus if we are not currently focused.
+  WebContentsImpl* old_contents = GetFocusedWebContents();
+  if (old_contents == this)
+    return;
+
+  // Send a page level blur to the old contents so that it displays inactive UI
+  // and focus this contents to activate it.
+  if (old_contents)
+    old_contents->GetMainFrame()->GetRenderWidgetHost()->SetPageFocus(false);
+  GetMainFrame()->GetRenderWidgetHost()->SetPageFocus(true);
+  GetOutermostWebContents()->node_->SetFocusedWebContents(this);
+}
+
 void WebContentsImpl::SetFocusedFrame(FrameTreeNode* node,
                                       SiteInstance* source) {
+  // The PDF plugin still runs as a BrowserPlugin and must go through the
+  // input redirection mechanism. It must not become focused direcly.
   if (!GuestMode::IsCrossProcessFrameGuest(this) && browser_plugin_guest_) {
     frame_tree_.SetFocusedFrame(node, source);
     return;
   }
 
-  // 1. Find old focused frame and unfocus it.
-  // 2. Focus the new frame in the current FrameTree.
-  // 3. Set current WebContents as focused.
-  WebContentsImpl* old_focused_contents = GetFocusedWebContents();
-  if (old_focused_contents != this) {
-    // Focus is moving between frame trees, unfocus the frame in the old tree.
-    old_focused_contents->frame_tree_.SetFocusedFrame(nullptr, source);
-    GetOutermostWebContents()->node_->SetFocusedWebContents(this);
-  }
+  SetAsFocusedWebContentsIfNecessary();
 
   frame_tree_.SetFocusedFrame(node, source);
-
-  // TODO(avallee): Remove this once page focus is fixed.
-  RenderWidgetHostImpl* rwh = node->current_frame_host()->GetRenderWidgetHost();
-  if (rwh && old_focused_contents != this)
-    rwh->Focus();
 }
 
-bool WebContentsImpl::AddMessageToConsole(int32_t level,
-                                          const base::string16& message,
-                                          int32_t line_no,
-                                          const base::string16& source_id) {
+bool WebContentsImpl::DidAddMessageToConsole(int32_t level,
+                                             const base::string16& message,
+                                             int32_t line_no,
+                                             const base::string16& source_id) {
   if (!delegate_)
     return false;
-  return delegate_->AddMessageToConsole(this, level, message, line_no,
-                                        source_id);
+  return delegate_->DidAddMessageToConsole(this, level, message, line_no,
+                                           source_id);
 }
 
 void WebContentsImpl::OnUserInteraction(
@@ -4651,6 +4717,23 @@ void WebContentsImpl::OnUserInteraction(
   // rdh is NULL in unittests.
   if (rdh && type != blink::WebInputEvent::MouseWheel)
     rdh->OnUserGesture();
+}
+
+void WebContentsImpl::FocusOwningWebContents(
+    RenderWidgetHostImpl* render_widget_host) {
+  // The PDF plugin still runs as a BrowserPlugin and must go through the
+  // input redirection mechanism. It must not become focused direcly.
+  if (!GuestMode::IsCrossProcessFrameGuest(this) && browser_plugin_guest_)
+    return;
+
+  RenderWidgetHostImpl* focused_widget =
+      GetFocusedRenderWidgetHost(render_widget_host);
+
+  if (focused_widget != render_widget_host &&
+      (!focused_widget ||
+       focused_widget->delegate() != render_widget_host->delegate())) {
+    SetAsFocusedWebContentsIfNecessary();
+  }
 }
 
 void WebContentsImpl::OnIgnoredUIEvent() {
@@ -4998,6 +5081,11 @@ int WebContentsImpl::GetOuterDelegateFrameTreeNodeId() {
   return FrameTreeNode::kFrameTreeNodeInvalidId;
 }
 
+RenderWidgetHostImpl* WebContentsImpl::GetFullscreenRenderWidgetHost() const {
+  return RenderWidgetHostImpl::FromID(fullscreen_widget_process_id_,
+                                      fullscreen_widget_routing_id_);
+}
+
 RenderFrameHostManager* WebContentsImpl::GetRenderManager() const {
   return frame_tree_.root()->render_manager();
 }
@@ -5126,15 +5214,27 @@ void WebContentsImpl::SetForceDisableOverscrollContent(bool force_disable) {
 }
 
 void WebContentsImpl::MediaStartedPlaying(
+    const WebContentsObserver::MediaPlayerInfo& media_info,
     const WebContentsObserver::MediaPlayerId& id) {
+  if (media_info.has_video)
+    currently_playing_video_count_++;
+
   for (auto& observer : observers_)
-    observer.MediaStartedPlaying(id);
+    observer.MediaStartedPlaying(media_info, id);
 }
 
 void WebContentsImpl::MediaStoppedPlaying(
+    const WebContentsObserver::MediaPlayerInfo& media_info,
     const WebContentsObserver::MediaPlayerId& id) {
+  if (media_info.has_video)
+    currently_playing_video_count_--;
+
   for (auto& observer : observers_)
-    observer.MediaStoppedPlaying(id);
+    observer.MediaStoppedPlaying(media_info, id);
+}
+
+int WebContentsImpl::GetCurrentlyPlayingVideoCount() {
+  return currently_playing_video_count_;
 }
 
 void WebContentsImpl::UpdateWebContentsVisibility(bool visible) {

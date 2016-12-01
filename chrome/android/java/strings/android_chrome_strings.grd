@@ -220,10 +220,10 @@ CHAR-LIMIT guidelines:
       <message name="IDS_MANAGED_BY_YOUR_ADMINISTRATOR" desc="Popup message when the user clicks a UI element that has been disabled by enterprise policy.">
         Managed by your administrator
       </message>
-      <message name="IDS_MANAGED_BY_YOUR_PARENTS" desc="Popup message when the user clicks a UI element that has been disabled by his/her parents.">
+      <message name="IDS_MANAGED_BY_YOUR_PARENTS" desc="Popup message when the user clicks a UI element that has been disabled by their parents.">
         Managed by your parents
       </message>
-      <message name="IDS_MANAGED_BY_YOUR_PARENT" desc="Popup message when the user clicks a UI element that has been disabled by his/her parent.">
+      <message name="IDS_MANAGED_BY_YOUR_PARENT" desc="Popup message when the user clicks a UI element that has been disabled by their parent.">
         Managed by your parent
       </message>
       <message name="IDS_PREFS_SECTION_BASICS" desc='Title of "Basics" section of preferences. [CHAR-LIMIT=32]'>
@@ -243,10 +243,10 @@ CHAR-LIMIT guidelines:
       <message name="IDS_SIGN_IN_TO_CHROME_SUMMARY" desc="Summary for the button to sign in to Mass Browser, explaining benefits of signing in.">
         Sign in to get your bookmarks, history, passwords, and other settings on all your devices
       </message>
-      <message name="IDS_SIGN_IN_GOOGLE_ACTIVITY_CONTROLS" desc="Title of Google activity controls preference in signed in accouts settings screen">
+      <message name="IDS_SIGN_IN_GOOGLE_ACTIVITY_CONTROLS" desc="Title of Google activity controls preference in signed in accounts settings screen">
         Google Activity Controls
       </message>
-      <message name="IDS_SIGN_IN_GOOGLE_ACTIVITY_CONTROLS_MESSAGE" desc="Message of Google activity controls preference in signed in accouts settings screen">
+      <message name="IDS_SIGN_IN_GOOGLE_ACTIVITY_CONTROLS_MESSAGE" desc="Message of Google activity controls preference in signed in accounts settings screen">
         Control how Google uses your browsing history to personalize Search, ads, and other Google services.
       </message>
       <message name="IDS_SIGN_IN_SYNC_ERROR_WIDGET" desc="Accessibility description of the sync error widget in settings screen">
@@ -650,10 +650,7 @@ Your Google account may have other forms of browsing history like searches and a
       <message name="IDS_WEBSITE_SETTINGS_CATEGORY_ALLOWED_EXCEPT_THIRD_PARTY" desc="Summary text for when only third-party cookies are blocked.">
         Allowed, except third-party
       </message>
-      <message name="IDS_WEBSITE_SETTINGS_CATEGORY_ALWAYS_ALLOWED" desc="Summary text explaining that a permission is allowed, and cannot be changed by the user, e.g. JavaScript: always allowed.">
-        Always allowed
-      </message>
-      <message name="IDS_WEBSITE_SETTINGS_CATEGORY_ASK" desc="Summary text explaining that Mass Browser will ask the user before allowing a site to use a certain permission, e.g. JavaScript: ask first.">
+      <message name="IDS_WEBSITE_SETTINGS_CATEGORY_ASK" desc="Summary text explaining that Chrome will ask the user before allowing a site to use a certain permission, e.g. JavaScript: ask first.">
         Ask first
       </message>
       <message name="IDS_WEBSITE_SETTINGS_BLOCKED_GROUP_HEADING" desc="The heading for a list of websites that have been blocked from using a particular permission, e.g. blocked from accessing the user's location.">
@@ -818,14 +815,6 @@ To obtain new licenses, connect to the internet and play your downloaded content
         <ph name="STORAGE_AMOUNT">%1$s<ex>2 MB</ex></ph> stored data
       </message>
 
-      <!-- Fullscreen preferences -->
-      <message name="IDS_WEBSITE_SETTINGS_FULLSCREEN" desc="Title for Fullscreen settings, which control which websites can enter fullscreen without popup alert.">
-        Full screen
-      </message>
-      <message name="IDS_FULLSCREEN_PERMISSION_TITLE" desc="Title for the permission of entering fullscreen without popup alert [CHAR-LIMIT=32]">
-        Full screen
-      </message>
-
       <!-- USB preferences -->
       <message name="IDS_WEBSITE_SETTINGS_USB" desc="Title for USB settings, which control which of the user's USB devices can be accessed from websites.">
         USB
@@ -874,13 +863,13 @@ To obtain new licenses, connect to the internet and play your downloaded content
         Spend less on data by using Google to optimize the pages you visit. Pages accessed using private connections (HTTPS) or in Incognito tabs will not be optimized or seen by Google.
       </message>
       <message name="IDS_DATA_REDUCTION_ENABLE_BUTTON" desc="Button the user presses if they want to enable Data Saver" >
-        Enable Data Saver
+        Turn on Data Saver
       </message>
       <message name="IDS_DATA_REDUCTION_ENABLED_SWITCH" desc="Message to show when the Data Saver feature is enabled via the switch on the First Run Experience card" >
-        Data Saver enabled
+        Data Saver is on
       </message>
       <message name="IDS_DATA_REDUCTION_DISABLED_SWITCH" desc="Message to show when the Data Saver feature is disabled via the switch on the First Run Experience card" >
-        Data Saver disabled
+        Data Saver is off
       </message>
       <message name="IDS_DATA_REDUCTION_ENABLED_TOAST" desc="Toast message displayed after the user enables Data Saver from the promo" >
         Data Saver is on. Manage it in Settings.
@@ -1186,48 +1175,45 @@ To obtain new licenses, connect to the internet and play your downloaded content
       <message name="IDS_SYNC_IMPORT_DATA_TITLE" desc="Preference title of screen to let user choose to switch sync accounts. [CHAR-LIMIT=24]">
         Import data?
       </message>
-      <message name="IDS_SYNC_IMPORT_DATA_PROMPT_SWITCHING_ACCOUNTS" desc="Prompt for the user to choose how they want to handle their existing sync data">
-        You’re switching sync accounts from <ph name="FROM_ACCOUNT">%2$s<ex>johndoe@old.com</ex></ph> to <ph name="TO_ACCOUNT">%1$s<ex>johndoe@new.com</ex></ph>. What do you want to do with your existing bookmarks, history, passwords and other settings?
-      </message>
-      <message name="IDS_SYNC_IMPORT_DATA_PROMPT_EXISTING_DATA" desc="Prompt for the user to choose how they want to handle their existing sync data">
-        You’re signing in to <ph name="TO_ACCOUNT">%1$s<ex>johndoe@new.com</ex></ph>. Some of your existing bookmarks, history, passwords, and other settings were previously synced to <ph name="FROM_ACCOUNT">%2$s<ex>johndoe@old.com</ex></ph>. What do you want to do with your existing data?
+      <message name="IDS_SYNC_IMPORT_DATA_PROMPT" desc="Prompt for the user to choose how they want to handle their existing sync data">
+         You have bookmarks, history, passwords, and other settings from <ph name ="FROM_ACCOUNT">%1$s<ex>johndoe@old.com</ex></ph>.
       </message>
       <message name="IDS_SYNC_IMPORT_EXISTING_DATA" desc="Option to import existing data to the newly selected sync account">
-        Import existing data
+        Combine my data
       </message>
       <message name="IDS_SYNC_IMPORT_EXISTING_DATA_SUBTEXT" desc="Subtext describing what happens if the user elects to import existing data to the newly selected sync account">
-        Keep existing data on your device and permanently import the data to <ph name="TO_ACCOUNT">%1$s<ex>johndoe@new.com</ex></ph>.
+        Add existing data to <ph name="TO_ACCOUNT">%1$s<ex>johndoe@new.com</ex></ph>.
       </message>
       <message name="IDS_SYNC_KEEP_EXISTING_DATA_SEPARATE" desc="Option to keep the existing data separate from the newly selected sync account">
-        Keep existing data separate
+        Keep my data separate
       </message>
       <message name="IDS_SYNC_KEEP_EXISTING_DATA_SEPARATE_SUBTEXT_EXISTING_DATA" desc="Subtext describing what happens if the user elects to keep the existing data separate signing into a new account after have previously being signed into a different account then signed out.">
-        Replace this device’s data with <ph name="TO_ACCOUNT">%1$s<ex>johndoe@new.com</ex></ph>’s data. You can retrieve your existing data by switching back to <ph name="FROM_ACCOUNT">%2$s<ex>johndoe@old.com</ex></ph>, but data created since you signed out will be lost.
+        Delete existing data.
       </message>
       <message name="IDS_SYNC_KEEP_EXISTING_DATA_SEPARATE_SUBTEXT_SWITCHING_ACCOUNTS" desc="Subtext describing what happens if the user elects to keep the existing data separate when switching sync accounts.">
-        Replace this device’s data with <ph name="TO_ACCOUNT">%1$s<ex>johndoe@new.com</ex></ph>’s data. You can retrieve your existing data by switching back to <ph name="FROM_ACCOUNT">%2$s<ex>johndoe@old.com</ex></ph>.
+        Delete existing data. You can retrieve it by switching back to <ph name="FROM_ACCOUNT">%1$s<ex>johndoe@old.com</ex></ph>.
       </message>
 
       <!-- Bluetooth Picker UI strings -->
       <message name="IDS_BLUETOOTH_DIALOG_TITLE" desc="The header message shown on top of the dialog that lets the user pick a Bluetooth device for the site to pair with. Shown above a list of Bluetooth devices discovered. ">
-        <ph name="SITE">%1$s<ex>https://www.google.com</ex></ph> wants to pair with:</message>
+        <ph name="SITE">%1$s<ex>https://www.google.com</ex></ph> wants to pair</message>
       <message name="IDS_BLUETOOTH_SEARCHING" desc="The message shown in the Bluetooth picker dialog while scanning for devices.">
-        Scanning for devices… <ph name="BEGIN_LINK">&lt;link&gt;</ph>Get help<ph name="END_LINK">&lt;/link&gt;</ph>
+        <ph name="BEGIN_LINK">&lt;link&gt;</ph>Get help<ph name="END_LINK">&lt;/link&gt;</ph> while scanning for devices…
       </message>
       <message name="IDS_BLUETOOTH_CONFIRM_BUTTON" desc="The button to confirm association of a website with a Bluetooth device. Use the same term as in 'Pair this Bluetooth headset with your phone.'">
         Pair
       </message>
       <message name="IDS_BLUETOOTH_NOT_SEEING_IT" desc="The message to show at the bottom of the dialog when Bluetooth scanning has uncovered some items but is still scanning for others.">
-        Not seeing your device? <ph name="BEGIN_LINK">&lt;link&gt;</ph>Get help<ph name="END_LINK">&lt;/link&gt;</ph>.
+        <ph name="BEGIN_LINK">&lt;link&gt;</ph>Get help<ph name="END_LINK">&lt;/link&gt;</ph> while scanning for devices…
       </message>
       <message name="IDS_BLUETOOTH_NOT_SEEING_IT_IDLE_NONE_FOUND" desc="The message to show at the bottom of the dialog when Bluetooth scanning has not uncovered any devices and it is no longer discovering devices.">
-        <ph name="BEGIN_LINK">&lt;link&gt;</ph>Get help<ph name="END_LINK">&lt;/link&gt;</ph>
+        <ph name="BEGIN_LINK1">&lt;link1&gt;</ph>Get help<ph name="END_LINK1">&lt;/link1&gt;</ph> or <ph name="BEGIN_LINK2">&lt;link2&gt;</ph>re-scan<ph name="END_LINK2">&lt;/link2&gt;</ph>
       </message>
       <message name="IDS_BLUETOOTH_NOT_SEEING_IT_IDLE_SOME_FOUND" desc="The message to show at the bottom of the dialog when Bluetooth scanning has uncovered some items but is no longer discovering devices. Allows the user to restart the scan, in case their device is not listed.">
-        Not seeing your device? <ph name="BEGIN_LINK1">&lt;link1&gt;</ph>Get help<ph name="END_LINK1">&lt;/link1&gt;</ph> or <ph name="BEGIN_LINK2">&lt;link2&gt;</ph>re-scan<ph name="END_LINK2">&lt;/link2&gt;</ph>.
+        <ph name="BEGIN_LINK1">&lt;link1&gt;</ph>Get help<ph name="END_LINK1">&lt;/link1&gt;</ph> or <ph name="BEGIN_LINK2">&lt;link2&gt;</ph>re-scan<ph name="END_LINK2">&lt;/link2&gt;</ph>
       </message>
       <message name="IDS_BLUETOOTH_NOT_FOUND" desc="The message to show when no items were found during Bluetooth device scanning.">
-        No Bluetooth devices found. <ph name="BEGIN_LINK">&lt;link&gt;</ph>Re-scan<ph name="END_LINK">&lt;/link&gt;</ph>
+        No Bluetooth devices found
       </message>
       <message name="IDS_BLUETOOTH_ADAPTER_OFF" desc="The message to show when scanning cannot start because the bluetooth adapter is turned off.">
         Turn on Bluetooth in <ph name="BEGIN_LINK">&lt;link&gt;</ph>device settings<ph name="END_LINK">&lt;/link&gt;</ph> to allow pairing
@@ -1328,15 +1314,12 @@ To obtain new licenses, connect to the internet and play your downloaded content
         Options available near bottom of the screen
       </message>
 
-      <!-- DownloadOverwriteInfoBar -->
-      <message name="IDS_DOWNLOAD_OVERWRITE_INFOBAR_TEXT" desc="Prompt text for the confirmation dialog asking whether the user really wants to replace a file when there already exists a file with the same name">
-        Do you want to replace the existing <ph name="FILE_NAME">^1<ex>specialfile.pdf</ex></ph> in <ph name="DIRECTORY_NAME">^2<ex>Downloads</ex></ph>?
+      <!-- DuplicateDownloadInfoBar -->
+      <message name="IDS_DUPLICATE_DOWNLOAD_INFOBAR_TEXT" desc="Prompt text for the confirmation dialog asking whether the user really wants to download a file when there already exists a file with the same name">
+        Do you want to download <ph name="FILE_NAME">^1<ex>specialfile.pdf</ex></ph> again?
       </message>
-      <message name="IDS_DOWNLOAD_OVERWRITE_INFOBAR_REPLACE_FILE_BUTTON" desc="Label for choosing 'Replace file' in the prompt for replacing a file.[CHAR-LIMIT=32]">
-        Replace file
-      </message>
-      <message name="IDS_DOWNLOAD_OVERWRITE_INFOBAR_CREATE_NEW_FILE_BUTTON" desc="Label for choosing 'Create new file' in the prompt for replacing a file. [CHAR-LIMIT=32]">
-        Create new file
+      <message name="IDS_DUPLICATE_DOWNLOAD_INFOBAR_DOWNLOAD_BUTTON" desc="Label for the button that confirms that a user wants to download the file again. [CHAR-LIMIT=32]">
+        Download
       </message>
 
       <!-- PermissionInfoBar -->
@@ -1465,9 +1448,6 @@ To obtain new licenses, connect to the internet and play your downloaded content
       <message name="IDS_CONTEXTMENU_SAVE_LINK" desc="Context sensitive menu item for saving the target of a link [CHAR-LIMIT=30]">
         Download link
       </message>
-      <message name="IDS_CONTEXTMENU_SAVE_OFFLINE" desc="Context sensitive menu item for saving an offline version of the page that this link is targeting [CHAR-LIMIT=30]">
-        Save linked page for later
-      </message>
       <message name="IDS_CONTEXTMENU_SAVE_IMAGE" desc="Context sensitive menu item for saving the selected image. [CHAR-LIMIT=30]">
         Download image
       </message>
@@ -1510,14 +1490,14 @@ To obtain new licenses, connect to the internet and play your downloaded content
       </message>
 
       <!-- App banner accessibility strings, used for touch exploration -->
-      <message name="IDS_APP_BANNER_VIEW_NATIVE_APP_ACCESSIBILITY" desc="Accessibililty text: Describes a prompt promoting the installation of an app related to the current page, including the app's name and its rating.">
+      <message name="IDS_APP_BANNER_VIEW_NATIVE_APP_ACCESSIBILITY" desc="Accessibility text: Describes a prompt promoting the installation of an app related to the current page, including the app's name and its rating.">
         View app <ph name="APP_NAME">%1$s<ex>Gmail</ex></ph> on the Play Store.  Rating: <ph name="APP_RATING">%2$.1f<ex>4.2</ex></ph>.
       </message>
       <message name="IDS_APP_BANNER_VIEW_NATIVE_APP_INSTALL_ACCESSIBILITY" desc="Accessibility text: Indicates that clicking on the button will either purchase the app or install it.">
         Get the app from the Google Play Store: <ph name="APP_ACTION">%s<ex>Install</ex></ph>
       </message>
 
-      <message name="IDS_APP_BANNER_VIEW_WEB_APP_ACCESSIBILITY" desc="Accessibililty text: Details the web app being promoted by the current page, including the app name and its URL.">
+      <message name="IDS_APP_BANNER_VIEW_WEB_APP_ACCESSIBILITY" desc="Accessibility text: Details the web app being promoted by the current page, including the app name and its URL.">
         <ph name="APP_NAME">%1$s<ex>Gmail</ex></ph>, web app. <ph name="APP_URL">%2$s<ex>google.com</ex></ph>
       </message>
 
@@ -1564,8 +1544,20 @@ To obtain new licenses, connect to the internet and play your downloaded content
       </message>
 
       <!-- Add to Home screen strings -->
-      <message name="IDS_MENU_ADD_TO_HOMESCREEN" desc="Menu item for adding a shortcut to the Home screen. [CHAR-LIMIT=27]">
+      <message name="IDS_MENU_ADD_TO_HOMESCREEN" desc="Menu item for adding a shortcut to the Home screen (default title). [CHAR-LIMIT=27]">
         Add to Home screen
+      </message>
+      <message name="IDS_MENU_ADD_TO_HOMESCREEN_ADD" desc="Menu item for adding a shortcut to the Home screen. [CHAR-LIMIT=27]">
+        Add shortcut
+      </message>
+      <message name="IDS_MENU_ADD_TO_HOMESCREEN_INSTALL" desc="Menu item for adding a shortcut to the Home screen. [CHAR-LIMIT=27]">
+        Install web app
+      </message>
+      <message name="IDS_APP_BANNER_ADD" desc="A button in an app banner to confirm adding a site to homescreen">
+        Add
+      </message>
+      <message name="IDS_APP_BANNER_INSTALL" desc="A button in an app banner to confirm adding a site to homescreen">
+        Install
       </message>
       <message name="IDS_ADDED_TO_HOMESCREEN" desc="Indicates that the website with the specified name was added to the user's Home screen.">
         <ph name="NAME">%1$s<ex>Google</ex></ph> was added to your Home screen
@@ -1595,24 +1587,6 @@ To obtain new licenses, connect to the internet and play your downloaded content
       </message>
       <message name="IDS_PAGE_INFO_DETAILS_LINK" desc="The label of the link to open the detailed connection information popup from the page info bubble.">
         Details
-      </message>
-      <message name="IDS_PAGE_INFO_CONNECTION_HTTPS" desc="Message to display in the page info bubble when the connection is private (HTTPS).">
-        Your connection to this site is private.
-      </message>
-      <message name="IDS_PAGE_INFO_CONNECTION_HTTP" desc="Message to display in the page info bubble when the connection is not private (HTTP).">
-        Your connection to this site is not private.
-      </message>
-      <message name="IDS_PAGE_INFO_CONNECTION_MIXED" desc="Message to display in the page info bubble when the main connection is private, but there is content on the page that is not private.">
-        Your connection to this site is private, but someone on the network might be able to change the look of the page.
-      </message>
-      <message name="IDS_PAGE_INFO_CONNECTION_SHA1" desc="Message to display in the page info bubble when the page is not considered private (because the connection used SHA-1 for certificate signatures, which are not considered secure anymore).">
-        This site uses a weak security configuration (SHA-1 signatures), so your connection may not be private.
-      </message>
-      <message name="IDS_PAGE_INFO_CONNECTION_BROKEN" desc="Message to display in the page info bubble when the connection is insecure because the HTTPS certificate is invalid.">
-        Your connection to this site is not private. Attackers might be trying to steal your information (for example, photos, passwords, messages and credit cards) from <ph name="DOMAIN_NAME">%1$s<ex>google.com</ex></ph>.
-      </message>
-      <message name="IDS_PAGE_INFO_CONNECTION_INTERNAL_PAGE" desc="Message to display in the page info bubble when the page is an internal Mass Browser page (e.g. the bookmarks page, or about:blank).">
-        You are viewing a secure Mass Browser page.
       </message>
       <message name="IDS_PAGE_INFO_CONNECTION_OFFLINE" desc="Message to display in the page info bubble when viewing and offline page.">
         You are viewing an offline copy of this page from <ph name="CREATION_TIME">%1$s<ex>Feb 9, 2016</ex></ph>
@@ -1662,6 +1636,9 @@ To obtain new licenses, connect to the internet and play your downloaded content
       <message name="IDS_DOWNLOAD_NOTIFICATION_PAUSED" desc="Download notification to be displayed when a download pauses.">
         Download paused
       </message>
+      <message name="IDS_DOWNLOAD_NOTIFICATION_PENDING" desc="Download notification to be displayed when a download has been scheduled but has not started being fetched from the network.">
+        Download pending...
+      </message>
       <message name="IDS_DOWNLOAD_CANT_OPEN_FILE" desc="Toast that appears when a downloaded file can't be opened.">
         Can't open file
       </message>
@@ -1692,7 +1669,7 @@ To obtain new licenses, connect to the internet and play your downloaded content
       <message name="IDS_DOWNLOAD_FAILED_REASON_UNKNOWN_ERROR" desc="Message to explain that the download failed because unkown error.">
         <ph name="FILE_NAME">%1$s<ex>http://abc.com/test.pdf</ex></ph> download failed due to an unknown error.
       </message>
-      <message name="IDS_DOWNLOAD_PENDING" desc="Message in the list of items which have received download requests telling their status. This message states that the download has not yet begun [CHAR LIMIT=30]">
+      <message name="IDS_DOWNLOAD_STARTED" desc="Message to show when download has started [CHAR LIMIT=30]">
         Downloading…
       </message>
       <message name="IDS_DOWNLOAD_SUCCEEDED_MESSAGE" desc="Transient message shown when a file download has succeeded." meaning="Android">
@@ -1890,7 +1867,7 @@ To obtain new licenses, connect to the internet and play your downloaded content
       <message name="IDS_SIGNIN_ADD_ACCOUNT" desc="Text for adding another Google Account">
         Add account
       </message>
-      <message name="IDS_SIGNIN_OPEN_ADD_GOOGLE_ACCOUNT_PAGE_FAILED" desc="Message for openning add Google Account page in device's Settings app failed">
+      <message name="IDS_SIGNIN_OPEN_ADD_GOOGLE_ACCOUNT_PAGE_FAILED" desc="Message for opening add Google Account page in device's Settings app failed">
         Add a Google Account from the Accounts page in your device's Settings app.
       </message>
       <message name="IDS_SIGNIN_OPEN_SETTINGS_ACCOUNTS" desc="Text for button to open Accounts page in device's Settings app">
@@ -1929,6 +1906,12 @@ To obtain new licenses, connect to the internet and play your downloaded content
       </message>
       <message name="IDS_ACCESSIBILITY_STOP" desc="Content description for the stop button that stops playing the media.">
         Stop
+      </message>
+      <message name="IDS_ACCESSIBILITY_PREVIOUS_TRACK" desc="Content description for the previous track button that switches media to the previous track.">
+        Previous track
+      </message>
+      <message name="IDS_ACCESSIBILITY_NEXT_TRACK" desc="Content description for the next track button that switches media to the next track.">
+        Next track
       </message>
 
       <!-- New Tab Page strings -->
@@ -1998,7 +1981,7 @@ To obtain new licenses, connect to the internet and play your downloaded content
       <message name="IDS_REMOVE_ALL" desc="Context menu option to clear the list of recently closed tabs">
         Remove all
       </message>
-      <message name="IDS_ACCESSIBILITY_NTP_OFFLINE_BADGE" desc="Content description for the badge that indicates offline availability of a most visited item on the new tab page.">
+      <message name="IDS_ACCESSIBILITY_NTP_OFFLINE_BADGE" desc="Content description for the badge that indicates offline availability of a most visited item or content suggestion on the new tab page.">
         Available offline
       </message>
       <message name="IDS_NTP_LEARN_MORE_ABOUT_SUGGESTED_CONTENT" desc="Text in the footer of the New Tab Page. Part of the text is a link to a help center page where the user can learn more about suggested content.">
@@ -2345,6 +2328,9 @@ To obtain new licenses, connect to the internet and play your downloaded content
           =1 {Remove 1 selected item}
           other {Remove # selected items}}
       </message>
+      <message name="IDS_SELECTED" desc="A label for the number of items selected.">
+        selected
+      </message>
 
       <message name="IDS_VIDEO_CALL_NOTIFICATION_TEXT_2" desc="Text to be shown as a notification when a WebRTC video call is in progress.">
         Accessing video input
@@ -2561,16 +2547,16 @@ You can control the Physical Web in Mass Browser Settings.
 
       <!-- WebUsb Picker UI strings -->
       <message name="IDS_USB_CHOOSER_DIALOG_PROMPT" desc="The text that is used to introduce the USB chooser dialog to the user.">
-        <ph name="SITE">%1$s<ex>https://www.google.com</ex></ph> wants to connect to:
+        <ph name="SITE">%1$s<ex>https://www.google.com</ex></ph> wants to connect
       </message>
       <message name="IDS_USB_CHOOSER_DIALOG_NO_DEVICES_FOUND_PROMPT" desc="The text that is used to inform the user that no devices found in the USB chooser dialog.">
-        No devices found.
+        No devices found
       </message>
       <message name="IDS_USB_CHOOSER_DIALOG_CONNECT_BUTTON_TEXT" desc="The text that is shown on the connect button in the USB chooser dialog.">
         Connect
       </message>
       <message name="IDS_USB_CHOOSER_DIALOG_FOOTNOTE_TEXT" desc="This text is shown at the bottom of the USB chooser dialog with a link to part of its text.">
-        Not seeing your device? <ph name="BEGIN_LINK">&lt;link&gt;</ph>Get help<ph name="END_LINK">&lt;/link&gt;</ph>
+        <ph name="BEGIN_LINK">&lt;link&gt;</ph>Get help<ph name="END_LINK">&lt;/link&gt;</ph>
       </message>
 
       <!-- Payments -->
@@ -2595,11 +2581,56 @@ You can control the Physical Web in Mass Browser Settings.
       <message name="IDS_PAYMENTS_EDIT_CONTACT_DETAILS_LABEL" desc="The title of the dialog for user to edit their contact information, such as the user's full name, an email address or a phone number.">
         Edit contact info
       </message>
-      <message name="IDS_PAYMENTS_CREATE_CARD" desc="The title of the dialog for user to add new payment card.">
+      <message name="IDS_PAYMENTS_ADD_CARD" desc="The title of the dialog for user to add new payment card.">
         Add card
+      </message>
+      <message name="IDS_PAYMENTS_BILLING_ADDRESS_REQUIRED" desc="The label to indicate billing address is required for payment card.">
+        Billing address required
+      </message>
+      <message name="IDS_PAYMENTS_ADD_BILLING_ADDRESS" desc="The title of the dialog for user to add billing address to payment card.">
+        Add billing address
+      </message>
+      <message name="IDS_PAYMENTS_NAME_ON_CARD_REQUIRED" desc="The label to indicate name on card is required for payment card.">
+        Name on card required
+      </message>
+      <message name="IDS_PAYMENTS_ADD_NAME_ON_CARD" desc="The title of the dialog for user to add name on card to payment card.">
+        Add name on card
+      </message>
+      <message name="IDS_PAYMENTS_CARD_NUMBER_INVALID" desc="The label to indicate payment card number is invalid.">
+        Card number invalid
+      </message>
+      <message name="IDS_PAYMENTS_ADD_VALID_CARD_NUMBER" desc="The title of the dialog for user to add valid payment card number.">
+        Add valid card number
+      </message>
+      <message name="IDS_PAYMENTS_MORE_INFORMATION_REQUIRED" desc="The label to indicate more information is required for payment card.">
+        More information required
+      </message>
+      <message name="IDS_PAYMENTS_ADD_MORE_INFORMATION" desc="The title of the dialog for user to add more information to payment card.">
+        Add more information
       </message>
       <message name="IDS_PAYMENTS_EDIT_CARD" desc="The title of the dialog for user to edit payment card.">
         Edit card
+      </message>
+      <message name="IDS_PAYMENTS_CREDIT_CARD_EXPIRATION_DATE_ABBR" desc="Abbreviated label for credit card expiration date. [CHAR-LIMIT=32]">
+        Exp: <ph name="EXPIRATION_MONTH">%1$s<ex>06</ex></ph>/<ph name="EXPIRATION_YEAR">%2$s<ex>17</ex></ph>
+      </message>
+      <message name="IDS_PAYMENTS_PHONE_NUMBER_REQUIRED" desc="The label to indicate phone number is required in the shipping address. This phone number can be used, for example, if there's a problem with shipping a package to its destination.">
+        Phone number required
+      </message>
+      <message name="IDS_PAYMENTS_ADD_PHONE_NUMBER" desc="The title of the dialog for user to add phone number to the shipping address. This phone number can be used, for example, if there's a problem with shipping a package to its destination.">
+        Add phone number
+      </message>
+      <message name="IDS_PAYMENTS_RECIPIENT_REQUIRED" desc="The label to indicate recipient is required in the shipping address. The recipient could be a person or institute name identifies the receiver of the shipping package.">
+        Recipient required
+      </message>
+      <message name="IDS_PAYMENTS_ADD_RECIPIENT" desc="The title of the dialog for user to add recipient in the shipping address. The recipient could be a person or institute name identifies the receiver of the shipping package.">
+        Add recipient
+      </message>
+      <message name="IDS_PAYMENTS_INVALID_ADDRESS" desc="The label to indicate the shipping address is invalid. For example, missing state or city name.">
+        Invalid address
+      </message>
+      <message name="IDS_PAYMENTS_ADD_VALID_ADDRESS" desc="The title of the dialog for user to add valid shipping address. For example, missing state or city name.">
+        Add valid address
       </message>
       <message name="IDS_PAYMENTS_ORDER_SUMMARY_LABEL" desc="The title of the section that shows the summary of the order, including names and prices of individual line items, i.e. the bill.">
         Order summary
@@ -2639,6 +2670,9 @@ You can control the Physical Web in Mass Browser Settings.
       </message>
       <message name="IDS_PAYMENTS_CHECKING_OPTION" desc="Text explaining that the option the user selected is being checked and verified.">
         Checking
+      </message>
+      <message name="IDS_PAYMENTS_UPDATED_LABEL" desc="The text that informs the user that the total value of their cart has been updated.">
+        Updated
       </message>
 
       <!-- Shipping address in web payments API -->
@@ -2705,7 +2739,7 @@ You can control the Physical Web in Mass Browser Settings.
         Search with Sogou
       </message>
       <message name="IDS_SOGOU_EXPLANATION" desc="Text explaining why Sogou should be used as default search engine.">
-        Mass Browser can use Sogou for search in China. You can change this in <ph name="BEGIN_LINK">&lt;link&gt;</ph>Settings<ph name="END_LINK">&lt;/link&gt;</ph>.
+        Mass Browser can use <ph name="BEGIN_BOLD">&lt;b&gt;</ph>Sogou<ph name="END_BOLD">&lt;/b&gt;</ph> for search in China. You can change this in <ph name="BEGIN_LINK">&lt;link&gt;</ph>Settings<ph name="END_LINK">&lt;/link&gt;</ph>.
       </message>
       <message name="IDS_KEEP_GOOGLE" desc="Text representing the option that the user wants to keep Google as the default search engine.">
         Keep Google
@@ -2724,6 +2758,87 @@ You can control the Physical Web in Mass Browser Settings.
 
       <message name="IDS_INSTANT_APPS_OPEN_IN_APP" desc="Button label for the user action that will open an Instant App.">
         Open app
+      </message>
+
+      <!-- WebAPK related strings -->
+      <message name="IDS_WEBAPK_UNKNOWN_SOURCES_DIALOG_TITLE" desc="Title of dialog warning user that installation from Unknown sources is required for WebAPK experiment.">
+        Improved Add to Home screen Experiment
+      </message>
+
+      <message name="IDS_WEBAPK_UNKNOWN_SOURCES_DIALOG_MESSAGE" desc="Text of dialog warning user that installation from Unknown sources is required for WebAPK experiment">
+        Turn on “Unknown sources” in Android security settings to try "Improved Add to Home screen" experiment. Be sure to disable this setting when you’re done trying it out.
+      </message>
+
+      <message name="IDS_WEBAPK_UNKNOWN_SOURCES_SETTINGS_BUTTON" desc="Button label for opening Android Settings from dialog warning user that installation from Unknown sources is required for WebAPK experiment.">
+        Settings
+      </message>
+
+      <!-- Keyboard shortcuts in Android N-->
+      <message name="IDS_KEYBOARD_SHORTCUT_OPEN_NEW_TAB" desc="A text label that appears next to the keyboard shortcut to open a new tab in Chrome. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Open a new tab
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_REOPEN_NEW_TAB" desc="A text label that appears next to the keyboard shortcut for reopening the last tab in the chrome app. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Reopen the last closed tab
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_NEW_INCOGNITO_TAB" desc="A text label that appears next to a keyboard shortcut to open a new tab in incognito mode in Chrome. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Open a new tab in Incognito mode
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_OPEN_MENU" desc="A text label that appears next to a keyboard shortcut that opens the overflow menu in Chrome. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Open the menu
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_NEXT_TAB" desc="A text label that appears next to the keyboard shortcut that will move the user to the next tab in the Chrome app. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Jump to the next tab
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_PREV_TAB" desc="A text label that appears next to the keyboard shortcut that will move the user to the previous tab in the Chrome app. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Jump to the previous tab
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_CLOSE_TAB" desc="A text label that appears next to the keyboard shortcut that will close the current tab in Chrome. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Close current tab
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_FIND_BAR" desc="A text label that appears next to the keyboard shortcut that will open the find bar that searches what is on the screen. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Open the Find Bar
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_ADDRESS_BAR" desc="A text label that appears next to the keyboard that will let you focus on the address bar on the screen. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Jump to the address bar
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_BOOKMARK_MANAGER" desc="A text label that appears next to the keyboard shortcut that will open the bookmarks manager in Chrome. On a tablet this is a new tab, on the phone this is a new activity. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Open the bookmarks manager
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_BOOKMARK_PAGE" desc="A text label that appears next to the keyboard shortcut that will bookmark the page that is currently on screen. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Bookmark the current page
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_HISTORY_MANAGER" desc="A text label that appears next to the keyboard shorcut that will open up the history page. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Open the history page
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_PRINT_PAGE" desc="A text label that appears next to the keyboard shortcut that will open the print page. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Open options to print page
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_ZOOM_IN" desc="A text label that appears next to the keyboard shortcut that will increase everything on the page. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Make everything on the page bigger
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_ZOOM_OUT" desc="A text label that appears next to the keyboard shortcut that will decrease everything on the page. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Make everything on the page smaller
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_RESET_ZOOM" desc="A text label that appears next to the keyboard shortcut that will reset the zoom back to the original size. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Return everything on the page to default size
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_RELOAD_PAGE" desc="A text label that appears next to the keyboard shortcut that will reload the current page. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Reload the current page
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_RELOAD_NO_CACHE" desc="A text label that appears next to the keyboard shortcut that will reload the current page without a cache. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Reload the current page, ignoring cached content
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_HELP_CENTER" desc="A text label that appears next to the keyboard shortcut that will open the Google Chrome Help Center in a new tab. The shortcut description is shown in a system dialog along with all other supported shortcuts. [CHAR-LIMIT=50]">
+        Open the Chrome Help Center in a new tab
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_TAB_GROUP_HEADER" desc="A text label that appears above a list of shortcuts that are related to the tab window. This group is part of several groups of keyboard shortcuts all shown in a dialog.">
+        Tab and window shortcuts
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_CHROME_FEATURE_GROUP_HEADER" desc="A text label that appears above a list of shortcuts that are related to the Chrome app features. This group is part of several groups of keyboard shortcuts all shown in a dialog.">
+        Google Chrome feature shortcuts
+      </message>
+      <message name="IDS_KEYBOARD_SHORTCUT_WEBPAGE_GROUP_HEADER" desc="A text label that appears above a list of shortcuts that are related to manipulation of the current tab window. This group is part of several groups of keyboard shortcuts all shown in a dialog.">
+        Webpage shortcuts
       </message>
     </messages>
   </release>

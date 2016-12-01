@@ -4,6 +4,7 @@
 
 #include "services/service_manager/tests/lifecycle/app_client.h"
 
+#include "base/macros.h"
 #include "services/service_manager/public/cpp/interface_registry.h"
 #include "services/service_manager/public/cpp/service_context.h"
 
@@ -11,18 +12,22 @@ namespace service_manager {
 namespace test {
 
 AppClient::AppClient() {}
-AppClient::AppClient(service_manager::mojom::ServiceRequest request)
-    : context_(new ServiceContext(this, std::move(request))) {}
+
 AppClient::~AppClient() {}
 
 bool AppClient::OnConnect(const ServiceInfo& remote_info,
                           InterfaceRegistry* registry) {
-  registry->AddInterface<LifecycleControl>(this);
+  registry->AddInterface<mojom::LifecycleControl>(this);
+  return true;
+}
+
+bool AppClient::OnStop() {
+  base::MessageLoop::current()->QuitWhenIdle();
   return true;
 }
 
 void AppClient::Create(const Identity& remote_identity,
-                       LifecycleControlRequest request) {
+                       mojom::LifecycleControlRequest request) {
   bindings_.AddBinding(this, std::move(request));
 }
 
@@ -31,7 +36,7 @@ void AppClient::Ping(const PingCallback& callback) {
 }
 
 void AppClient::GracefulQuit() {
-  base::MessageLoop::current()->QuitWhenIdle();
+  context()->RequestQuit();
 }
 
 void AppClient::Crash() {
@@ -42,16 +47,14 @@ void AppClient::Crash() {
 }
 
 void AppClient::CloseServiceManagerConnection() {
-  DCHECK(runner_);
-  runner_->DestroyServiceContext();
-  // Quit the app once the caller goes away.
+  context()->DisconnectFromServiceManager();
   bindings_.set_connection_error_handler(
       base::Bind(&AppClient::BindingLost, base::Unretained(this)));
 }
 
 void AppClient::BindingLost() {
   if (bindings_.empty())
-    GracefulQuit();
+    OnStop();
 }
 
 }  // namespace test

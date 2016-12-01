@@ -10,6 +10,7 @@
 #include "services/ui/public/cpp/property_type_converters.h"
 #include "services/ui/public/cpp/window_property.h"
 #include "services/ui/public/interfaces/window_manager.mojom.h"
+#include "ui/display/types/display_constants.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -163,6 +164,9 @@ ui::wm::WindowType GetWmWindowType(const ui::Window* window) {
 
     case ui::mojom::WindowType::TOOLTIP:
       return ui::wm::WINDOW_TYPE_TOOLTIP;
+
+    case ui::mojom::WindowType::UNKNOWN:
+      return ui::wm::WINDOW_TYPE_UNKNOWN;
   }
 
   return ui::wm::WINDOW_TYPE_UNKNOWN;
@@ -189,16 +193,6 @@ base::string16 GetWindowTitle(const ui::Window* window) {
 
   return window->GetSharedProperty<base::string16>(
       ui::mojom::WindowManager::kWindowTitle_Property);
-}
-
-mojo::Array<uint8_t> GetWindowAppIcon(const ui::Window* window) {
-  if (window->HasSharedProperty(
-          ui::mojom::WindowManager::kWindowAppIcon_Property)) {
-    return mojo::Array<uint8_t>::From(
-        window->GetSharedProperty<std::vector<uint8_t>>(
-            ui::mojom::WindowManager::kWindowAppIcon_Property));
-  }
-  return mojo::Array<uint8_t>();
 }
 
 void SetAppID(ui::Window* window, const base::string16& app_id) {
@@ -262,7 +256,7 @@ bool ShouldRenderParentTitleArea(ui::Window* window) {
 int64_t GetInitialDisplayId(const ui::Window::SharedProperties& properties) {
   auto iter =
       properties.find(ui::mojom::WindowManager::kInitialDisplayId_Property);
-  return iter == properties.end() ? display::Display::kInvalidDisplayID
+  return iter == properties.end() ? display::kInvalidDisplayId
                                   : mojo::ConvertTo<int64_t>(iter->second);
 }
 

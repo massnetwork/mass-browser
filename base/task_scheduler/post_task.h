@@ -73,7 +73,7 @@ BASE_EXPORT void PostTaskAndReply(const tracked_objects::Location& from_here,
 
 // Posts |task| with specific |traits| to the TaskScheduler.
 BASE_EXPORT void PostTaskWithTraits(const tracked_objects::Location& from_here,
-                                    TaskTraits traits,
+                                    const TaskTraits& traits,
                                     const Closure& task);
 
 // Posts |task| with specific |traits| to the TaskScheduler and posts |reply| on
@@ -82,9 +82,13 @@ BASE_EXPORT void PostTaskWithTraits(const tracked_objects::Location& from_here,
 // SequencedTaskRunnerHandle::IsSet().
 BASE_EXPORT void PostTaskWithTraitsAndReply(
     const tracked_objects::Location& from_here,
-    TaskTraits traits,
+    const TaskTraits& traits,
     const Closure& task,
     const Closure& reply);
+
+// Delayed tasks posted to TaskRunners returned by the functions below may be
+// coalesced (i.e. delays may be adjusted to reduce the number of wakeups and
+// hence power consumption).
 
 // Returns a TaskRunner whose PostTask invocations result in scheduling tasks
 // using |traits|. Tasks may run in any order and in parallel.

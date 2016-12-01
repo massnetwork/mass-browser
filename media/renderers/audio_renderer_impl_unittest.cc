@@ -16,7 +16,6 @@
 #include "base/strings/stringprintf.h"
 #include "base/test/simple_test_tick_clock.h"
 #include "media/base/audio_buffer_converter.h"
-#include "media/base/audio_splicer.h"
 #include "media/base/fake_audio_renderer_sink.h"
 #include "media/base/gmock_callback_support.h"
 #include "media/base/media_util.h"
@@ -127,6 +126,22 @@ class AudioRendererImplTest : public ::testing::Test, public RendererClient {
     testing::Mock::VerifyAndClearExpectations(&demuxer_stream_);
     EXPECT_CALL(demuxer_stream_, SupportsConfigChanges())
         .WillRepeatedly(Return(false));
+  }
+
+  // Reconfigures a renderer with config change support using given params.
+  void ConfigureConfigChangeRenderer(const AudioParameters& params,
+                                     const AudioParameters& hardware_params) {
+    hardware_params_ = hardware_params;
+    sink_ = new FakeAudioRendererSink(hardware_params_);
+    decoder_ = new MockAudioDecoder();
+    ScopedVector<AudioDecoder> decoders;
+    decoders.push_back(decoder_);
+    renderer_.reset(new AudioRendererImpl(message_loop_.task_runner(),
+                                          sink_.get(), std::move(decoders),
+                                          new MediaLog()));
+    testing::Mock::VerifyAndClearExpectations(&demuxer_stream_);
+    EXPECT_CALL(demuxer_stream_, SupportsConfigChanges())
+        .WillRepeatedly(Return(true));
   }
 
   void ExpectUnsupportedAudioDecoder() {
@@ -370,13 +385,11 @@ class AudioRendererImplTest : public ::testing::Test, public RendererClient {
         renderer_->buffer_converter_->input_frames_left_for_testing());
   }
 
-  bool splicer_has_next_buffer() const {
-    return renderer_->splicer_->HasNextBuffer();
-  }
-
   base::TimeDelta CurrentMediaTime() {
     return renderer_->CurrentMediaTime();
   }
+
+  std::vector<bool> channel_mask() const { return renderer_->channel_mask_; }
 
   bool ended() const { return ended_; }
 
@@ -583,6 +596,32 @@ TEST_F(AudioRendererImplTest, CapacityAppropriateForHardware) {
   EXPECT_GT(buffer_capacity().value, hardware_params_.frames_per_buffer());
 }
 
+// Verify that the proper reduced search space is configured for playback rate
+// changes when upmixing is applied to the input.
+TEST_F(AudioRendererImplTest, ChannelMask) {
+  Initialize();
+  AudioParameters hw_params(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                            CHANNEL_LAYOUT_7_1, kOutputSamplesPerSecond,
+                            SampleFormatToBytesPerChannel(kSampleFormat) * 8,
+                            1024);
+  ConfigureConfigChangeRenderer(
+      AudioParameters(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                      CHANNEL_LAYOUT_STEREO, kOutputSamplesPerSecond,
+                      SampleFormatToBytesPerChannel(kSampleFormat) * 8, 1024),
+      hw_params);
+  std::vector<bool> mask = channel_mask();
+  EXPECT_TRUE(mask.empty());
+  Initialize();
+  mask = channel_mask();
+  EXPECT_FALSE(mask.empty());
+  for (int ch = 0; ch < hw_params.channels(); ++ch) {
+    if (ch > 1)
+      ASSERT_FALSE(mask[ch]);
+    else
+      ASSERT_TRUE(mask[ch]);
+  }
+}
+
 TEST_F(AudioRendererImplTest, Underflow_Flush) {
   Initialize();
   Preroll();
@@ -673,28 +712,6 @@ TEST_F(AudioRendererImplTest, InitializeThenDestroyDuringDecoderInit) {
   InitializeAndDestroyDuringDecoderInit();
 }
 
-TEST_F(AudioRendererImplTest, ConfigChangeDrainsConverter) {
-  Initialize();
-  Preroll();
-  StartTicking();
-
-  // Drain internal buffer, we should have a pending read.
-  EXPECT_TRUE(ConsumeBufferedData(frames_buffered()));
-  WaitForPendingRead();
-
-  // Deliver a little bit of data.  Use an odd data size to ensure there is data
-  // left in the AudioBufferConverter.  Ensure no buffers are in the splicer.
-  SatisfyPendingRead(InputFrames(2053));
-  EXPECT_FALSE(splicer_has_next_buffer());
-  EXPECT_GT(converter_input_frames_left().value, 0);
-
-  // Force a config change and then ensure all buffered data has been put into
-  // the splicer.
-  force_config_change();
-  EXPECT_TRUE(splicer_has_next_buffer());
-  EXPECT_EQ(0, converter_input_frames_left().value);
-}
-
 TEST_F(AudioRendererImplTest, CurrentMediaTimeBehavior) {
   Initialize();
   Preroll();
@@ -748,13 +765,7 @@ TEST_F(AudioRendererImplTest, CurrentMediaTimeBehavior) {
   StopTicking();
   EXPECT_EQ(timestamp_helper.GetTimestamp(), CurrentMediaTime());
   tick_clock_->Advance(kConsumptionDuration * 2);
-
-  // TODO(chcunningham): Uncomment the AddFrames() call below. AudioClock should
-  // be expected to advance time through the last rendered buffer's samples, but
-  // we've currently capped it to not advance time after ticking stops as a
-  // short term workaround for messy blink code. See longterm solution at
-  // http://crrev.com/2425463002.
-  // timestamp_helper.AddFrames(frames_to_consume.value);
+  timestamp_helper.AddFrames(frames_to_consume.value);
   EXPECT_EQ(timestamp_helper.GetTimestamp(), CurrentMediaTime());
 }
 

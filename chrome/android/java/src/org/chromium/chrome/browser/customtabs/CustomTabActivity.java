@@ -8,8 +8,12 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.StrictMode;
 import android.support.customtabs.CustomTabsCallback;
@@ -45,11 +49,12 @@ import org.chromium.chrome.browser.compositor.layouts.LayoutManagerDocument;
 import org.chromium.chrome.browser.datausage.DataUseTabUIManager;
 import org.chromium.chrome.browser.document.ChromeLauncherActivity;
 import org.chromium.chrome.browser.externalnav.ExternalNavigationDelegateImpl;
-import org.chromium.chrome.browser.fullscreen.ChromeFullscreenManager;
+import org.chromium.chrome.browser.fullscreen.BrowserStateBrowserControlsVisibilityDelegate;
 import org.chromium.chrome.browser.metrics.PageLoadMetrics;
 import org.chromium.chrome.browser.net.spdyproxy.DataReductionProxySettings;
 import org.chromium.chrome.browser.pageinfo.WebsiteSettingsPopup;
 import org.chromium.chrome.browser.rappor.RapporServiceBridge;
+import org.chromium.chrome.browser.tab.EmptyTabObserver;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabDelegateFactory;
 import org.chromium.chrome.browser.tab.TabIdManager;
@@ -59,7 +64,6 @@ import org.chromium.chrome.browser.tabmodel.TabModel.TabLaunchType;
 import org.chromium.chrome.browser.tabmodel.TabModelObserver;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.tabmodel.TabModelSelectorImpl;
-import org.chromium.chrome.browser.tabmodel.TabPersistencePolicy;
 import org.chromium.chrome.browser.toolbar.ToolbarControlContainer;
 import org.chromium.chrome.browser.util.ColorUtils;
 import org.chromium.chrome.browser.util.UrlUtilities;
@@ -93,6 +97,7 @@ public class CustomTabActivity extends ChromeActivity {
     private CustomTabContentHandler mCustomTabContentHandler;
     private Tab mMainTab;
     private CustomTabBottomBarDelegate mBottomBarDelegate;
+    private CustomTabTabPersistencePolicy mTabPersistencePolicy;
 
     // This is to give the right package name while using the client's resources during an
     // overridePendingTransition call.
@@ -125,17 +130,19 @@ public class CustomTabActivity extends ChromeActivity {
         }
 
         @Override
-        public void onFirstContentfulPaint(WebContents webContents, long firstContentfulPaintMs) {
+        public void onFirstContentfulPaint(
+                WebContents webContents, long navigationStartTick, long firstContentfulPaintMs) {
             if (webContents != mTab.getWebContents()) return;
 
-            mConnection.notifyPageLoadMetric(
-                    mSession, PageLoadMetrics.FIRST_CONTENTFUL_PAINT, firstContentfulPaintMs);
+            mConnection.notifyPageLoadMetric(mSession, PageLoadMetrics.FIRST_CONTENTFUL_PAINT,
+                    navigationStartTick, firstContentfulPaintMs);
         }
     }
 
     private static class CustomTabCreator extends ChromeTabCreator {
         private final boolean mSupportsUrlBarHiding;
         private final boolean mIsOpenedByChrome;
+        private final BrowserStateBrowserControlsVisibilityDelegate mVisibilityDelegate;
 
         public CustomTabCreator(
                 ChromeActivity activity, WindowAndroid nativeWindow, boolean incognito,
@@ -143,11 +150,13 @@ public class CustomTabActivity extends ChromeActivity {
             super(activity, nativeWindow, incognito);
             mSupportsUrlBarHiding = supportsUrlBarHiding;
             mIsOpenedByChrome = isOpenedByChrome;
+            mVisibilityDelegate = activity.getFullscreenManager().getBrowserVisibilityDelegate();
         }
 
         @Override
         public TabDelegateFactory createDefaultTabDelegateFactory() {
-            return new CustomTabDelegateFactory(mSupportsUrlBarHiding, mIsOpenedByChrome);
+            return new CustomTabDelegateFactory(
+                    mSupportsUrlBarHiding, mIsOpenedByChrome, mVisibilityDelegate);
         }
     }
 
@@ -201,6 +210,15 @@ public class CustomTabActivity extends ChromeActivity {
     }
 
     /**
+     * @return Whether the given session is the currently active session.
+     */
+    public static boolean isActiveSession(CustomTabsSessionToken session) {
+        if (sActiveContentHandler == null) return false;
+        if (session == null || sActiveContentHandler.getSession() == null) return false;
+        return sActiveContentHandler.getSession().equals(session);
+    }
+
+    /**
      * Checks whether the active {@link CustomTabContentHandler} belongs to the given session, and
      * if true, update toolbar's custom button.
      * @param session     The {@link IBinder} that the calling client represents.
@@ -235,6 +253,16 @@ public class CustomTabActivity extends ChromeActivity {
     }
 
     @Override
+    protected Drawable getBackgroundDrawable() {
+        int initialBackgroundColor = mIntentDataProvider.getInitialBackgroundColor();
+        if (mIntentDataProvider.isTrustedIntent() && initialBackgroundColor != Color.TRANSPARENT) {
+            return new ColorDrawable(initialBackgroundColor);
+        } else {
+            return super.getBackgroundDrawable();
+        }
+    }
+
+    @Override
     public boolean isCustomTab() {
         return true;
     }
@@ -257,8 +285,11 @@ public class CustomTabActivity extends ChromeActivity {
 
     @Override
     public void preInflationStartup() {
-        super.preInflationStartup();
+        // Parse the data from the Intent before calling super to allow the Intent to customize
+        // the Activity parameters, including the background of the page.
         mIntentDataProvider = new CustomTabIntentDataProvider(getIntent(), this);
+
+        super.preInflationStartup();
         mSession = mIntentDataProvider.getSession();
         supportRequestWindowFeature(Window.FEATURE_ACTION_MODE_OVERLAY);
         mHasPrerender = !TextUtils.isEmpty(
@@ -310,10 +341,10 @@ public class CustomTabActivity extends ChromeActivity {
 
     @Override
     protected TabModelSelector createTabModelSelector() {
-        TabPersistencePolicy persistencePolicy = new CustomTabTabPersistencePolicy(
+        mTabPersistencePolicy = new CustomTabTabPersistencePolicy(
                 getTaskId(), getSavedInstanceState() != null);
 
-        return new TabModelSelectorImpl(this, this, persistencePolicy, false);
+        return new TabModelSelectorImpl(this, this, mTabPersistencePolicy, false, false);
     }
 
     @Override
@@ -372,7 +403,9 @@ public class CustomTabActivity extends ChromeActivity {
         if (getContextualSearchManager() != null) {
             getContextualSearchManager().setFindToolbarManager(mFindToolbarManager);
         }
-        getToolbarManager().initializeWithNative(getTabModelSelector(), getFullscreenManager(),
+        getToolbarManager().initializeWithNative(
+                getTabModelSelector(),
+                getFullscreenManager().getBrowserVisibilityDelegate(),
                 mFindToolbarManager, null, layoutDriver, null, null, null,
                 new OnClickListener() {
                     @Override
@@ -483,11 +516,15 @@ public class CustomTabActivity extends ChromeActivity {
         RecordHistogram.recordEnumeratedHistogram("CustomTabs.WebcontentsStateOnLaunch",
                 webContentsStateOnLaunch, WEBCONTENTS_STATE_MAX);
         if (webContents == null) webContents = WebContentsFactory.createWebContents(false, false);
+        if (!mHasPrerendered) {
+            customTabsConnection.resetPostMessageHandlerForSession(mSession, webContents);
+        }
         tab.initialize(
                 webContents, getTabContentManager(),
                 new CustomTabDelegateFactory(
                         mIntentDataProvider.shouldEnableUrlBarHiding(),
-                        mIntentDataProvider.isOpenedByChrome()),
+                        mIntentDataProvider.isOpenedByChrome(),
+                        getFullscreenManager().getBrowserVisibilityDelegate()),
                 false, false);
         initializeMainTab(tab);
         return tab;
@@ -502,6 +539,8 @@ public class CustomTabActivity extends ChromeActivity {
         mMetricsObserver = new PageLoadMetricsObserver(
                 CustomTabsConnection.getInstance(getApplication()), mSession, tab);
         tab.addObserver(mTabObserver);
+
+        prepareTabBackground(tab);
     }
 
     @Override
@@ -563,7 +602,12 @@ public class CustomTabActivity extends ChromeActivity {
     public void onStopWithNative() {
         super.onStopWithNative();
         setActiveContentHandler(null);
-        if (!mIsClosing) getTabModelSelector().saveState();
+        if (mIsClosing) {
+            getTabModelSelector().closeAllTabs(true);
+            mTabPersistencePolicy.deleteMetadataStateFileAsync();
+        } else {
+            getTabModelSelector().saveState();
+        }
     }
 
     /**
@@ -825,6 +869,14 @@ public class CustomTabActivity extends ChromeActivity {
     }
 
     /**
+     * @return The tab persistence policy for this activity.
+     */
+    @VisibleForTesting
+    CustomTabTabPersistencePolicy getTabPersistencePolicyForTest() {
+        return mTabPersistencePolicy;
+    }
+
+    /**
      * Opens the URL currently being displayed in the Custom Tab in the regular browser.
      * @param forceReparenting Whether tab reparenting should be forced for testing.
      *
@@ -890,10 +942,40 @@ public class CustomTabActivity extends ChromeActivity {
         return url;
     }
 
+    /** Sets the initial background color for the Tab, shown before the page content is ready. */
+    private void prepareTabBackground(final Tab tab) {
+        if (!IntentHandler.isIntentChromeOrFirstParty(getIntent(), this)) return;
+
+        int backgroundColor = mIntentDataProvider.getInitialBackgroundColor();
+        if (backgroundColor == Color.TRANSPARENT) return;
+
+        // Set the background color.
+        tab.getView().setBackgroundColor(backgroundColor);
+
+        // Unset the background when the page has rendered.
+        EmptyTabObserver mediaObserver = new EmptyTabObserver() {
+            @Override
+            public void didFirstVisuallyNonEmptyPaint(final Tab tab) {
+                tab.removeObserver(this);
+
+                // Blink has rendered the page by this point, but Android asynchronously shows it.
+                // Introduce a small delay, then actually show the page.
+                new Handler().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!tab.isInitialized() || isActivityDestroyed()) return;
+                        tab.getView().setBackgroundResource(0);
+                    }
+                }, 50);
+            }
+        };
+
+        tab.addObserver(mediaObserver);
+    }
+
     @Override
-    protected ChromeFullscreenManager createFullscreenManager() {
-        return new ChromeFullscreenManager(this,
-                (ToolbarControlContainer) findViewById(R.id.control_container),
-                getTabModelSelector(), getControlContainerHeightResource(), true);
+    protected void initializeToolbar() {
+        super.initializeToolbar();
+        if (mIntentDataProvider.isMediaViewer()) getToolbarManager().disableShadow();
     }
 }

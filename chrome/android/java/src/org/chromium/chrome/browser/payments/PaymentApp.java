@@ -4,7 +4,7 @@
 
 package org.chromium.chrome.browser.payments;
 
-import org.json.JSONObject;
+import org.chromium.payments.mojom.PaymentMethodData;
 
 import java.util.List;
 import java.util.Map;
@@ -38,16 +38,27 @@ public interface PaymentApp {
      *                   mode, merchant identifier, or a public key.
      * @param callback   The object that will receive the list of instruments.
      */
-    void getInstruments(Map<String, JSONObject> methodData, InstrumentsCallback callback);
+    void getInstruments(Map<String, PaymentMethodData> methodData, InstrumentsCallback callback);
 
     /**
      * Returns a list of all payment method names that this app supports. For example, ["visa",
      * "mastercard"] in basic card payments. Should return a list of at least one method name.
-     * https://w3c.github.io/browser-payment-api/specs/basic-card-payment.html#method-id
+     * https://w3c.github.io/webpayments-methods-card/#method-id
      *
      * @return The list of all payment method names that this app supports.
      */
     Set<String> getAppMethodNames();
+
+    /**
+     * Checks whether the app can support the payment methods when the method-specific data is taken
+     * into account.
+     *
+     * @param methodsAndData A mapping from the payment methods supported by this app to the
+     *                       corresponding method-specific data. Should not be null.
+     * @return True if the given methods are supported when the method-specific data is taken into
+     *         account.
+     */
+    boolean supportsMethodsAndData(Map<String, PaymentMethodData> methodsAndData);
 
     /**
      * Returns the identifier for this payment app to be saved in user preferences. For example,

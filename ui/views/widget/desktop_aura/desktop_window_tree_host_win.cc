@@ -27,7 +27,6 @@
 #include "ui/native_theme/native_theme_aura.h"
 #include "ui/native_theme/native_theme_win.h"
 #include "ui/views/corewm/tooltip_win.h"
-#include "ui/views/widget/desktop_aura/desktop_cursor_loader_updater.h"
 #include "ui/views/widget/desktop_aura/desktop_drag_drop_client_win.h"
 #include "ui/views/widget/desktop_aura/desktop_native_cursor_manager.h"
 #include "ui/views/widget/desktop_aura/desktop_native_widget_aura.h"
@@ -37,6 +36,7 @@
 #include "ui/views/win/fullscreen_handler.h"
 #include "ui/views/win/hwnd_message_handler.h"
 #include "ui/views/win/hwnd_util.h"
+#include "ui/views/window/native_frame_view.h"
 #include "ui/wm/core/compound_event_filter.h"
 #include "ui/wm/core/window_animations.h"
 #include "ui/wm/public/scoped_tooltip_disabler.h"
@@ -415,6 +415,12 @@ void DesktopWindowTreeHostWin::SetVisibilityChangedAnimationsEnabled(
   content_window_->SetProperty(aura::client::kAnimationsDisabledKey, !value);
 }
 
+NonClientFrameView* DesktopWindowTreeHostWin::CreateNonClientFrameView() {
+  return ShouldUseNativeFrame()
+             ? new NativeFrameView(native_widget_delegate_->AsWidget())
+             : nullptr;
+}
+
 bool DesktopWindowTreeHostWin::ShouldUseNativeFrame() const {
   return IsTranslucentWindowOpacitySupported();
 }
@@ -424,7 +430,7 @@ bool DesktopWindowTreeHostWin::ShouldWindowContentsBeTransparent() const {
   // is therefore transparent. Note: This is not equivalent to calling
   // IsAeroGlassEnabled, because ShouldUseNativeFrame is overridden in a
   // subclass.
-  return ShouldUseNativeFrame();
+  return ShouldUseNativeFrame() && !IsFullscreen();
 }
 
 void DesktopWindowTreeHostWin::FrameTypeChanged() {
@@ -464,9 +470,6 @@ void DesktopWindowTreeHostWin::InitModalType(ui::ModalType modal_type) {
 
 void DesktopWindowTreeHostWin::FlashFrame(bool flash_frame) {
   message_handler_->FlashFrame(flash_frame);
-}
-
-void DesktopWindowTreeHostWin::OnRootViewLayout() {
 }
 
 bool DesktopWindowTreeHostWin::IsAnimatingClosed() const {
@@ -962,7 +965,7 @@ HWND DesktopWindowTreeHostWin::GetHWND() const {
 }
 
 void DesktopWindowTreeHostWin::SetWindowTransparency() {
-  bool transparent = ShouldUseNativeFrame() && !IsFullscreen();
+  bool transparent = ShouldWindowContentsBeTransparent();
   compositor()->SetHostHasTransparentBackground(transparent);
   window()->SetTransparent(transparent);
   content_window_->SetTransparent(transparent);

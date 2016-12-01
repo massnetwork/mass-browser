@@ -8,6 +8,10 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #import "third_party/google_toolbox_for_mac/src/Foundation/GTMStringEncoding.h"
 
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "This file requires ARC support."
+#endif
+
 // Expose internal parser function for testing.
 NSData* ExtractVoiceSearchAudioDataFromPageHTML(NSString* pageHTML);
 
@@ -24,7 +28,7 @@ TEST(TextToSpeechParser, ExtractAudioDataValid) {
   EXPECT_TRUE(result != nil);
 
   GTMStringEncoding* base64 = [GTMStringEncoding rfc4648Base64StringEncoding];
-  NSData* expectedData = [base64 decode:@"dGVzdGF1ZG8zMm9pbw=="];
+  NSData* expectedData = [base64 decode:@"dGVzdGF1ZG8zMm9pbw==" error:nullptr];
   EXPECT_TRUE([expectedData isEqualToData:result]);
 }
 

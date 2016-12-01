@@ -87,13 +87,14 @@
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/user_metrics.h"
 #include "content/public/common/content_switches.h"
+#include "extensions/features/features.h"
 #include "net/http/http_transaction_factory.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_getter.h"
 #include "net/url_request/url_request_job.h"
 #include "ui/base/l10n/l10n_util.h"
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/extension_service.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_system.h"
@@ -202,10 +203,6 @@ void ProfileSizeTask(const base::FilePath& path, int enabled_app_count) {
   size_MB = static_cast<int>(size / kBytesInOneMB);
   UMA_HISTOGRAM_COUNTS_10000("Profile.ExtensionSize", size_MB);
 
-  size = ComputeFilesSize(path, FILE_PATH_LITERAL("Policy"));
-  size_MB = static_cast<int>(size / kBytesInOneMB);
-  UMA_HISTOGRAM_COUNTS_10000("Profile.PolicySize", size_MB);
-
   // Count number of enabled apps in this profile, if we know.
   if (enabled_app_count != -1)
     UMA_HISTOGRAM_COUNTS_10000("Profile.AppCount", enabled_app_count);
@@ -265,7 +262,7 @@ void CheckCryptohomeIsMounted(chromeos::DBusMethodCallStatus call_status,
 
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 
 // Returns the number of installed (and enabled) apps, excluding any component
 // apps.
@@ -926,6 +923,10 @@ void ProfileManager::InitProfileUserPrefs(Profile* profile) {
     profile->GetPrefs()->SetString(prefs::kSupervisedUserId,
                                    supervised_user_id);
   }
+#if !defined(OS_ANDROID)
+  if (profile->IsNewProfile())
+    profile->GetPrefs()->SetBoolean(prefs::kHasSeenWelcomePage, false);
+#endif
 }
 
 void ProfileManager::RegisterTestingProfile(Profile* profile,
@@ -1126,7 +1127,7 @@ void ProfileManager::DoFinalInitForServices(Profile* profile,
                                             bool go_off_the_record) {
   TRACE_EVENT0("browser", "ProfileManager::DoFinalInitForServices");
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   // Ensure that the HostContentSettingsMap has been created before the
   // ExtensionSystem is initialized otherwise the ExtensionSystem will be
   // registered twice
@@ -1209,7 +1210,7 @@ void ProfileManager::DoFinalInitLogging(Profile* profile) {
   TRACE_EVENT0("browser", "ProfileManager::DoFinalInitLogging");
   // Count number of extensions in this profile.
   int enabled_app_count = -1;
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   enabled_app_count = GetEnabledAppCount(profile);
 #endif
 
@@ -1312,10 +1313,31 @@ Profile* ProfileManager::CreateAndInitializeProfile(
 #if !defined(OS_ANDROID)
 void ProfileManager::EnsureActiveProfileExistsBeforeDeletion(
     const CreateCallback& callback, const base::FilePath& profile_dir) {
+  // In case we delete non-active profile, just proceed.
+  const base::FilePath last_used_profile =
+      GetLastUsedProfileDir(user_data_dir_);
+  if (last_used_profile != profile_dir &&
+      last_used_profile != GetGuestProfilePath()) {
+    FinishDeletingProfile(profile_dir, last_used_profile);
+    return;
+  }
+
+  // Search for an active browser and use its profile as active if possible.
+  for (Browser* browser : *BrowserList::GetInstance()) {
+    Profile* profile = browser->profile();
+    base::FilePath cur_path = profile->GetPath();
+    if (cur_path != profile_dir &&
+        !profile->IsLegacySupervised() &&
+        !IsProfileDirectoryMarkedForDeletion(cur_path)) {
+      OnNewActiveProfileLoaded(profile_dir, cur_path, callback, profile,
+                               Profile::CREATE_STATUS_INITIALIZED);
+      return;
+    }
+  }
+
+  // There no valid browsers to fallback, search for any existing valid profile.
   ProfileAttributesStorage& storage = GetProfileAttributesStorage();
-  // If we're deleting the last (non-legacy-supervised) profile, then create a
-  // new profile in its place.
-  base::FilePath last_non_supervised_profile_path;
+  base::FilePath fallback_profile_path;
   std::vector<ProfileAttributesEntry*> entries =
       storage.GetAllProfilesAttributes();
   for (ProfileAttributesEntry* entry : entries) {
@@ -1325,59 +1347,33 @@ void ProfileManager::EnsureActiveProfileExistsBeforeDeletion(
     if (cur_path != profile_dir &&
         !entry->IsLegacySupervised() &&
         !IsProfileDirectoryMarkedForDeletion(cur_path)) {
-      last_non_supervised_profile_path = cur_path;
+      fallback_profile_path = cur_path;
       break;
     }
   }
 
-  if (last_non_supervised_profile_path.empty()) {
-    std::string new_avatar_url;
-    base::string16 new_profile_name;
-
-#if !defined(OS_CHROMEOS) && !defined(OS_ANDROID)
+  // If we're deleting the last (non-legacy-supervised) profile, then create a
+  // new profile in its place. Load existing profile otherwise.
+  std::string new_avatar_url;
+  base::string16 new_profile_name;
+  if (fallback_profile_path.empty()) {
+    fallback_profile_path = GenerateNextProfileDirectoryPath();
+#if !defined(OS_CHROMEOS)
     int avatar_index = profiles::GetPlaceholderAvatarIndex();
     new_avatar_url = profiles::GetDefaultAvatarIconUrl(avatar_index);
     new_profile_name = storage.ChooseNameForNewProfile(avatar_index);
 #endif
-
-    base::FilePath new_path(GenerateNextProfileDirectoryPath());
-    CreateProfileAsync(new_path,
-                       base::Bind(&ProfileManager::OnNewActiveProfileLoaded,
-                                  base::Unretained(this),
-                                  profile_dir,
-                                  new_path,
-                                  callback),
-                       new_profile_name,
-                       new_avatar_url,
-                       std::string());
-
+    // A new profile about to be created.
     ProfileMetrics::LogProfileAddNewUser(
         ProfileMetrics::ADD_NEW_USER_LAST_DELETED);
-    return;
   }
 
-#if defined(OS_MACOSX)
-  // On the Mac, the browser process is not killed when all browser windows are
-  // closed, so just in case we are deleting the active profile, and no other
-  // profile has been loaded, we must pre-load a next one.
-  const base::FilePath last_used_profile =
-      GetLastUsedProfileDir(user_data_dir_);
-  if (last_used_profile == profile_dir ||
-      last_used_profile == GetGuestProfilePath()) {
-    CreateProfileAsync(last_non_supervised_profile_path,
-                       base::Bind(&ProfileManager::OnNewActiveProfileLoaded,
-                                  base::Unretained(this),
-                                  profile_dir,
-                                  last_non_supervised_profile_path,
-                                  callback),
-                       base::string16(),
-                       std::string(),
-                       std::string());
-    return;
-  }
-#endif  // defined(OS_MACOSX)
-
-  FinishDeletingProfile(profile_dir, last_non_supervised_profile_path);
+  // Create and/or load fallback profile.
+  CreateProfileAsync(fallback_profile_path,
+                     base::Bind(&ProfileManager::OnNewActiveProfileLoaded,
+                                base::Unretained(this), profile_dir,
+                                fallback_profile_path, callback),
+                     new_profile_name, new_avatar_url, std::string());
 }
 
 void ProfileManager::FinishDeletingProfile(

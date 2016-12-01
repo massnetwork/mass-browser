@@ -22,6 +22,7 @@ buildflag_header("media_features") {
     "ENABLE_HEVC_DEMUXING=$enable_hevc_demuxing",
     "ENABLE_MSE_MPEG2TS_STREAM_PARSER=$enable_mse_mpeg2ts_stream_parser",
     "ENABLE_MEDIA_REMOTING=$enable_media_remoting",
+    "ENABLE_WEBRTC=$enable_webrtc",
   ]
 }
 
@@ -162,8 +163,6 @@ component("media") {
     "filters/jpeg_parser.h",
     "filters/memory_data_source.cc",
     "filters/memory_data_source.h",
-    "filters/opus_audio_decoder.cc",
-    "filters/opus_audio_decoder.h",
     "filters/opus_constants.cc",
     "filters/opus_constants.h",
     "filters/pipeline_controller.cc",
@@ -283,7 +282,10 @@ component("media") {
   include_dirs = [ "." ]
   if (media_use_ffmpeg) {
     public_deps += [ "//media/ffmpeg" ]
-    deps += [ "//third_party/ffmpeg" ]
+    deps += [
+      "//third_party/ffmpeg",
+      "//third_party/opus",
+    ]
     sources += [
       "filters/audio_file_reader.cc",
       "filters/audio_file_reader.h",
@@ -486,7 +488,6 @@ component("media") {
     ":shared_memory_support",
     "//media/audio",
     "//media/base",
-    "//third_party/opus",
   ]
 
   deps += [
@@ -725,6 +726,7 @@ test("media_unittests") {
       # The test needs the java dependencies to add the java classes for their
       # native counterparts to the test apk.
       "//media/base/android:media_java",
+      "//media/gpu:android_video_decode_accelerator_unittests",
       "//ui/android:ui_java",
     ]
   }

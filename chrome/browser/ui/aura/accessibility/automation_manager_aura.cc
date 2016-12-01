@@ -18,6 +18,7 @@
 #include "content/public/browser/browser_context.h"
 #include "ui/accessibility/ax_action_data.h"
 #include "ui/accessibility/ax_enums.h"
+#include "ui/aura/env.h"
 #include "ui/aura/window.h"
 #include "ui/views/accessibility/ax_aura_obj_wrapper.h"
 #include "ui/views/view.h"
@@ -91,7 +92,7 @@ void AutomationManagerAura::PerformAction(
     case ui::AX_ACTION_DO_DEFAULT:
       current_tree_->DoDefault(data.target_node_id);
       break;
-    case ui::AX_ACTION_SET_FOCUS:
+    case ui::AX_ACTION_FOCUS:
       current_tree_->Focus(data.target_node_id);
       break;
     case ui::AX_ACTION_SCROLL_TO_MAKE_VISIBLE:
@@ -114,7 +115,12 @@ void AutomationManagerAura::PerformAction(
     case ui::AX_ACTION_SET_SEQUENTIAL_FOCUS_NAVIGATION_STARTING_POINT:
       // Sent by ChromeVox but doesn't need to be handled by aura.
       break;
+    case ui::AX_ACTION_BLUR:
+    case ui::AX_ACTION_DECREMENT:
+    case ui::AX_ACTION_GET_IMAGE_DATA:
     case ui::AX_ACTION_HIT_TEST:
+    case ui::AX_ACTION_INCREMENT:
+    case ui::AX_ACTION_REPLACE_SELECTED_TEXT:
     case ui::AX_ACTION_SCROLL_TO_POINT:
     case ui::AX_ACTION_SET_SCROLL_OFFSET:
     case ui::AX_ACTION_SET_VALUE:
@@ -182,6 +188,7 @@ void AutomationManagerAura::SendEvent(BrowserContext* context,
   params.tree_id = 0;
   params.id = aura_obj->GetID();
   params.event_type = event_type;
+  params.mouse_location = aura::Env::GetInstance()->last_mouse_location();
   AutomationEventRouter* router = AutomationEventRouter::GetInstance();
   router->DispatchAccessibilityEvent(params);
 

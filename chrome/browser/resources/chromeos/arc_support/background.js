@@ -3,19 +3,6 @@
 // found in the LICENSE file.
 
 /**
- * UI Pages. Note the order must be in sync with the ArcAuthService::UIPage
- * enum.
- * @type {Array<string>}
- */
-var UI_PAGES = ['none',
-                'terms',
-                'lso-loading',
-                'lso',
-                'arc-loading',
-                'error',
-                'error-with-feedback'];
-
-/**
  * Chrome window that hosts UI. Only one window is allowed.
  * @type {chrome.app.window.AppWindow}
  */
@@ -41,13 +28,6 @@ var port = null;
  * @type {string}
  */
 var currentDeviceId = null;
-
-/**
- * Indicates that terms were accepted by user.
- * @type {boolean}
- * TODO: This should be a part of TermsOfServicePage.
- */
-var termsAccepted = false;
 
 /**
  * Host window inner default width.
@@ -293,8 +273,6 @@ class TermsOfServicePage {
 
   /** Called when the TermsOfService page is shown. */
   onShow() {
-    termsAccepted = false;
-
     if (this.isManaged_ || this.state_ == LoadState.LOADED) {
       // Note: in managed case, because it does not show the contents of terms
       // of service, it is ok to show the content container immediately.
@@ -336,7 +314,14 @@ class TermsOfServicePage {
       // If there already is inflight loading task, do nothing.
       return;
     }
-    this.termsView_.src = 'https://play.google.com/about/play-terms.html';
+
+    if (this.termsView_.src) {
+      // This is reloading the page, typically clicked RETRY on error page.
+      this.termsView_.reload();
+    } else {
+      // This is first loading case so set the URL explicitly.
+      this.termsView_.src = 'https://play.google.com/about/play-terms.html';
+    }
   }
 
   /** Called when the terms-view starts to be loaded. */
@@ -367,15 +352,12 @@ class TermsOfServicePage {
     console.error('TermsView loading is aborted: ' + reason);
     // Mark ABORTED so that onTermsViewLoaded_() won't show the content view.
     this.state_ = LoadState.ABORTED;
-    setErrorMessage(
+    showErrorPage(
         appWindow.contentWindow.loadTimeData.getString('serverError'));
-    showPage('error');
   }
 
   /** Called when "AGREE" button is clicked. */
   onAgree() {
-    termsAccepted = true;
-
     sendNativeMessage('onAgreed', {
       isMetricsEnabled: this.metricsCheckbox_.isChecked(),
       isBackupRestoreEnabled: this.backupRestoreCheckbox_.isChecked(),
@@ -476,7 +458,9 @@ function onNativeMessage(message) {
       appWindow.close();
     }
   } else if (message.action == 'showPage') {
-    showPageWithStatus(message.page, message.status);
+    showPage(message.page);
+  } else if (message.action == 'showErrorPage') {
+    showErrorPage(message.errorMessage, message.shouldShowSendFeedback);
   } else if (message.action == 'setWindowBounds') {
     setWindowBounds();
   }
@@ -504,14 +488,6 @@ function showPage(pageDivId) {
   hideOverlay();
   var doc = appWindow.contentWindow.document;
   var pages = doc.getElementsByClassName('section');
-  var sendFeedbackElement = doc.getElementById('button-send-feedback');
-  if (pageDivId == 'error-with-feedback') {
-    // Only show feedback button if the pageDivId is 'error-with-feedback'.
-    sendFeedbackElement.hidden = false;
-    pageDivId = 'error';
-  } else {
-    sendFeedbackElement.hidden = true;
-  }
   for (var i = 0; i < pages.length; i++) {
     pages[i].hidden = pages[i].id != pageDivId;
   }
@@ -531,16 +507,25 @@ function showPage(pageDivId) {
 }
 
 /**
- * Sets error message.
- * @param {string} error message.
+ * Shows an error page, with given errorMessage.
+ *
+ * @param {string} errorMessage Localized error message text.
+ * @param {?boolean} opt_shouldShowSendFeedback If set to true, show "Send
+ *     feedback" button.
  */
-function setErrorMessage(error) {
+function showErrorPage(errorMessage, opt_shouldShowSendFeedback) {
   if (!appWindow) {
     return;
   }
+
   var doc = appWindow.contentWindow.document;
   var messageElement = doc.getElementById('error-message');
-  messageElement.innerText = error;
+  messageElement.innerText = errorMessage;
+
+  var sendFeedbackElement = doc.getElementById('button-send-feedback');
+  sendFeedbackElement.hidden = !opt_shouldShowSendFeedback;
+
+  showPage('error');
 }
 
 /**
@@ -601,32 +586,6 @@ function hideOverlay() {
   overlayContainer.hidden = true;
 }
 
-/**
- * Shows requested page.
- * @param {int} pageId Index of the page to show. Must be in the array range of
- * UI_PAGES.
- * @param {string} status associated with page string status, error message for
- *                        example.
- */
-function showPageWithStatus(pageId, status) {
-  if (!appWindow) {
-    return;
-  }
-
-  if (UI_PAGES[pageId] != 'terms') {
-    // Explicit request to start not from start page. Assume terms are
-    // accepted in this case.
-    // TODO: this is only for controling "RETRY" button. Remove this.
-    termsAccepted = true;
-  }
-
-  if (UI_PAGES[pageId] == 'error' ||
-      UI_PAGES[pageId] == 'error-with-feedback') {
-    setErrorMessage(status);
-  }
-  showPage(UI_PAGES[pageId]);
-}
-
 function setWindowBounds() {
   if (!appWindow) {
     return;
@@ -682,9 +641,8 @@ chrome.app.runtime.onLaunched.addListener(function() {
     };
 
     var onLsoViewErrorOccurred = function(details) {
-      setErrorMessage(appWindow.contentWindow.loadTimeData.getString(
-          'serverError'));
-      showPage('error');
+      showErrorPage(
+          appWindow.contentWindow.loadTimeData.getString('serverError'));
       lsoError = true;
     };
 
@@ -710,9 +668,9 @@ chrome.app.runtime.onLaunched.addListener(function() {
           var authCode = results[0].substring(authCodePrefix.length);
           sendNativeMessage('onAuthSucceeded', {code: authCode});
         } else {
-          setErrorMessage(appWindow.contentWindow.loadTimeData.getString(
-              'authorizationFailed'));
-          showPage('error');
+          showErrorMessage(
+              appWindow.contentWindow.loadTimeData.getString(
+                  'authorizationFailed'));
         }
       });
     };
@@ -729,15 +687,7 @@ chrome.app.runtime.onLaunched.addListener(function() {
     lsoView.addEventListener('contentload', onLsoViewContentLoad);
 
     var onRetry = function() {
-      if (termsAccepted) {
-        // Reuse the onAgree() in case that the user has already accepted
-        // the ToS.
-        termsPage.onAgree();
-      } else {
-        // Here 'error' page should be visible. So switch to 'terms' page
-        // to show the progress page, which triggers reloading.
-        showPage('terms');
-      }
+      sendNativeMessage('onRetryClicked');
     };
 
     var onSendFeedback = function() {

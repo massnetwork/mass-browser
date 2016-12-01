@@ -10,6 +10,7 @@
 
 #include "base/location.h"
 #include "base/memory/ptr_util.h"
+#include "base/metrics/field_trial.h"
 #include "base/run_loop.h"
 #include "base/single_thread_task_runner.h"
 #include "build/build_config.h"
@@ -24,6 +25,7 @@
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/native_web_keyboard_event.h"
 #include "content/public/common/content_client.h"
+#include "content/public/common/content_switches.h"
 #include "content/public/common/renderer_preferences.h"
 #include "content/public/renderer/content_renderer_client.h"
 #include "content/public/test/frame_load_waiter.h"
@@ -37,13 +39,13 @@
 #include "content/test/mock_render_process.h"
 #include "content/test/test_content_client.h"
 #include "content/test/test_render_frame.h"
-#include "third_party/WebKit/public/platform/WebSecurityOrigin.h"
+#include "third_party/WebKit/public/platform/WebGestureEvent.h"
+#include "third_party/WebKit/public/platform/WebInputEvent.h"
 #include "third_party/WebKit/public/platform/WebURLRequest.h"
 #include "third_party/WebKit/public/platform/scheduler/renderer/renderer_scheduler.h"
 #include "third_party/WebKit/public/web/WebDocument.h"
 #include "third_party/WebKit/public/web/WebHistoryItem.h"
 #include "third_party/WebKit/public/web/WebInputElement.h"
-#include "third_party/WebKit/public/web/WebInputEvent.h"
 #include "third_party/WebKit/public/web/WebKit.h"
 #include "third_party/WebKit/public/web/WebLocalFrame.h"
 #include "third_party/WebKit/public/web/WebScriptSource.h"
@@ -186,7 +188,6 @@ void RenderViewTest::LoadHTML(const char* html) {
   url_string.append(html);
   GURL url(url_string);
   WebURLRequest request(url);
-  request.setRequestorOrigin(blink::WebSecurityOrigin::createUnique());
   request.setCheckForBrowserSideNavigation(false);
   GetMainFrame()->loadRequest(request);
   // The load actually happens asynchronously, so we pump messages to process
@@ -230,6 +231,12 @@ void RenderViewTest::GoForward(const GURL& url, const PageState& state) {
 }
 
 void RenderViewTest::SetUp() {
+  // Initialize mojo firstly to enable Blink initialization to use it.
+  InitializeMojo();
+  test_io_thread_.reset(new base::TestIOThread(base::TestIOThread::kAutoStart));
+  ipc_support_.reset(
+      new mojo::edk::test::ScopedIPCSupport(test_io_thread_->task_runner()));
+
   // Blink needs to be initialized before calling CreateContentRendererClient()
   // because it uses blink internally.
   blink::initialize(blink_platform_impl_.Get());
@@ -264,6 +271,9 @@ void RenderViewTest::SetUp() {
   autorelease_pool_.reset(new base::mac::ScopedNSAutoreleasePool());
 #endif
   command_line_.reset(new base::CommandLine(base::CommandLine::NO_PROGRAM));
+  field_trial_list_.reset(new base::FieldTrialList(nullptr));
+  base::FieldTrialList::CreateTrialsFromCommandLine(
+      *command_line_, switches::kFieldTrialHandle);
   params_.reset(new MainFunctionParams(*command_line_));
   platform_.reset(new RendererMainPlatformDelegate(*params_));
   platform_->PlatformInitialize();
@@ -307,14 +317,9 @@ void RenderViewTest::SetUp() {
   view_params.min_size = gfx::Size();
   view_params.max_size = gfx::Size();
 
-  InitializeMojo();
-  test_io_thread_.reset(new base::TestIOThread(base::TestIOThread::kAutoStart));
-  ipc_support_.reset(
-      new mojo::edk::test::ScopedIPCSupport(test_io_thread_->task_runner()));
-
   // This needs to pass the mock render thread to the view.
-  RenderViewImpl* view =
-      RenderViewImpl::Create(compositor_deps_.get(), view_params, false);
+  RenderViewImpl* view = RenderViewImpl::Create(
+      compositor_deps_.get(), view_params, RenderWidget::ShowCallback());
   view_ = view;
 }
 

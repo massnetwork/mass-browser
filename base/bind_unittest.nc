@@ -213,8 +213,8 @@ void WontCompile() {
 #elif defined(NCTEST_DISALLOW_BINDING_ONCE_CALLBACK_WITH_NO_ARGS)  // [r"static_assert failed \"Attempting to bind a base::Callback with no additional arguments: save a heap allocation and use the original base::Callback object\""]
 
 void WontCompile() {
-  internal::OnceClosure cb = internal::BindOnce([] {});
-  internal::OnceClosure cb2 = internal::BindOnce(std::move(cb));
+  OnceClosure cb = BindOnce([] {});
+  OnceClosure cb2 = BindOnce(std::move(cb));
 }
 
 #elif defined(NCTEST_DISALLOW_BINDING_REPEATING_CALLBACK_WITH_NO_ARGS)  // [r"static_assert failed \"Attempting to bind a base::Callback with no additional arguments: save a heap allocation and use the original base::Callback object\""]
@@ -222,6 +222,13 @@ void WontCompile() {
 void WontCompile() {
   Closure cb = Bind([] {});
   Closure cb2 = Bind(cb);
+}
+
+#elif defined(NCTEST_DISALLOW_ONCECALLBACK_RUN_ON_LVALUE)  // [r"static_assert failed \"OnceCallback::Run\(\) may only be invoked on an rvalue, i\.e\. std::move\(callback\)\.Run\(\)\.\""]
+
+void WontCompile() {
+  OnceClosure cb = Bind([] {});
+  cb.Run();
 }
 
 #endif

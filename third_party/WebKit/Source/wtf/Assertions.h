@@ -60,13 +60,6 @@
 #define LOG_DISABLED !ENABLE(ASSERT)
 #endif
 
-#if COMPILER(GCC)
-#define WTF_ATTRIBUTE_PRINTF(formatStringArgument, extraArguments) \
-  __attribute__((__format__(printf, formatStringArgument, extraArguments)))
-#else
-#define WTF_ATTRIBUTE_PRINTF(formatStringArgument, extraArguments)
-#endif
-
 // These helper functions are always declared, but not necessarily always
 // defined if the corresponding function is disabled.
 
@@ -75,8 +68,7 @@ WTF_EXPORT void WTFReportAssertionFailure(const char* file,
                                           const char* function,
                                           const char* assertion);
 // WTFLogAlways() is deprecated. crbug.com/638849
-WTF_EXPORT void WTFLogAlways(const char* format, ...)
-    WTF_ATTRIBUTE_PRINTF(1, 2);
+WTF_EXPORT PRINTF_FORMAT(1, 2) void WTFLogAlways(const char* format, ...);
 WTF_EXPORT void WTFReportBacktrace(int framesToShow = 31);
 
 namespace WTF {
@@ -103,10 +95,9 @@ class WTF_EXPORT ScopedLogger {
   // The first message is passed to the constructor.  Additional messages for
   // the same scope can be added with log(). If condition is false, produce no
   // output and do not create a scope.
-  ScopedLogger(bool condition, const char* format, ...)
-      WTF_ATTRIBUTE_PRINTF(3, 4);
+  PRINTF_FORMAT(3, 4) ScopedLogger(bool condition, const char* format, ...);
   ~ScopedLogger();
-  void log(const char* format, ...) WTF_ATTRIBUTE_PRINTF(2, 3);
+  PRINTF_FORMAT(2, 3) void log(const char* format, ...);
 
  private:
   FRIEND_TEST_ALL_PREFIXES(AssertionsTest, ScopedLogger);
@@ -177,12 +168,6 @@ class WTF_EXPORT ScopedLogger {
 #endif
 #endif
 
-#if COMPILER(CLANG)
-#define NO_RETURN_DUE_TO_CRASH NO_RETURN
-#else
-#define NO_RETURN_DUE_TO_CRASH
-#endif
-
 // ASSERT and ASSERT_NOT_REACHED
 //  These macros are compiled out of release builds.
 //  Expressions inside them are evaluated in debug builds only.
@@ -213,13 +198,10 @@ class WTF_EXPORT ScopedLogger {
     CRASH();                                                               \
   } while (0)
 
-#define NO_RETURN_DUE_TO_ASSERT NO_RETURN_DUE_TO_CRASH
-
 #else
 
 #define ASSERT(assertion) ((void)0)
 #define ASSERT_NOT_REACHED() ((void)0)
-#define NO_RETURN_DUE_TO_ASSERT
 
 #endif
 
@@ -262,8 +244,6 @@ class WTF_EXPORT ScopedLogger {
 #define RELEASE_ASSERT(assertion) \
   (UNLIKELY(!(assertion)) ? (IMMEDIATE_CRASH()) : (void)0)
 #endif
-// TODO(tkent): Move this to base/logging.h?
-#define RELEASE_NOTREACHED() LOG(FATAL)
 
 // DEFINE_COMPARISON_OPERATORS_WITH_REFERENCES
 // Allow equality comparisons of Objects by reference or pointer,

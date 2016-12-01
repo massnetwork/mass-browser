@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "base/macros.h"
+#include "components/network_time/network_time_tracker.h"
 
 namespace base {
 namespace test {
@@ -27,25 +28,48 @@ class HttpResponse;
 
 namespace network_time {
 
+// The body of a valid time response. Can be returned, with
+// |kGoodTimeResponseServerProofHeader|, in responses from test servers
+// to simulate a network time server. This response uses 1 as the key
+// version and 123123123 as the nonce. Use
+// NetworkTimeTracker::OverrideNonceForTesting() to set the nonce so
+// that this response validates.
+extern const char kGoodTimeResponseBody[];
+
+// The x-cup-server-proof header value that should be served along with
+// |kGoodTimeResponseBody| to make a test server response be accepted by
+// NetworkTimeTracker as a valid response.
+extern const char kGoodTimeResponseServerProofHeader[];
+
+// The time that |kGoodTimeResponseBody| uses. Can be converted to a
+// base::Time with base::Time::FromJsTime.
+extern const double kGoodTimeResponseHandlerJsTime;
+
+// Returns a valid network time response using the constants above. See
+// comments in the .cc for how to update the time returned in the response.
 std::unique_ptr<net::test_server::HttpResponse> GoodTimeResponseHandler(
     const net::test_server::HttpRequest& request);
 
 // Allows tests to configure the network time queries field trial.
 class FieldTrialTest {
  public:
-  enum FetchesOnDemandStatus {
-    ENABLE_FETCHES_ON_DEMAND,
-    DISABLE_FETCHES_ON_DEMAND,
-  };
-
-  FieldTrialTest();
   virtual ~FieldTrialTest();
+
+  // A FieldTrialList exists as a global singleton. Use
+  // CreateForUnitTest() in unit tests to create a FieldTrialTest that
+  // creates its own FieldTrialList; use CreateForBrowserTest() to use
+  // the singleton FieldTrialList that is created during browser setup.
+  static FieldTrialTest* CreateForUnitTest();
+  static FieldTrialTest* CreateForBrowserTest();
+
   void SetNetworkQueriesWithVariationsService(
       bool enable,
       float query_probability,
-      FetchesOnDemandStatus fetches_on_demand);
+      NetworkTimeTracker::FetchBehavior fetch_behavior);
 
  private:
+  FieldTrialTest();
+  bool create_field_trial_list_ = true;
   std::unique_ptr<base::FieldTrialList> field_trial_list_;
   std::unique_ptr<base::test::ScopedFeatureList> scoped_feature_list_;
 

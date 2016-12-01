@@ -284,9 +284,12 @@ public class ContextualSearchPanel extends OverlayPanel {
      */
     @Override
     public void handleBarClick(long time, float x, float y) {
+        getSearchBarControl().onSearchBarClick(x);
+
         if (isPeeking()) {
             if (getSearchBarControl().getQuickActionControl().hasQuickAction()
                     && isCoordinateInsideActionTarget(x)) {
+                mPanelMetrics.setWasQuickActionClicked();
                 getSearchBarControl().getQuickActionControl().sendIntent();
             } else {
                 // super takes care of expanding the Panel when peeking.
@@ -295,7 +298,7 @@ public class ContextualSearchPanel extends OverlayPanel {
         } else if (isExpanded() || isMaximized()) {
             if (isCoordinateInsideCloseButton(x)) {
                 closePanel(StateChangeReason.CLOSE_BUTTON, true);
-            } else if (!mActivity.isCustomTab() && canDisplayContentInPanel()) {
+            } else if (canPromoteToNewTab()) {
                 mManagementDelegate.promoteToTab();
             }
         }
@@ -320,6 +323,12 @@ public class ContextualSearchPanel extends OverlayPanel {
             return true;
         }
         return false;
+    }
+
+    @Override
+    public void onShowPress(float x, float y) {
+        if (isCoordinateInsideBar(x, y)) getSearchBarControl().onShowPress(x);
+        super.onShowPress(x, y);
     }
 
     // ============================================================================================
@@ -671,7 +680,6 @@ public class ContextualSearchPanel extends OverlayPanel {
      * Creates the ContextualSearchBarControl, if needed. The Views are set to INVISIBLE, because
      * they won't actually be displayed on the screen (their snapshots will be displayed instead).
      */
-    @VisibleForTesting
     public ContextualSearchBarControl getSearchBarControl() {
         if (mSearchBarControl == null) {
             mSearchBarControl =
@@ -824,6 +832,13 @@ public class ContextualSearchPanel extends OverlayPanel {
      */
     public void destroyContent() {
         super.destroyOverlayPanelContent();
+    }
+
+    /**
+     * @return Whether the panel content can be displayed in a new tab.
+     */
+    boolean canPromoteToNewTab() {
+        return !mActivity.isCustomTab() && canDisplayContentInPanel();
     }
 
     // ============================================================================================

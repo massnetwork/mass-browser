@@ -93,13 +93,6 @@ WebVector<WebIconURL> WebRemoteFrameImpl::iconURLs(int iconTypesMask) const {
   return WebVector<WebIconURL>();
 }
 
-void WebRemoteFrameImpl::setRemoteWebLayer(WebLayer* webLayer) {
-  if (!frame())
-    return;
-
-  frame()->setRemotePlatformLayer(webLayer);
-}
-
 void WebRemoteFrameImpl::setSharedWorkerRepositoryClient(
     WebSharedWorkerRepositoryClient*) {
   NOTREACHED();
@@ -334,12 +327,6 @@ WebRect WebRemoteFrameImpl::selectionBoundsRect() const {
   return WebRect();
 }
 
-bool WebRemoteFrameImpl::selectionStartHasSpellingMarkerFor(int from,
-                                                            int length) const {
-  NOTREACHED();
-  return false;
-}
-
 WebString WebRemoteFrameImpl::layerTreeAsText(bool showDebugInfo) const {
   NOTREACHED();
   return WebString();
@@ -395,6 +382,13 @@ WebRemoteFrame* WebRemoteFrameImpl::createRemoteChild(
   return child;
 }
 
+void WebRemoteFrameImpl::setWebLayer(WebLayer* layer) {
+  if (!frame())
+    return;
+
+  frame()->setWebLayer(layer);
+}
+
 void WebRemoteFrameImpl::setCoreFrame(RemoteFrame* frame) {
   m_frame = frame;
 }
@@ -438,6 +432,19 @@ void WebRemoteFrameImpl::setReplicatedName(const WebString& name,
   frame()->tree().setPrecalculatedName(name, uniqueName);
 }
 
+void WebRemoteFrameImpl::setReplicatedFeaturePolicyHeader(
+    const WebString& headerValue) const {
+  if (RuntimeEnabledFeatures::featurePolicyEnabled()) {
+    FeaturePolicy* parentFeaturePolicy = nullptr;
+    if (parent()) {
+      Frame* parentFrame = frame()->client()->parent();
+      parentFeaturePolicy = parentFrame->securityContext()->getFeaturePolicy();
+    }
+    frame()->securityContext()->setFeaturePolicyFromHeader(headerValue,
+                                                           parentFeaturePolicy);
+  }
+}
+
 void WebRemoteFrameImpl::addReplicatedContentSecurityPolicyHeader(
     const WebString& headerValue,
     WebContentSecurityPolicyType type,
@@ -471,7 +478,7 @@ void WebRemoteFrameImpl::setReplicatedPotentiallyTrustworthyUniqueOrigin(
           isUniqueOriginPotentiallyTrustworthy);
 }
 
-void WebRemoteFrameImpl::DispatchLoadEventForFrameOwner() const {
+void WebRemoteFrameImpl::dispatchLoadEventOnFrameOwner() const {
   DCHECK(frame()->owner()->isLocal());
   frame()->owner()->dispatchLoad();
 }

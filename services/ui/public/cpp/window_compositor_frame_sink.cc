@@ -8,7 +8,6 @@
 #include "cc/output/compositor_frame.h"
 #include "cc/output/compositor_frame_sink_client.h"
 #include "gpu/ipc/client/gpu_channel_host.h"
-#include "services/ui/public/cpp/gpu_service.h"
 
 namespace ui {
 
@@ -47,10 +46,7 @@ bool WindowCompositorFrameSink::BindToClient(
       new mojo::Binding<cc::mojom::MojoCompositorFrameSinkClient>(
           this, std::move(client_request_)));
 
-  // TODO(enne): Get this from the WindowSurface via ServerWindowSurface.
-  begin_frame_source_.reset(new cc::DelayBasedBeginFrameSource(
-      base::MakeUnique<cc::DelayBasedTimeSource>(
-          base::ThreadTaskRunnerHandle::Get().get())));
+  begin_frame_source_ = base::MakeUnique<cc::ExternalBeginFrameSource>(this);
 
   client->SetBeginFrameSource(begin_frame_source_.get());
   return true;
@@ -69,7 +65,17 @@ void WindowCompositorFrameSink::SubmitCompositorFrame(
   DCHECK(thread_checker_->CalledOnValidThread());
   if (!compositor_frame_sink_)
     return;
-  compositor_frame_sink_->SubmitCompositorFrame(std::move(frame));
+
+  gfx::Size frame_size = last_submitted_frame_size_;
+  if (!frame.render_pass_list.empty())
+    frame_size = frame.render_pass_list[0]->output_rect.size();
+  if (!local_frame_id_.is_valid() || frame_size != last_submitted_frame_size_)
+    local_frame_id_ = id_allocator_.GenerateId();
+
+  compositor_frame_sink_->SubmitCompositorFrame(local_frame_id_,
+                                                std::move(frame));
+
+  last_submitted_frame_size_ = frame_size;
 }
 
 WindowCompositorFrameSink::WindowCompositorFrameSink(
@@ -93,6 +99,11 @@ void WindowCompositorFrameSink::DidReceiveCompositorFrameAck() {
   client_->DidReceiveCompositorFrameAck();
 }
 
+void WindowCompositorFrameSink::OnBeginFrame(
+    const cc::BeginFrameArgs& begin_frame_args) {
+  begin_frame_source_->OnBeginFrame(begin_frame_args);
+}
+
 void WindowCompositorFrameSink::ReclaimResources(
     const cc::ReturnedResourceArray& resources) {
   DCHECK(thread_checker_);
@@ -100,6 +111,10 @@ void WindowCompositorFrameSink::ReclaimResources(
   if (!client_)
     return;
   client_->ReclaimResources(resources);
+}
+
+void WindowCompositorFrameSink::OnNeedsBeginFrames(bool needs_begin_frames) {
+  compositor_frame_sink_->SetNeedsBeginFrame(needs_begin_frames);
 }
 
 WindowCompositorFrameSinkBinding::~WindowCompositorFrameSinkBinding() {}

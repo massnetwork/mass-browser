@@ -82,6 +82,7 @@
 #include "ui/base/layout.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
+#include "ui/events/base_event_utils.h"
 #include "ui/events/blink/blink_event_util.h"
 #include "ui/events/blink/did_overscroll_params.h"
 #include "ui/events/blink/web_input_event_traits.h"
@@ -450,6 +451,7 @@ RenderWidgetHostViewAndroid::RenderWidgetHostViewAndroid(
                         this),
       stylus_text_selector_(this),
       using_browser_compositor_(CompositorImpl::IsInitialized()),
+      synchronous_compositor_client_(nullptr),
       frame_evictor_(new DelegatedFrameEvictor(this)),
       locks_on_frame_count_(0),
       observing_root_window_(false),
@@ -600,12 +602,6 @@ void RenderWidgetHostViewAndroid::Focus() {
   host_->Focus();
   if (overscroll_controller_)
     overscroll_controller_->Enable();
-  if (content_view_core_) {
-    WebContentsImpl* web_contents_impl =
-        static_cast<WebContentsImpl*>(content_view_core_->GetWebContents());
-    if (web_contents_impl->ShowingInterstitialPage())
-      content_view_core_->ForceUpdateImeAdapter(GetNativeImeAdapter());
-  }
 }
 
 bool RenderWidgetHostViewAndroid::HasFocus() const {
@@ -776,8 +772,7 @@ void RenderWidgetHostViewAndroid::TextInputStateChanged(
       static_cast<int>(params.type), params.flags,
       params.value, params.selection_start, params.selection_end,
       params.composition_start, params.composition_end,
-      params.show_ime_if_needed, params.is_non_ime_change,
-      params.batch_edit);
+      params.show_ime_if_needed, params.is_non_ime_change);
 }
 
 void RenderWidgetHostViewAndroid::UpdateBackgroundColor(SkColor color) {
@@ -1192,17 +1187,19 @@ void RenderWidgetHostViewAndroid::SynchronousFrameMetadata(
   OnFrameMetadataUpdated(frame_metadata.Clone(), false);
 
   // DevTools ScreenCast support for Android WebView.
-  WebContents* web_contents = content_view_core_->GetWebContents();
-  if (DevToolsAgentHost::HasFor(web_contents)) {
-    scoped_refptr<DevToolsAgentHost> dtah =
-        DevToolsAgentHost::GetOrCreateFor(web_contents);
-    // Unblock the compositor.
-    BrowserThread::PostTask(
-        BrowserThread::UI, FROM_HERE,
-        base::Bind(
-            &RenderFrameDevToolsAgentHost::SynchronousSwapCompositorFrame,
-            static_cast<RenderFrameDevToolsAgentHost*>(dtah.get()),
-            base::Passed(&frame_metadata)));
+  RenderFrameHost* frame_host = RenderViewHost::From(host_)->GetMainFrame();
+  if (frame_host) {
+    RenderFrameDevToolsAgentHost::SignalSynchronousSwapCompositorFrame(
+        frame_host,
+        std::move(frame_metadata));
+  }
+}
+
+void RenderWidgetHostViewAndroid::SetSynchronousCompositorClient(
+      SynchronousCompositorClient* client) {
+  synchronous_compositor_client_ = client;
+  if (!sync_compositor_ && synchronous_compositor_client_) {
+    sync_compositor_ = SynchronousCompositorHost::Create(this);
   }
 }
 
@@ -1658,9 +1655,27 @@ void RenderWidgetHostViewAndroid::SendKeyEvent(
 }
 
 void RenderWidgetHostViewAndroid::SendMouseEvent(
-    const blink::WebMouseEvent& event) {
+    const ui::MotionEventAndroid& motion_event,
+    int changed_button) {
+  blink::WebInputEvent::Type webMouseEventType =
+      ui::ToWebMouseEventType(motion_event.GetAction());
+
+  blink::WebMouseEvent mouse_event = WebMouseEventBuilder::Build(
+      webMouseEventType,
+      ui::EventTimeStampToSeconds(motion_event.GetEventTime()),
+      motion_event.GetX(0),
+      motion_event.GetY(0),
+      motion_event.GetFlags(),
+      motion_event.GetButtonState() ? 1 : 0 /* click count */,
+      motion_event.GetPointerId(0),
+      motion_event.GetPressure(0),
+      motion_event.GetOrientation(0),
+      motion_event.GetTilt(0),
+      changed_button,
+      motion_event.GetToolType(0));
+
   if (host_)
-    host_->ForwardMouseEvent(event);
+    host_->ForwardMouseEvent(mouse_event);
 }
 
 void RenderWidgetHostViewAndroid::SendMouseWheelEvent(
@@ -1788,11 +1803,6 @@ void RenderWidgetHostViewAndroid::SetContentViewCore(
       view_.GetWindowAndroid()->GetCompositor()) {
     overscroll_controller_ = CreateOverscrollController(
         content_view_core_, ui::GetScaleFactorForNativeView(GetNativeView()));
-  }
-
-  if (!sync_compositor_) {
-    sync_compositor_ = SynchronousCompositorHost::Create(
-        this, content_view_core_->GetWebContents());
   }
 }
 

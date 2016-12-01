@@ -21,7 +21,7 @@ static const QuicStreamId kStreamId = 5;
 static const QuartcStreamInterface::WriteParameters kDefaultParam;
 
 // MockQuicSession that does not create streams and writes data from
-// ReliableQuicStream to a string.
+// QuicStream to a string.
 class MockQuicSession : public QuicSession {
  public:
   MockQuicSession(QuicConnection* connection,
@@ -30,9 +30,9 @@ class MockQuicSession : public QuicSession {
       : QuicSession(connection, nullptr /*visitor*/, config),
         write_buffer_(write_buffer) {}
 
-  // Writes outgoing data from ReliableQuicStream to a string.
+  // Writes outgoing data from QuicStream to a string.
   QuicConsumedData WritevData(
-      ReliableQuicStream* stream,
+      QuicStream* stream,
       QuicStreamId id,
       QuicIOVector iovector,
       QuicStreamOffset offset,
@@ -58,7 +58,7 @@ class MockQuicSession : public QuicSession {
 
   QuicCryptoStream* GetCryptoStream() override { return nullptr; }
 
-  // Called by ReliableQuicStream when they want to close stream.
+  // Called by QuicStream when they want to close stream.
   void SendRstStream(QuicStreamId id,
                      QuicRstStreamErrorCode error,
                      QuicStreamOffset bytes_written) override {}
@@ -72,7 +72,7 @@ class MockQuicSession : public QuicSession {
   }
 
   // The session take ownership of the stream.
-  void ActivateReliableStream(std::unique_ptr<ReliableQuicStream> stream) {
+  void ActivateReliableStream(std::unique_ptr<QuicStream> stream) {
     ActivateStream(std::move(stream));
   }
 
@@ -92,8 +92,8 @@ class DummyPacketWriter : public QuicPacketWriter {
   // QuicPacketWriter overrides.
   WriteResult WritePacket(const char* buffer,
                           size_t buf_len,
-                          const IPAddress& self_address,
-                          const IPEndPoint& peer_address,
+                          const QuicIpAddress& self_address,
+                          const QuicSocketAddress& peer_address,
                           PerPacketOptions* options) override {
     return WriteResult(WRITE_STATUS_ERROR, 0);
   }
@@ -105,7 +105,7 @@ class DummyPacketWriter : public QuicPacketWriter {
   void SetWritable() override {}
 
   QuicByteCount GetMaxPacketSize(
-      const IPEndPoint& peer_address) const override {
+      const QuicSocketAddress& peer_address) const override {
     return 0;
   }
 };
@@ -136,9 +136,9 @@ class MockQuartcStreamDelegate : public QuartcStreamInterface::Delegate {
 
  protected:
   uint32_t id_;
-  // Data read by the ReliableQuicStream.
+  // Data read by the QuicStream.
   std::string& read_buffer_;
-  // Whether the ReliableQuicStream is closed.
+  // Whether the QuicStream is closed.
   bool closed_ = false;
   int queued_bytes_amount_ = -1;
 };
@@ -149,13 +149,14 @@ class QuartcStreamTest : public ::testing::Test,
   void CreateReliableQuicStream() {
     // Arbitrary values for QuicConnection.
     Perspective perspective = Perspective::IS_SERVER;
-    IPAddress ip(0, 0, 0, 0);
+    QuicIpAddress ip;
+    ip.FromString("0.0.0.0");
     bool owns_writer = true;
     alarm_factory_.reset(new QuartcAlarmFactory(
         base::ThreadTaskRunnerHandle::Get().get(), GetClock()));
 
     connection_.reset(new QuicConnection(
-        0, IPEndPoint(ip, 0), this /*QuicConnectionHelperInterface*/,
+        0, QuicSocketAddress(ip, 0), this /*QuicConnectionHelperInterface*/,
         alarm_factory_.get(), new DummyPacketWriter(), owns_writer, perspective,
         AllSupportedVersions()));
 

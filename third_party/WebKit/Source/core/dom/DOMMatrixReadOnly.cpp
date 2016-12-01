@@ -2,8 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "core/dom/DOMMatrixReadOnly.h"
+
+#include "bindings/core/v8/V8ObjectBuilder.h"
 #include "core/dom/DOMMatrix.h"
 #include "core/dom/DOMMatrixInit.h"
+#include "core/dom/DOMPoint.h"
+#include "core/dom/DOMPointInit.h"
 
 namespace blink {
 namespace {
@@ -29,7 +34,7 @@ void setDictionaryMembers(DOMMatrixInit& other) {
 }
 
 String getErrorMessage(const char* a, const char* b) {
-  return String::format("The '%s' property should eqaul the '%s' property.", a,
+  return String::format("The '%s' property should equal the '%s' property.", a,
                         b);
 }
 
@@ -80,6 +85,10 @@ bool DOMMatrixReadOnly::validateAndFixup(DOMMatrixInit& other,
   return true;
 }
 
+DOMMatrixReadOnly* DOMMatrixReadOnly::create(ExceptionState& exceptionState) {
+  return new DOMMatrixReadOnly(TransformationMatrix());
+}
+
 DOMMatrixReadOnly* DOMMatrixReadOnly::create(Vector<double> sequence,
                                              ExceptionState& exceptionState) {
   if (sequence.size() != 6 && sequence.size() != 16) {
@@ -118,8 +127,10 @@ DOMMatrixReadOnly* DOMMatrixReadOnly::fromFloat64Array(
 DOMMatrixReadOnly* DOMMatrixReadOnly::fromMatrix(
     DOMMatrixInit& other,
     ExceptionState& exceptionState) {
-  if (!validateAndFixup(other, exceptionState))
+  if (!validateAndFixup(other, exceptionState)) {
+    DCHECK(exceptionState.hadException());
     return nullptr;
+  }
 
   if (other.is2D()) {
     double args[] = {other.m11(), other.m12(), other.m21(),
@@ -226,6 +237,30 @@ DOMMatrix* DOMMatrixReadOnly::inverse() {
   return DOMMatrix::create(this)->invertSelf();
 }
 
+DOMPoint* DOMMatrixReadOnly::transformPoint(const DOMPointInit& point) {
+  if (is2D() && point.z() == 0 && point.w() == 1) {
+    double x = point.x() * m11() + point.y() * m12() + m41();
+    double y = point.x() * m12() + point.y() * m22() + m42();
+    return DOMPoint::create(x, y, 0, 1);
+  }
+
+  double x = point.x() * m11() + point.y() * m21() + point.z() * m31() +
+             point.w() * m41();
+  double y = point.x() * m12() + point.y() * m22() + point.z() * m32() +
+             point.w() * m42();
+  double z = point.x() * m13() + point.y() * m23() + point.z() * m33() +
+             point.w() * m43();
+  double w = point.x() * m14() + point.y() * m24() + point.z() * m34() +
+             point.w() * m44();
+  return DOMPoint::create(x, y, z, w);
+}
+
+DOMMatrixReadOnly::DOMMatrixReadOnly(const TransformationMatrix& matrix,
+                                     bool is2D) {
+  m_matrix = TransformationMatrix::create(matrix);
+  m_is2D = is2D;
+}
+
 DOMFloat32Array* DOMMatrixReadOnly::toFloat32Array() const {
   float array[] = {
       static_cast<float>(m_matrix->m11()), static_cast<float>(m_matrix->m12()),
@@ -265,6 +300,36 @@ const String DOMMatrixReadOnly::toString() const {
   stream << ")";
 
   return String(stream.str().c_str());
+}
+
+ScriptValue DOMMatrixReadOnly::toJSONForBinding(
+    ScriptState* scriptState) const {
+  V8ObjectBuilder result(scriptState);
+  result.addNumber("a", a());
+  result.addNumber("b", b());
+  result.addNumber("c", c());
+  result.addNumber("d", d());
+  result.addNumber("e", e());
+  result.addNumber("f", f());
+  result.addNumber("m11", m11());
+  result.addNumber("m12", m12());
+  result.addNumber("m13", m13());
+  result.addNumber("m14", m14());
+  result.addNumber("m21", m21());
+  result.addNumber("m22", m22());
+  result.addNumber("m23", m23());
+  result.addNumber("m24", m24());
+  result.addNumber("m31", m31());
+  result.addNumber("m32", m32());
+  result.addNumber("m33", m33());
+  result.addNumber("m34", m34());
+  result.addNumber("m41", m41());
+  result.addNumber("m42", m42());
+  result.addNumber("m43", m43());
+  result.addNumber("m44", m44());
+  result.addBoolean("is2D", is2D());
+  result.addBoolean("isIdentity", isIdentity());
+  return result.scriptValue();
 }
 
 }  // namespace blink

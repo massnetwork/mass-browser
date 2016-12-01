@@ -38,9 +38,9 @@ class Transform;
 // or if converting from a scalar to an integer |SkScalarRound()|.
 //
 // A handful of methods in this class are overloaded providing an additional
-// argument of type SkXfermode::Mode. SkXfermode::Mode specifies how the
+// argument of type SkBlendMode. SkBlendMode specifies how the
 // source and destination colors are combined. Unless otherwise specified,
-// the variant that does not take a SkXfermode::Mode uses a transfer mode
+// the variant that does not take a SkBlendMode uses a transfer mode
 // of kSrcOver_Mode.
 class GFX_EXPORT Canvas {
  public:
@@ -89,7 +89,9 @@ class GFX_EXPORT Canvas {
   // Creates a Canvas backed by an |sk_canvas| with |image_scale_|.
   // |sk_canvas| is assumed to be already scaled based on |image_scale|
   // so no additional scaling is applied.
-  Canvas(sk_sp<SkCanvas> sk_canvas, float image_scale);
+  // Note: the caller must ensure that sk_canvas outlives this object, or until
+  // RecreateBackingCanvas is called.
+  Canvas(SkCanvas* sk_canvas, float image_scale);
 
   virtual ~Canvas();
 
@@ -213,22 +215,22 @@ class GFX_EXPORT Canvas {
   void Scale(int x_scale, int y_scale);
 
   // Fills the entire canvas' bitmap (restricted to current clip) with
-  // specified |color| using a transfer mode of SkXfermode::kSrcOver_Mode.
+  // specified |color| using a transfer mode of SkBlendMode::kSrcOver.
   void DrawColor(SkColor color);
 
   // Fills the entire canvas' bitmap (restricted to current clip) with
   // specified |color| and |mode|.
-  void DrawColor(SkColor color, SkXfermode::Mode mode);
+  void DrawColor(SkColor color, SkBlendMode mode);
 
   // Fills |rect| with |color| using a transfer mode of
-  // SkXfermode::kSrcOver_Mode.
+  // SkBlendMode::kSrcOver.
   void FillRect(const Rect& rect, SkColor color);
 
   // Fills |rect| with the specified |color| and |mode|.
-  void FillRect(const Rect& rect, SkColor color, SkXfermode::Mode mode);
+  void FillRect(const Rect& rect, SkColor color, SkBlendMode mode);
 
   // Draws a single pixel rect in the specified region with the specified
-  // color, using a transfer mode of SkXfermode::kSrcOver_Mode.
+  // color, using a transfer mode of SkBlendMode::kSrcOver.
   //
   // NOTE: if you need a single pixel line, use DrawLine.
   // DEPRECATED in favor of the RectF version below.
@@ -236,7 +238,7 @@ class GFX_EXPORT Canvas {
   void DrawRect(const Rect& rect, SkColor color);
 
   // Draws a single pixel rect in the specified region with the specified
-  // color, using a transfer mode of SkXfermode::kSrcOver_Mode.
+  // color, using a transfer mode of SkBlendMode::kSrcOver.
   //
   // NOTE: if you need a single pixel line, use DrawLine.
   void DrawRect(const RectF& rect, SkColor color);
@@ -247,13 +249,13 @@ class GFX_EXPORT Canvas {
   // NOTE: if you need a single pixel line, use DrawLine.
   // DEPRECATED in favor of the RectF version below.
   // TODO(funkysidd): Remove this (http://crbug.com/553726)
-  void DrawRect(const Rect& rect, SkColor color, SkXfermode::Mode mode);
+  void DrawRect(const Rect& rect, SkColor color, SkBlendMode mode);
 
   // Draws a single pixel rect in the specified region with the specified
   // color and transfer mode.
   //
   // NOTE: if you need a single pixel line, use DrawLine.
-  void DrawRect(const RectF& rect, SkColor color, SkXfermode::Mode mode);
+  void DrawRect(const RectF& rect, SkColor color, SkBlendMode mode);
 
   // Draws the given rectangle with the given |paint| parameters.
   // DEPRECATED in favor of the RectF version below.
@@ -481,7 +483,7 @@ class GFX_EXPORT Canvas {
                        const Rect& display_rect,
                        int flags);
 
-  SkCanvas* sk_canvas() { return canvas_.get(); }
+  SkCanvas* sk_canvas() { return canvas_; }
   float image_scale() const { return image_scale_; }
 
  private:
@@ -509,7 +511,12 @@ class GFX_EXPORT Canvas {
   // Canvas::Scale() does not affect |image_scale_|.
   float image_scale_;
 
-  sk_sp<SkCanvas> canvas_;
+  // canvas_ is our active canvas object. Sometimes we are also the owner,
+  // in which case canvas_owner_ will be set. Other times we are just
+  // borrowing someone else's canvas, in which case canvas_ will point there
+  // but canvas_owner_ will be null.
+  std::unique_ptr<SkCanvas> canvas_owner_;
+  SkCanvas* canvas_;
 
   DISALLOW_COPY_AND_ASSIGN(Canvas);
 };

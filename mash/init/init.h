@@ -13,9 +13,10 @@
 #include "mash/init/public/interfaces/init.mojom.h"
 #include "mojo/public/cpp/bindings/binding_set.h"
 #include "services/service_manager/public/cpp/connector.h"
+#include "services/service_manager/public/cpp/interface_factory.h"
 #include "services/service_manager/public/cpp/service.h"
 
-namespace mojo {
+namespace service_manager {
 class Connection;
 }
 
@@ -31,7 +32,7 @@ class Init : public service_manager::Service,
 
  private:
   // service_manager::Service:
-  void OnStart(const service_manager::ServiceInfo& info) override;
+  void OnStart() override;
   bool OnConnect(const service_manager::ServiceInfo& remote_info,
                  service_manager::InterfaceRegistry* registry) override;
 
@@ -40,9 +41,9 @@ class Init : public service_manager::Service,
               mojom::InitRequest request) override;
 
   // mojom::Init:
-  void StartService(const mojo::String& name,
-                    const mojo::String& user_id) override;
-  void StopServicesForUser(const mojo::String& user_id) override;
+  void StartService(const std::string& name,
+                    const std::string& user_id) override;
+  void StopServicesForUser(const std::string& user_id) override;
 
   void UserServiceQuit(const std::string& user_id);
 

@@ -4,8 +4,12 @@
 
 #include "content/browser/memory/memory_coordinator_impl.h"
 
+#include "base/metrics/histogram_macros.h"
+#include "base/process/process_metrics.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/trace_event/trace_event.h"
+#include "components/variations/variations_associated_data.h"
 #include "content/browser/memory/memory_monitor.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_types.h"
@@ -51,6 +55,89 @@ mojom::MemoryState ToMojomMemoryState(base::MemoryState state) {
   }
 }
 
+void RecordMetricsOnStateChange(base::MemoryState prev_state,
+                                base::MemoryState next_state,
+                                base::TimeDelta duration,
+                                size_t total_private_mb) {
+#define RECORD_METRICS(transition)                                             \
+  UMA_HISTOGRAM_MEMORY_LARGE_MB("Memory.Coordinator.TotalPrivate." transition, \
+                                total_private_mb);                             \
+  UMA_HISTOGRAM_CUSTOM_TIMES("Memory.Coordinator.StateDuration." transition,   \
+                             duration, base::TimeDelta::FromSeconds(30),       \
+                             base::TimeDelta::FromHours(24), 50);
+
+  if (prev_state == base::MemoryState::NORMAL) {
+    switch (next_state) {
+      case base::MemoryState::THROTTLED:
+        RECORD_METRICS("NormalToThrottled");
+        break;
+      case base::MemoryState::SUSPENDED:
+        RECORD_METRICS("NormalToSuspended");
+        break;
+      case base::MemoryState::UNKNOWN:
+      case base::MemoryState::NORMAL:
+        NOTREACHED();
+        break;
+    }
+  } else if (prev_state == base::MemoryState::THROTTLED) {
+    switch (next_state) {
+      case base::MemoryState::NORMAL:
+        RECORD_METRICS("ThrottledToNormal");
+        break;
+      case base::MemoryState::SUSPENDED:
+        RECORD_METRICS("ThrottledToSuspended");
+        break;
+      case base::MemoryState::UNKNOWN:
+      case base::MemoryState::THROTTLED:
+        NOTREACHED();
+        break;
+    }
+  } else if (prev_state == base::MemoryState::SUSPENDED) {
+    switch (next_state) {
+      case base::MemoryState::NORMAL:
+        RECORD_METRICS("SuspendedToNormal");
+        break;
+      case base::MemoryState::THROTTLED:
+        RECORD_METRICS("SuspendedToThrottled");
+        break;
+      case base::MemoryState::UNKNOWN:
+      case base::MemoryState::SUSPENDED:
+        NOTREACHED();
+        break;
+    }
+  } else {
+    NOTREACHED();
+  }
+#undef RECORD_METRICS
+}
+
+void SetIntVariationParameter(const std::map<std::string, std::string> params,
+                              const char* name,
+                              int* target) {
+  const auto& iter = params.find(name);
+  if (iter == params.end())
+    return;
+  int value;
+  if (!iter->second.empty() && base::StringToInt(iter->second, &value)) {
+    DCHECK(value > 0);
+    *target = value;
+  }
+}
+
+void SetSecondsVariationParameter(
+    const std::map<std::string, std::string> params,
+    const char* name,
+    base::TimeDelta* target) {
+  const auto& iter = params.find(name);
+  if (iter == params.end())
+    return;
+  int value;
+  if (!iter->second.empty() && base::StringToInt(iter->second, &value)) {
+    DCHECK(value > 0);
+    *target = base::TimeDelta::FromSeconds(value);
+  }
+}
+
 }  // namespace
 
 // SingletonTraits for MemoryCoordinator. Returns MemoryCoordinatorImpl
@@ -80,17 +167,7 @@ MemoryCoordinatorImpl::MemoryCoordinatorImpl(
   DCHECK(memory_monitor_.get());
   update_state_callback_ = base::Bind(&MemoryCoordinatorImpl::UpdateState,
                                       weak_ptr_factory_.GetWeakPtr());
-
-  // Set initial parameters for calculating the global state.
-  expected_renderer_size_ = kDefaultExpectedRendererSizeMB;
-  new_renderers_until_throttled_ = kDefaultNewRenderersUntilThrottled;
-  new_renderers_until_suspended_ = kDefaultNewRenderersUntilSuspended;
-  new_renderers_back_to_normal_ = kDefaultNewRenderersBackToNormal;
-  new_renderers_back_to_throttled_ = kDefaultNewRenderersBackToThrottled;
-  minimum_transition_period_ =
-      base::TimeDelta::FromSeconds(kDefaultMinimumTransitionPeriodSeconds);
-  monitoring_interval_ =
-      base::TimeDelta::FromSeconds(kDefaultMonitoringIntervalSeconds);
+  InitializeParameters();
 }
 
 MemoryCoordinatorImpl::~MemoryCoordinatorImpl() {}
@@ -108,7 +185,7 @@ void MemoryCoordinatorImpl::Start() {
 
 void MemoryCoordinatorImpl::OnChildAdded(int render_process_id) {
   // Populate the global state as an initial state of a newly created process.
-  SetMemoryState(render_process_id, ToMojomMemoryState(current_state_));
+  SetChildMemoryState(render_process_id, ToMojomMemoryState(current_state_));
 }
 
 base::MemoryState MemoryCoordinatorImpl::GetCurrentMemoryState() const {
@@ -147,13 +224,19 @@ void MemoryCoordinatorImpl::Observe(int type,
   // We don't throttle/suspend a visible renderer for now.
   auto new_state = is_visible ? mojom::MemoryState::NORMAL
                               : ToMojomMemoryState(current_state_);
-  SetMemoryState(iter->first, new_state);
+  SetChildMemoryState(iter->first, new_state);
 }
 
 base::MemoryState MemoryCoordinatorImpl::CalculateNextState() {
   using MemoryState = base::MemoryState;
 
   int available = memory_monitor_->GetFreeMemoryUntilCriticalMB();
+
+  // TODO(chrisha): Move this histogram recording to a better place when
+  // https://codereview.chromium.org/2479673002/ is landed.
+  UMA_HISTOGRAM_MEMORY_LARGE_MB("Memory.Coordinator.FreeMemoryUntilCritical",
+                                available);
+
   if (available <= 0)
     return MemoryState::SUSPENDED;
 
@@ -187,6 +270,7 @@ base::MemoryState MemoryCoordinatorImpl::CalculateNextState() {
 }
 
 void MemoryCoordinatorImpl::UpdateState() {
+  base::TimeTicks prev_last_state_change = last_state_change_;
   base::TimeTicks now = base::TimeTicks::Now();
   MemoryState prev_state = current_state_;
   MemoryState next_state = CalculateNextState();
@@ -201,6 +285,7 @@ void MemoryCoordinatorImpl::UpdateState() {
                  "prev", MemoryStateToString(prev_state),
                  "next", MemoryStateToString(next_state));
 
+    RecordStateChange(prev_state, next_state, now - prev_last_state_change);
     NotifyStateToClients();
     NotifyStateToChildren();
     ScheduleUpdateState(minimum_transition_period_);
@@ -216,14 +301,74 @@ void MemoryCoordinatorImpl::NotifyStateToClients() {
 
 void MemoryCoordinatorImpl::NotifyStateToChildren() {
   auto mojo_state = ToMojomMemoryState(current_state_);
-  // It's OK to call SetMemoryState() unconditionally because it checks whether
-  // this state transition is valid.
+  // It's OK to call SetChildMemoryState() unconditionally because it checks
+  // whether this state transition is valid.
   for (auto& iter : children())
-    SetMemoryState(iter.first, mojo_state);
+    SetChildMemoryState(iter.first, mojo_state);
+}
+
+void MemoryCoordinatorImpl::RecordStateChange(MemoryState prev_state,
+                                              MemoryState next_state,
+                                              base::TimeDelta duration) {
+  size_t total_private_kb = 0;
+
+  // TODO(bashi): On MacOS we can't get process metrics for child processes and
+  // therefore can't calculate the total private memory.
+#if !defined(OS_MACOSX)
+  auto browser_metrics = base::ProcessMetrics::CreateCurrentProcessMetrics();
+  base::WorkingSetKBytes working_set;
+  browser_metrics->GetWorkingSetKBytes(&working_set);
+  total_private_kb += working_set.priv;
+
+  for (auto& iter : children()) {
+    auto* render_process_host = RenderProcessHost::FromID(iter.first);
+    if (!render_process_host ||
+        render_process_host->GetHandle() == base::kNullProcessHandle)
+      continue;
+    auto metrics = base::ProcessMetrics::CreateProcessMetrics(
+        render_process_host->GetHandle());
+    metrics->GetWorkingSetKBytes(&working_set);
+    total_private_kb += working_set.priv;
+  }
+#endif
+
+  RecordMetricsOnStateChange(prev_state, next_state, duration,
+                             total_private_kb / 1024);
 }
 
 void MemoryCoordinatorImpl::ScheduleUpdateState(base::TimeDelta delta) {
   task_runner_->PostDelayedTask(FROM_HERE, update_state_callback_, delta);
+}
+
+void MemoryCoordinatorImpl::InitializeParameters() {
+  expected_renderer_size_ = kDefaultExpectedRendererSizeMB;
+  new_renderers_until_throttled_ = kDefaultNewRenderersUntilThrottled;
+  new_renderers_until_suspended_ = kDefaultNewRenderersUntilSuspended;
+  new_renderers_back_to_normal_ = kDefaultNewRenderersBackToNormal;
+  new_renderers_back_to_throttled_ = kDefaultNewRenderersBackToThrottled;
+  minimum_transition_period_ =
+      base::TimeDelta::FromSeconds(kDefaultMinimumTransitionPeriodSeconds);
+  monitoring_interval_ =
+      base::TimeDelta::FromSeconds(kDefaultMonitoringIntervalSeconds);
+
+  // Override default parameters with variations.
+  static constexpr char kMemoryCoordinatorV0Trial[] = "MemoryCoordinatorV0";
+  std::map<std::string, std::string> params;
+  variations::GetVariationParams(kMemoryCoordinatorV0Trial, &params);
+  SetIntVariationParameter(params, "expected_renderer_size",
+                           &expected_renderer_size_);
+  SetIntVariationParameter(params, "new_renderers_until_throttled",
+                           &new_renderers_until_throttled_);
+  SetIntVariationParameter(params, "new_renderers_until_suspended",
+                           &new_renderers_until_suspended_);
+  SetIntVariationParameter(params, "new_renderers_back_to_normal",
+                           &new_renderers_back_to_normal_);
+  SetIntVariationParameter(params, "new_renderers_back_to_throttled",
+                           &new_renderers_back_to_throttled_);
+  SetSecondsVariationParameter(params, "minimum_transition_period",
+                               &minimum_transition_period_);
+  SetSecondsVariationParameter(params, "monitoring_interval",
+                               &monitoring_interval_);
 }
 
 bool MemoryCoordinatorImpl::ValidateParameters() {

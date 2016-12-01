@@ -16,11 +16,11 @@
 #include <memory>
 
 #include "base/macros.h"
-#include "net/base/ip_endpoint.h"
 #include "net/quic/chromium/quic_chromium_connection_helper.h"
 #include "net/quic/core/crypto/quic_crypto_server_config.h"
 #include "net/quic/core/quic_config.h"
 #include "net/quic/core/quic_framer.h"
+#include "net/quic/platform/api/quic_socket_address.h"
 #include "net/tools/epoll_server/epoll_server.h"
 #include "net/tools/quic/quic_default_packet_writer.h"
 
@@ -44,7 +44,7 @@ class QuicServer : public EpollCallbackInterface {
   ~QuicServer() override;
 
   // Start listening on the specified address.
-  bool CreateUDPSocketAndListen(const IPEndPoint& address);
+  bool CreateUDPSocketAndListen(const QuicSocketAddress& address);
 
   // Wait up to 50ms, and handle any events which occur.
   void WaitForEvents();
@@ -59,10 +59,6 @@ class QuicServer : public EpollCallbackInterface {
   void OnUnregistration(int fd, bool replaced) override {}
 
   void OnShutdown(EpollServer* eps, int fd) override {}
-
-  void SetStrikeRegisterNoStartupPeriod() {
-    crypto_config_.set_strike_register_no_startup_period();
-  }
 
   void SetChloMultiplier(size_t multiplier) {
     crypto_config_.set_chlo_multiplier(multiplier);

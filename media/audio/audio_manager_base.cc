@@ -82,7 +82,6 @@ AudioManagerBase::AudioManagerBase(
       max_num_output_streams_(kDefaultMaxOutputStreams),
       max_num_input_streams_(kDefaultMaxInputStreams),
       num_output_streams_(0),
-      num_input_streams_(0),
       // TODO(dalecurtis): Switch this to an base::ObserverListThreadSafe, so we
       // don't
       // block the UI thread when swapping devices.
@@ -96,7 +95,7 @@ AudioManagerBase::~AudioManagerBase() {
   // All the output streams should have been deleted.
   CHECK_EQ(0, num_output_streams_);
   // All the input streams should have been deleted.
-  CHECK_EQ(0, num_input_streams_);
+  CHECK(input_streams_.empty());
 }
 
 base::string16 AudioManagerBase::GetAudioInputDeviceModel() {
@@ -107,7 +106,7 @@ AudioOutputStream* AudioManagerBase::MakeAudioOutputStream(
     const AudioParameters& params,
     const std::string& device_id,
     const LogCallback& log_callback) {
-  DCHECK(GetTaskRunner()->BelongsToCurrentThread());
+  CHECK(GetTaskRunner()->BelongsToCurrentThread());
 
   if (!params.IsValid()) {
     DLOG(ERROR) << "Audio parameters are invalid";
@@ -136,6 +135,12 @@ AudioOutputStream* AudioManagerBase::MakeAudioOutputStream(
     case AudioParameters::AUDIO_PCM_LOW_LATENCY:
       stream = MakeLowLatencyOutputStream(params, device_id, log_callback);
       break;
+    case AudioParameters::AUDIO_BITSTREAM_AC3:
+    case AudioParameters::AUDIO_BITSTREAM_EAC3:
+      // TODO(tsunghung): create passthrough output stream.
+      NOTREACHED();
+      stream = nullptr;
+      break;
     case AudioParameters::AUDIO_FAKE:
       stream = FakeAudioOutputStream::MakeFakeStream(this, params);
       break;
@@ -155,7 +160,7 @@ AudioInputStream* AudioManagerBase::MakeAudioInputStream(
     const AudioParameters& params,
     const std::string& device_id,
     const LogCallback& log_callback) {
-  DCHECK(GetTaskRunner()->BelongsToCurrentThread());
+  CHECK(GetTaskRunner()->BelongsToCurrentThread());
 
   if (!params.IsValid() || (params.channels() > kMaxInputChannels) ||
       device_id.empty()) {
@@ -163,10 +168,10 @@ AudioInputStream* AudioManagerBase::MakeAudioInputStream(
     return NULL;
   }
 
-  if (num_input_streams_ >= max_num_input_streams_) {
+  if (input_stream_count() >= max_num_input_streams_) {
     DLOG(ERROR) << "Number of opened input audio streams "
-                << num_input_streams_
-                << " exceed the max allowed number " << max_num_input_streams_;
+                << input_stream_count() << " exceed the max allowed number "
+                << max_num_input_streams_;
     return NULL;
   }
 
@@ -190,7 +195,7 @@ AudioInputStream* AudioManagerBase::MakeAudioInputStream(
   }
 
   if (stream) {
-    ++num_input_streams_;
+    input_streams_.insert(stream);
   }
 
   return stream;
@@ -199,7 +204,7 @@ AudioInputStream* AudioManagerBase::MakeAudioInputStream(
 AudioOutputStream* AudioManagerBase::MakeAudioOutputStreamProxy(
     const AudioParameters& params,
     const std::string& device_id) {
-  DCHECK(GetTaskRunner()->BelongsToCurrentThread());
+  CHECK(GetTaskRunner()->BelongsToCurrentThread());
 
   // If the caller supplied an empty device id to select the default device,
   // we fetch the actual device id of the default device so that the lookup
@@ -281,7 +286,9 @@ void AudioManagerBase::GetAudioOutputDeviceNames(
 }
 
 void AudioManagerBase::ReleaseOutputStream(AudioOutputStream* stream) {
+  CHECK(GetTaskRunner()->BelongsToCurrentThread());
   DCHECK(stream);
+  CHECK_GT(num_output_streams_, 0);
   // TODO(xians) : Have a clearer destruction path for the AudioOutputStream.
   // For example, pass the ownership to AudioManager so it can delete the
   // streams.
@@ -290,9 +297,10 @@ void AudioManagerBase::ReleaseOutputStream(AudioOutputStream* stream) {
 }
 
 void AudioManagerBase::ReleaseInputStream(AudioInputStream* stream) {
+  CHECK(GetTaskRunner()->BelongsToCurrentThread());
   DCHECK(stream);
   // TODO(xians) : Have a clearer destruction path for the AudioInputStream.
-  --num_input_streams_;
+  CHECK_EQ(1u, input_streams_.erase(stream));
   delete stream;
 }
 
@@ -303,6 +311,20 @@ void AudioManagerBase::Shutdown() {
     output_dispatchers_.back()->dispatcher->Shutdown();
     output_dispatchers_.pop_back();
   }
+
+#if defined(OS_MACOSX)
+  // On mac, AudioManager runs on the main thread, loop for which stops
+  // processing task queue at this point. So even if tasks to close the
+  // streams are enqueued, they would not run leading to CHECKs getting hit
+  // in the destructor about open streams. Close them explicitly here.
+  // crbug.com/608049.
+  for (auto iter = input_streams_.begin(); iter != input_streams_.end();) {
+    // Note: Closing the stream will invalidate the iterator.
+    // Increment the iterator before closing the stream.
+    AudioInputStream* stream = *iter++;
+    stream->Close();
+  }
+#endif  // OS_MACOSX
 }
 
 void AudioManagerBase::AddOutputDeviceChangeListener(

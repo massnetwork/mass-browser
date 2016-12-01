@@ -6,12 +6,14 @@
 
 #include "bindings/core/v8/ScriptState.h"
 #include "core/dom/Document.h"
+#include "core/dom/DocumentUserGestureToken.h"
 #include "core/dom/ExecutionContext.h"
 #include "core/events/Event.h"
 #include "core/frame/LocalFrame.h"
 #include "modules/EventTargetModules.h"
 #include "modules/mediasession/MediaMetadata.h"
 #include "modules/mediasession/MediaMetadataSanitizer.h"
+#include "platform/UserGestureIndicator.h"
 #include "public/platform/InterfaceProvider.h"
 #include "wtf/Optional.h"
 #include <memory>
@@ -34,10 +36,10 @@ const AtomicString& mojomActionToEventName(MediaSessionAction action) {
       return EventTypeNames::previoustrack;
     case MediaSessionAction::NEXT_TRACK:
       return EventTypeNames::nexttrack;
-    case MediaSessionAction::SEEK_FORWARD:
-      return EventTypeNames::seekforward;
     case MediaSessionAction::SEEK_BACKWARD:
       return EventTypeNames::seekbackward;
+    case MediaSessionAction::SEEK_FORWARD:
+      return EventTypeNames::seekforward;
     default:
       NOTREACHED();
   }
@@ -56,10 +58,10 @@ WTF::Optional<MediaSessionAction> eventNameToMojomAction(
     return MediaSessionAction::PREVIOUS_TRACK;
   if (EventTypeNames::nexttrack == eventName)
     return MediaSessionAction::NEXT_TRACK;
-  if (EventTypeNames::seekforward == eventName)
-    return MediaSessionAction::SEEK_FORWARD;
   if (EventTypeNames::seekbackward == eventName)
     return MediaSessionAction::SEEK_BACKWARD;
+  if (EventTypeNames::seekforward == eventName)
+    return MediaSessionAction::SEEK_FORWARD;
 
   NOTREACHED();
   return WTF::nullopt;
@@ -81,8 +83,8 @@ void MediaSession::dispose() {
 void MediaSession::setMetadata(MediaMetadata* metadata) {
   if (mojom::blink::MediaSessionService* service =
           getService(m_scriptState.get())) {
-    service->SetMetadata(
-        MediaMetadataSanitizer::sanitizeAndConvertToMojo(metadata));
+    service->SetMetadata(MediaMetadataSanitizer::sanitizeAndConvertToMojo(
+        metadata, getExecutionContext()));
   }
 }
 
@@ -148,6 +150,10 @@ bool MediaSession::removeEventListenerInternal(
 
 void MediaSession::DidReceiveAction(
     blink::mojom::blink::MediaSessionAction action) {
+  DCHECK(getExecutionContext()->isDocument());
+  Document* document = toDocument(getExecutionContext());
+  UserGestureIndicator gestureIndicator(
+      DocumentUserGestureToken::create(document));
   dispatchEvent(Event::create(mojomActionToEventName(action)));
 }
 

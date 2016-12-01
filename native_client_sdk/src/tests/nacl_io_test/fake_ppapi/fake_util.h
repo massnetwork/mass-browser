@@ -9,7 +9,7 @@
 
 #include <ppapi/c/pp_completion_callback.h>
 
-#include "fake_ppapi/fake_pepper_interface_html5_fs.h"
+#include "fake_ppapi/fake_filesystem.h"
 #include "fake_ppapi/fake_resource_manager.h"
 
 class FakeFileRefResource : public FakeResource {
@@ -17,8 +17,8 @@ class FakeFileRefResource : public FakeResource {
   FakeFileRefResource() : filesystem(NULL) {}
   static const char* classname() { return "FakeFileRefResource"; }
 
-  FakeHtml5FsFilesystem* filesystem;  // Weak reference.
-  FakeHtml5FsFilesystem::Path path;
+  FakeFilesystem* filesystem;  // Weak reference.
+  FakeFilesystem::Path path;
   std::string contents;
 };
 
@@ -28,7 +28,7 @@ class FakeFileSystemResource : public FakeResource {
   ~FakeFileSystemResource() { delete filesystem; }
   static const char* classname() { return "FakeFileSystemResource"; }
 
-  FakeHtml5FsFilesystem* filesystem;  // Owned.
+  FakeFilesystem* filesystem;  // Owned.
   bool opened;
 };
 
@@ -37,9 +37,32 @@ class FakeHtml5FsResource : public FakeResource {
   FakeHtml5FsResource() : filesystem_template(NULL) {}
   static const char* classname() { return "FakeHtml5FsResource"; }
 
-  FakeHtml5FsFilesystem* filesystem_template;  // Weak reference.
+  FakeFilesystem* filesystem_template;  // Weak reference.
+};
+
+class FakeURLRequestInfoResource : public FakeResource {
+ public:
+  FakeURLRequestInfoResource() {}
+  static const char* classname() { return "FakeURLRequestInfoResource"; }
+
+  std::string url;
+  std::string method;
+  std::string headers;
+};
+
+class FakeURLResponseInfoResource : public FakeResource {
+ public:
+  FakeURLResponseInfoResource() : status_code(0) {}
+  static const char* classname() { return "FakeURLResponseInfoResource"; }
+
+  int status_code;
+  std::string url;
+  std::string headers;
 };
 
 int32_t RunCompletionCallback(PP_CompletionCallback* callback, int32_t result);
+bool GetHeaderValue(const std::string& headers,
+                    const std::string& key,
+                    std::string* out_value);
 
 #endif  // LIBRARIES_NACL_IO_TEST_FAKE_UTIL_H_

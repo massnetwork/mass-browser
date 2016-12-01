@@ -76,15 +76,12 @@
 #include "core/loader/FrameLoaderStateMachine.h"
 #include "core/page/ContextMenuController.h"
 #include "core/page/ContextMenuProvider.h"
-#include "core/page/DragController.h"
-#include "core/page/DragData.h"
-#include "core/page/DragSession.h"
 #include "core/page/FocusController.h"
 #include "core/page/FrameTree.h"
 #include "core/page/Page.h"
 #include "core/page/PagePopupClient.h"
 #include "core/page/PointerLockController.h"
-#include "core/page/ScopedPageLoadDeferrer.h"
+#include "core/page/ScopedPageSuspender.h"
 #include "core/page/TouchDisambiguation.h"
 #include "core/page/scrolling/TopDocumentRootScrollerController.h"
 #include "core/paint/PaintLayer.h"
@@ -123,7 +120,6 @@
 #include "public/platform/Platform.h"
 #include "public/platform/WebCompositeAndReadbackAsyncCallback.h"
 #include "public/platform/WebCompositorSupport.h"
-#include "public/platform/WebDragData.h"
 #include "public/platform/WebFloatPoint.h"
 #include "public/platform/WebGestureCurve.h"
 #include "public/platform/WebImage.h"
@@ -173,6 +169,7 @@
 #include "web/ValidationMessageClientImpl.h"
 #include "web/WebDevToolsAgentImpl.h"
 #include "web/WebInputEventConversion.h"
+#include "web/WebInputMethodControllerImpl.h"
 #include "web/WebLocalFrameImpl.h"
 #include "web/WebPagePopupImpl.h"
 #include "web/WebPluginContainerImpl.h"
@@ -231,58 +228,15 @@ const double WebView::maxTextSizeMultiplier = 3.0;
 // Used to defer all page activity in cases where the embedder wishes to run
 // a nested event loop. Using a stack enables nesting of message loop
 // invocations.
-static Vector<std::unique_ptr<ScopedPageLoadDeferrer>>&
-pageLoadDeferrerStack() {
-  DEFINE_STATIC_LOCAL(Vector<std::unique_ptr<ScopedPageLoadDeferrer>>,
-                      deferrerStack, ());
-  return deferrerStack;
+static Vector<std::unique_ptr<ScopedPageSuspender>>& pageSuspenderStack() {
+  DEFINE_STATIC_LOCAL(Vector<std::unique_ptr<ScopedPageSuspender>>,
+                      suspenderStack, ());
+  return suspenderStack;
 }
-
-// Ensure that the WebDragOperation enum values stay in sync with the original
-// DragOperation constants.
-#define STATIC_ASSERT_ENUM(a, b)                            \
-  static_assert(static_cast<int>(a) == static_cast<int>(b), \
-                "mismatching enum : " #a)
-STATIC_ASSERT_ENUM(DragOperationNone, WebDragOperationNone);
-STATIC_ASSERT_ENUM(DragOperationCopy, WebDragOperationCopy);
-STATIC_ASSERT_ENUM(DragOperationLink, WebDragOperationLink);
-STATIC_ASSERT_ENUM(DragOperationGeneric, WebDragOperationGeneric);
-STATIC_ASSERT_ENUM(DragOperationPrivate, WebDragOperationPrivate);
-STATIC_ASSERT_ENUM(DragOperationMove, WebDragOperationMove);
-STATIC_ASSERT_ENUM(DragOperationDelete, WebDragOperationDelete);
-STATIC_ASSERT_ENUM(DragOperationEvery, WebDragOperationEvery);
 
 static bool shouldUseExternalPopupMenus = false;
 
 namespace {
-
-class UserGestureNotifier {
- public:
-  // If a UserGestureIndicator is created for a user gesture since the last
-  // page load and *userGestureObserved is false, the UserGestureNotifier
-  // will notify the client and set *userGestureObserved to true.
-  UserGestureNotifier(WebLocalFrameImpl*, bool* userGestureObserved);
-  ~UserGestureNotifier();
-
- private:
-  Persistent<WebLocalFrameImpl> m_frame;
-  bool* const m_userGestureObserved;
-};
-
-UserGestureNotifier::UserGestureNotifier(WebLocalFrameImpl* frame,
-                                         bool* userGestureObserved)
-    : m_frame(frame), m_userGestureObserved(userGestureObserved) {
-  DCHECK(m_userGestureObserved);
-}
-
-UserGestureNotifier::~UserGestureNotifier() {
-  if (!*m_userGestureObserved &&
-      m_frame->frame()->document()->hasReceivedUserGesture()) {
-    *m_userGestureObserved = true;
-    if (m_frame && m_frame->autofillClient())
-      m_frame->autofillClient()->firstUserGestureObserved();
-  }
-}
 
 class EmptyEventListener final : public EventListener {
  public:
@@ -347,12 +301,12 @@ void WebView::resetVisitedLinkState(bool invalidateVisitedLinkHashes) {
 }
 
 void WebView::willEnterModalLoop() {
-  pageLoadDeferrerStack().append(wrapUnique(new ScopedPageLoadDeferrer()));
+  pageSuspenderStack().append(makeUnique<ScopedPageSuspender>());
 }
 
 void WebView::didExitModalLoop() {
-  DCHECK(pageLoadDeferrerStack().size());
-  pageLoadDeferrerStack().removeLast();
+  DCHECK(pageSuspenderStack().size());
+  pageSuspenderStack().pop_back();
 }
 
 void WebViewImpl::setMainFrame(WebFrame* frame) {
@@ -404,13 +358,10 @@ WebViewImpl::WebViewImpl(WebViewClient* client,
       m_enableFakePageScaleAnimationForTesting(false),
       m_fakePageScaleAnimationPageScaleFactor(0),
       m_fakePageScaleAnimationUseAnchor(false),
-      m_doingDragAndDrop(false),
       m_ignoreInputEvents(false),
       m_compositorDeviceScaleFactorOverride(0),
       m_suppressNextKeypressEvent(false),
       m_imeAcceptEvents(true),
-      m_operationsAllowed(WebDragOperationNone),
-      m_dragOperation(WebDragOperationNone),
       m_devToolsEmulator(nullptr),
       m_isTransparent(false),
       m_tabsToLinks(false),
@@ -435,7 +386,7 @@ WebViewImpl::WebViewImpl(WebViewClient* client,
       m_scheduler(wrapUnique(Platform::current()
                                  ->currentThread()
                                  ->scheduler()
-                                 ->createWebViewScheduler(this)
+                                 ->createWebViewScheduler(this, this)
                                  .release())),
       m_lastFrameTimeMonotonic(0),
       m_overrideCompositorVisibility(false) {
@@ -480,6 +431,23 @@ WebViewImpl::~WebViewImpl() {
   // in destructor. m_linkHighlightsTimeline might be destroyed earlier
   // than m_linkHighlights.
   DCHECK(m_linkHighlights.isEmpty());
+}
+
+WebViewImpl::UserGestureNotifier::UserGestureNotifier(WebViewImpl* view)
+    // TODO(kenrb, alexmos): |m_frame| should be set to the local root frame,
+    // not the main frame. See crbug.com/589894.
+    : m_frame(view->mainFrameImpl()),
+      m_userGestureObserved(&view->m_userGestureObserved) {
+  DCHECK(m_userGestureObserved);
+}
+
+WebViewImpl::UserGestureNotifier::~UserGestureNotifier() {
+  if (!*m_userGestureObserved && m_frame &&
+      m_frame->frame()->document()->hasReceivedUserGesture()) {
+    *m_userGestureObserved = true;
+    if (m_frame && m_frame->autofillClient())
+      m_frame->autofillClient()->firstUserGestureObserved();
+  }
 }
 
 WebDevToolsAgentImpl* WebViewImpl::mainFrameDevToolsAgentImpl() {
@@ -935,6 +903,10 @@ WebInputEventResult WebViewImpl::handleGestureEvent(
     case WebInputEvent::GestureShowPress:
       m_client->cancelScheduledContentIntents();
     case WebInputEvent::GestureTapDown:
+      // Touch pinch zoom and scroll must hide the popup. In case of a touch
+      // scroll or pinch zoom, this function is called with GestureTapDown
+      // rather than a GSB/GSU/GSE or GPB/GPU/GPE.
+      hidePopups();
     case WebInputEvent::GestureTapCancel:
     case WebInputEvent::GestureTapUnconfirmed: {
       eventResult = mainFrameImpl()->frame()->eventHandler().handleGestureEvent(
@@ -1092,10 +1064,26 @@ void WebViewImpl::acceptLanguagesChanged() {
 }
 
 void WebViewImpl::ReportIntervention(const WebString& message) {
-  if (!mainFrame())
+  if (!mainFrameImpl())
     return;
   WebConsoleMessage consoleMessage(WebConsoleMessage::LevelWarning, message);
-  mainFrame()->addMessageToConsole(consoleMessage);
+  mainFrameImpl()->addMessageToConsole(consoleMessage);
+}
+
+float WebViewImpl::expensiveBackgroundThrottlingCPUBudget() {
+  return settingsImpl()->expensiveBackgroundThrottlingCPUBudget();
+}
+
+float WebViewImpl::expensiveBackgroundThrottlingInitialBudget() {
+  return settingsImpl()->expensiveBackgroundThrottlingInitialBudget();
+}
+
+float WebViewImpl::expensiveBackgroundThrottlingMaxBudget() {
+  return settingsImpl()->expensiveBackgroundThrottlingMaxBudget();
+}
+
+float WebViewImpl::expensiveBackgroundThrottlingMaxDelay() {
+  return settingsImpl()->expensiveBackgroundThrottlingMaxDelay();
 }
 
 WebInputEventResult WebViewImpl::handleKeyEvent(const WebKeyboardEvent& event) {
@@ -1396,7 +1384,7 @@ static Node* findCursorDefiningAncestor(Node* node, LocalFrame* frame) {
   while (node) {
     if (node->layoutObject()) {
       ECursor cursor = node->layoutObject()->style()->cursor();
-      if (cursor != CURSOR_AUTO ||
+      if (cursor != ECursor::Auto ||
           frame->eventHandler().useHandCursor(node, node->isLink()))
         break;
     }
@@ -1411,8 +1399,8 @@ static bool showsHandCursor(Node* node, LocalFrame* frame) {
     return false;
 
   ECursor cursor = node->layoutObject()->style()->cursor();
-  return cursor == CURSOR_POINTER ||
-         (cursor == CURSOR_AUTO &&
+  return cursor == ECursor::Pointer ||
+         (cursor == ECursor::Auto &&
           frame->eventHandler().useHandCursor(node, node->isLink()));
 }
 
@@ -2092,8 +2080,8 @@ void WebViewImpl::enterFullscreenForElement(Element* element) {
   m_fullscreenController->enterFullscreenForElement(element);
 }
 
-void WebViewImpl::exitFullscreenForElement(Element* element) {
-  m_fullscreenController->exitFullscreenForElement(element);
+void WebViewImpl::exitFullscreen(LocalFrame* frame) {
+  m_fullscreenController->exitFullscreen(frame);
 }
 
 bool WebViewImpl::hasHorizontalScrollbar() {
@@ -2121,7 +2109,7 @@ WebInputEventResult WebViewImpl::handleInputEvent(
     return WebInputEventResult::NotHandled;
 
   WebAutofillClient* autofillClient = mainFrameImpl()->autofillClient();
-  UserGestureNotifier notifier(mainFrameImpl(), &m_userGestureObserved);
+  UserGestureNotifier notifier(this);
   // On the first input event since page load, |notifier| instructs the
   // autofill client to unblock values of password input fields of any forms
   // on the page. There is a single input event, GestureTap, which can both
@@ -2138,9 +2126,9 @@ WebInputEventResult WebViewImpl::handleInputEvent(
 
   TRACE_EVENT1("input,rail", "WebViewImpl::handleInputEvent", "type",
                WebInputEvent::GetName(inputEvent.type));
-  // If we've started a drag and drop operation, ignore input events until
-  // we're done.
-  if (m_doingDragAndDrop)
+
+  // If a drag-and-drop operation is in progress, ignore input events.
+  if (mainFrameImpl()->frameWidget()->doingDragAndDrop())
     return WebInputEventResult::HandledSuppressed;
 
   if (m_devToolsEmulator->handleInputEvent(inputEvent))
@@ -2268,7 +2256,7 @@ void WebViewImpl::setFocus(bool enable) {
         // focused, then the focus element shows with a focus ring but
         // no caret and does respond to keyboard inputs.
         focusedFrame->document()->updateStyleAndLayoutTree();
-        if (element->isTextFormControl()) {
+        if (element->isTextControl()) {
           element->updateFocusAppearance(SelectionBehaviorOnFocus::Restore);
         } else if (hasEditableStyle(*element)) {
           // updateFocusAppearance() selects all the text of
@@ -2321,100 +2309,6 @@ void WebViewImpl::setFocus(bool enable) {
       m_imeAcceptEvents = false;
     }
   }
-}
-
-// TODO(ekaramad):This method is almost duplicated in WebFrameWidgetImpl as
-// well. This code needs to be refactored  (http://crbug.com/629721).
-bool WebViewImpl::setComposition(
-    const WebString& text,
-    const WebVector<WebCompositionUnderline>& underlines,
-    int selectionStart,
-    int selectionEnd) {
-  LocalFrame* focused = focusedLocalFrameAvailableForIme();
-  if (!focused)
-    return false;
-
-  if (WebPlugin* plugin = focusedPluginIfInputMethodSupported(focused))
-    return plugin->setComposition(text, underlines, selectionStart,
-                                  selectionEnd);
-
-  // The input focus has been moved to another WebWidget object.
-  // We should use this |editor| object only to complete the ongoing
-  // composition.
-  InputMethodController& inputMethodController =
-      focused->inputMethodController();
-  if (!focused->editor().canEdit() && !inputMethodController.hasComposition())
-    return false;
-
-  // We should verify the parent node of this IME composition node are
-  // editable because JavaScript may delete a parent node of the composition
-  // node. In this case, WebKit crashes while deleting texts from the parent
-  // node, which doesn't exist any longer.
-  const EphemeralRange range =
-      inputMethodController.compositionEphemeralRange();
-  if (range.isNotNull()) {
-    Node* node = range.startPosition().computeContainerNode();
-    focused->document()->updateStyleAndLayoutTree();
-    if (!node || !hasEditableStyle(*node))
-      return false;
-  }
-
-  // A keypress event is canceled. If an ongoing composition exists, then the
-  // keydown event should have arisen from a handled key (e.g., backspace).
-  // In this case we ignore the cancellation and continue; otherwise (no
-  // ongoing composition) we exit and signal success only for attempts to
-  // clear the composition.
-  if (m_suppressNextKeypressEvent && !inputMethodController.hasComposition())
-    return text.isEmpty();
-
-  UserGestureIndicator gestureIndicator(DocumentUserGestureToken::create(
-      focused->document(), UserGestureToken::NewGesture));
-
-  // When the range of composition underlines overlap with the range between
-  // selectionStart and selectionEnd, WebKit somehow won't paint the selection
-  // at all (see InlineTextBox::paint() function in InlineTextBox.cpp).
-  // But the selection range actually takes effect.
-  inputMethodController.setComposition(
-      String(text), CompositionUnderlineVectorBuilder(underlines),
-      selectionStart, selectionEnd);
-
-  return text.isEmpty() || inputMethodController.hasComposition();
-}
-
-// TODO(ekaramad):These methods are almost duplicated in WebFrameWidgetImpl as
-// well. This code needs to be refactored  (http://crbug.com/629721).
-bool WebViewImpl::finishComposingText(
-    ConfirmCompositionBehavior selectionBehavior) {
-  LocalFrame* focused = focusedLocalFrameAvailableForIme();
-  if (!focused)
-    return false;
-
-  if (WebPlugin* plugin = focusedPluginIfInputMethodSupported(focused))
-    return plugin->finishComposingText(selectionBehavior);
-
-  return focused->inputMethodController().finishComposingText(
-      selectionBehavior == KeepSelection
-          ? InputMethodController::KeepSelection
-          : InputMethodController::DoNotKeepSelection);
-}
-
-bool WebViewImpl::commitText(const WebString& text, int relativeCaretPosition) {
-  LocalFrame* focused = focusedLocalFrameAvailableForIme();
-  if (!focused)
-    return false;
-
-  UserGestureIndicator gestureIndicator(DocumentUserGestureToken::create(
-      focused->document(), UserGestureToken::NewGesture));
-
-  if (WebPlugin* plugin = focusedPluginIfInputMethodSupported(focused))
-    return plugin->commitText(text, relativeCaretPosition);
-
-  // TODO(xiaochengh): The use of updateStyleAndLayoutIgnorePendingStylesheets
-  // needs to be audited.  See http://crbug.com/590369 for more details.
-  focused->document()->updateStyleAndLayoutIgnorePendingStylesheets();
-
-  return focused->inputMethodController().commitText(text,
-                                                     relativeCaretPosition);
 }
 
 // TODO(ekaramad):This method is almost duplicated in WebFrameWidgetImpl as
@@ -2763,11 +2657,6 @@ void WebViewImpl::focusDocumentView(WebFrame* frame) {
                                               false /* notifyEmbedder */);
 }
 
-void WebViewImpl::unfocusDocumentView() {
-  page()->focusController().focusDocumentView(nullptr /* frame */,
-                                              false /* notifyEmbedder */);
-}
-
 void WebViewImpl::setInitialFocus(bool reverse) {
   if (!m_page)
     return;
@@ -2802,7 +2691,7 @@ void WebViewImpl::clearFocusedElement() {
   // keystrokes get eaten as a result.
   document->updateStyleAndLayoutTree();
   if (hasEditableStyle(*oldFocusedElement) ||
-      oldFocusedElement->isTextFormControl())
+      oldFocusedElement->isTextControl())
     localFrame->selection().clear();
 }
 
@@ -2813,10 +2702,8 @@ static bool isElementEditable(const Element* element) {
   if (hasEditableStyle(*element))
     return true;
 
-  if (element->isTextFormControl()) {
-    const HTMLTextFormControlElement* input =
-        toHTMLTextFormControlElement(element);
-    if (!input->isDisabledOrReadOnly())
+  if (element->isTextControl()) {
+    if (!toTextControlElement(element)->isDisabledOrReadOnly())
       return true;
   }
 
@@ -3140,9 +3027,7 @@ void WebViewImpl::setZoomFactorForDeviceScaleFactor(
 }
 
 void WebViewImpl::setDeviceColorProfile(const WebVector<char>& colorProfile) {
-  Vector<char> deviceProfile;
-  deviceProfile.append(colorProfile.data(), colorProfile.size());
-  ImageDecoder::setTargetColorProfile(deviceProfile);
+  ImageDecoder::setGlobalTargetColorProfile(colorProfile);
 }
 
 void WebViewImpl::enableAutoResizeMode(const WebSize& minSize,
@@ -3472,6 +3357,10 @@ void WebViewImpl::performPluginAction(const WebPluginAction& action,
   }
 }
 
+void WebViewImpl::audioStateChanged(bool isAudioPlaying) {
+  m_scheduler->audioStateChanged(isAudioPlaying);
+}
+
 WebHitTestResult WebViewImpl::hitTestResultAt(const WebPoint& point) {
   return coreHitTestResultAt(point);
 }
@@ -3484,105 +3373,6 @@ HitTestResult WebViewImpl::coreHitTestResultAt(
   IntPoint pointInRootFrame =
       view->contentsToFrame(view->viewportToContents(pointInViewport));
   return hitTestResultForRootFramePos(pointInRootFrame);
-}
-
-void WebViewImpl::dragSourceEndedAt(const WebPoint& pointInViewport,
-                                    const WebPoint& screenPoint,
-                                    WebDragOperation operation) {
-  WebPoint pointInRootFrame(
-      page()->frameHost().visualViewport().viewportToRootFrame(
-          pointInViewport));
-  PlatformMouseEvent pme(
-      pointInRootFrame, screenPoint, WebPointerProperties::Button::Left,
-      PlatformEvent::MouseMoved, 0, PlatformEvent::NoModifiers,
-      PlatformMouseEvent::RealOrIndistinguishable,
-      WTF::monotonicallyIncreasingTime());
-  m_page->deprecatedLocalMainFrame()->eventHandler().dragSourceEndedAt(
-      pme, static_cast<DragOperation>(operation));
-}
-
-void WebViewImpl::dragSourceSystemDragEnded() {
-  // It's possible for us to get this callback while not doing a drag if
-  // it's from a previous page that got unloaded.
-  if (m_doingDragAndDrop) {
-    m_page->dragController().dragEnded();
-    m_doingDragAndDrop = false;
-  }
-}
-
-WebDragOperation WebViewImpl::dragTargetDragEnter(
-    const WebDragData& webDragData,
-    const WebPoint& pointInViewport,
-    const WebPoint& screenPoint,
-    WebDragOperationsMask operationsAllowed,
-    int modifiers) {
-  DCHECK(!m_currentDragData);
-
-  m_currentDragData = DataObject::create(webDragData);
-  m_operationsAllowed = operationsAllowed;
-
-  return dragTargetDragEnterOrOver(pointInViewport, screenPoint, DragEnter,
-                                   modifiers);
-}
-
-WebDragOperation WebViewImpl::dragTargetDragOver(
-    const WebPoint& pointInViewport,
-    const WebPoint& screenPoint,
-    WebDragOperationsMask operationsAllowed,
-    int modifiers) {
-  m_operationsAllowed = operationsAllowed;
-
-  return dragTargetDragEnterOrOver(pointInViewport, screenPoint, DragOver,
-                                   modifiers);
-}
-
-void WebViewImpl::dragTargetDragLeave() {
-  DCHECK(m_currentDragData);
-
-  DragData dragData(m_currentDragData.get(), IntPoint(), IntPoint(),
-                    static_cast<DragOperation>(m_operationsAllowed));
-
-  m_page->dragController().dragExited(&dragData);
-
-  // FIXME: why is the drag scroll timer not stopped here?
-
-  m_dragOperation = WebDragOperationNone;
-  m_currentDragData = nullptr;
-}
-
-void WebViewImpl::dragTargetDrop(const WebDragData& webDragData,
-                                 const WebPoint& pointInViewport,
-                                 const WebPoint& screenPoint,
-                                 int modifiers) {
-  WebPoint pointInRootFrame(
-      page()->frameHost().visualViewport().viewportToRootFrame(
-          pointInViewport));
-
-  DCHECK(m_currentDragData);
-  m_currentDragData = DataObject::create(webDragData);
-  UserGestureNotifier notifier(mainFrameImpl(), &m_userGestureObserved);
-
-  // If this webview transitions from the "drop accepting" state to the "not
-  // accepting" state, then our IPC message reply indicating that may be in-
-  // flight, or else delayed by javascript processing in this webview.  If a
-  // drop happens before our IPC reply has reached the browser process, then
-  // the browser forwards the drop to this webview.  So only allow a drop to
-  // proceed if our webview m_dragOperation state is not DragOperationNone.
-
-  if (m_dragOperation ==
-      WebDragOperationNone) {  // IPC RACE CONDITION: do not allow this drop.
-    dragTargetDragLeave();
-    return;
-  }
-
-  m_currentDragData->setModifiers(modifiers);
-  DragData dragData(m_currentDragData.get(), pointInRootFrame, screenPoint,
-                    static_cast<DragOperation>(m_operationsAllowed));
-
-  m_page->dragController().performDrag(&dragData);
-
-  m_dragOperation = WebDragOperationNone;
-  m_currentDragData = nullptr;
 }
 
 void WebViewImpl::spellingMarkers(WebVector<uint32_t>* markers) {
@@ -3609,39 +3399,6 @@ void WebViewImpl::removeSpellingMarkersUnderWords(
     if (frame->isLocalFrame())
       toLocalFrame(frame)->removeSpellingMarkersUnderWords(convertedWords);
   }
-}
-
-WebDragOperation WebViewImpl::dragTargetDragEnterOrOver(
-    const WebPoint& pointInViewport,
-    const WebPoint& screenPoint,
-    DragAction dragAction,
-    int modifiers) {
-  DCHECK(m_currentDragData);
-
-  WebPoint pointInRootFrame(
-      page()->frameHost().visualViewport().viewportToRootFrame(
-          pointInViewport));
-
-  m_currentDragData->setModifiers(modifiers);
-  DragData dragData(m_currentDragData.get(), pointInRootFrame, screenPoint,
-                    static_cast<DragOperation>(m_operationsAllowed));
-
-  DragSession dragSession;
-  if (dragAction == DragEnter)
-    dragSession = m_page->dragController().dragEntered(&dragData);
-  else
-    dragSession = m_page->dragController().dragUpdated(&dragData);
-
-  DragOperation dropEffect = dragSession.operation;
-
-  // Mask the drop effect operation against the drag source's allowed
-  // operations.
-  if (!(dropEffect & dragData.draggingSourceOperationMask()))
-    dropEffect = DragOperationNone;
-
-  m_dragOperation = static_cast<WebDragOperation>(dropEffect);
-
-  return m_dragOperation;
 }
 
 void WebViewImpl::sendResizeEventAndRepaint() {
@@ -3818,6 +3575,12 @@ bool WebViewImpl::isTransparent() const {
   return m_isTransparent;
 }
 
+WebInputMethodControllerImpl* WebViewImpl::getActiveWebInputMethodController()
+    const {
+  return WebInputMethodControllerImpl::fromFrame(
+      focusedLocalFrameAvailableForIme());
+}
+
 void WebViewImpl::setBaseBackgroundColor(WebColor color) {
   if (m_baseBackgroundColor == color)
     return;
@@ -3950,19 +3713,6 @@ bool WebViewImpl::useExternalPopupMenus() {
   return shouldUseExternalPopupMenus;
 }
 
-void WebViewImpl::startDragging(LocalFrame* frame,
-                                const WebDragData& dragData,
-                                WebDragOperationsMask mask,
-                                const WebImage& dragImage,
-                                const WebPoint& dragImageOffset) {
-  if (!m_client)
-    return;
-  DCHECK(!m_doingDragAndDrop);
-  m_doingDragAndDrop = true;
-  m_client->startDragging(WebLocalFrameImpl::fromFrame(frame), dragData, mask,
-                          dragImage, dragImageOffset);
-}
-
 void WebViewImpl::setIgnoreInputEvents(bool newValue) {
   DCHECK_NE(m_ignoreInputEvents, newValue);
   m_ignoreInputEvents = newValue;
@@ -3986,7 +3736,7 @@ void WebViewImpl::setPageOverlayColor(WebColor color) {
     return;
 
   m_pageColorOverlay =
-      PageOverlay::create(this, wrapUnique(new ColorOverlay(color)));
+      PageOverlay::create(mainFrameImpl(), makeUnique<ColorOverlay>(color));
   m_pageColorOverlay->update();
 }
 

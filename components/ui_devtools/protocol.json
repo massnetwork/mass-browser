@@ -22,6 +22,46 @@
                     ]
                 }
             ],
+            "events": [
+                {
+                    "name": "childNodeInserted",
+                    "parameters": [
+                        {
+                            "description": "Id of the node that has changed.",
+                            "name": "parentNodeId",
+                            "$ref": "NodeId"
+                        },
+                        {
+
+                            "description": "Id of the previous sibling (0 if this is at the beginning of the list).",
+                            "name": "previousNodeId",
+                            "$ref": "NodeId"
+                        },
+                        {
+                            "description": "Inserted node data.",
+                            "name": "node",
+                            "$ref": "Node"
+                        }
+                    ],
+                    "description": "Mirrors <code>DOMNodeInserted</code> event."
+                },
+                {
+                    "name": "childNodeRemoved",
+                    "parameters": [
+                        {
+                            "description": "Parent id.",
+                            "name": "parentNodeId",
+                            "$ref": "NodeId"
+                        },
+                        {
+                            "description": "Id of the node that has been removed.",
+                            "name": "nodeId",
+                            "$ref": "NodeId"
+                        }
+                    ],
+                    "description": "Mirrors <code>DOMNodeRemoved</code> event."
+                }
+            ],
             "domain": "DOM",
             "types": [
                 {
@@ -83,6 +123,78 @@
                             "name": "value",
                             "optional": true,
                             "type": "string"
+                        }
+                    ],
+                    "type": "object"
+                }
+            ]
+        },
+        {
+            "commands": [
+                {
+                    "description": "Enables CSS agent for the given page.",
+                    "name": "enable"
+                },
+                {
+                    "description": "Disables CSS agent for the given page.",
+                    "name": "disable"
+                },
+                {
+                    "description": "Returns requested styles for a DOM node identified by <code>nodeId</code>.",
+                    "name": "getMatchedStylesForNode",
+                    "parameters": [
+                        {
+                            "$ref": "DOM.NodeId",
+                            "name": "nodeId"
+                        }
+                    ],
+                    "returns": [
+                        {
+                            "$ref": "CSSStyle",
+                            "description": "Inline style for the specified DOM node.",
+                            "name": "inlineStyle",
+                            "optional": true
+                        }
+                    ]
+                }
+            ],
+            "domain": "CSS",
+            "types": [
+                {
+                    "id": "CSSProperty",
+                    "properties": [
+                        {
+                            "description": "The property name.",
+                            "name": "name",
+                            "type": "string"
+                        },
+                        {
+                            "description": "The property value.",
+                            "name": "value",
+                            "type": "string"
+                        }
+                    ],
+                    "type": "object"
+                },
+                {
+                    "description": "CSS style representation.",
+                    "id": "CSSStyle",
+                    "properties": [
+                        {
+                            "description": "CSS properties in the style.",
+                            "items": {
+                                "$ref": "CSSProperty"
+                            },
+                            "name": "cssProperties",
+                            "type": "array"
+                        },
+                        {
+                            "description": "Frontend requires us to pass this. We just pass an empty array.",
+                            "items": {
+                                "type": "string"
+                            },
+                            "name": "shorthandEntries",
+                            "type": "array"
                         }
                     ],
                     "type": "object"

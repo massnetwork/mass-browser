@@ -10,9 +10,7 @@
 #include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
-#include "base/strings/stringprintf.h"
 #include "net/spdy/spdy_framer.h"
-#include "net/tools/balsa/balsa_headers.h"
 #include "net/tools/quic/quic_in_memory_cache.h"
 #include "net/tools/quic/test_tools/quic_in_memory_cache_peer.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -38,9 +36,11 @@ class QuicInMemoryCacheTest : public ::testing::Test {
 
   ~QuicInMemoryCacheTest() override { QuicInMemoryCachePeer::ResetForTests(); }
 
-  void CreateRequest(string host, string path, BalsaHeaders* headers) {
-    headers->SetRequestFirstlineFromStringPieces("GET", path, "HTTP/1.1");
-    headers->ReplaceOrAppendHeader("host", host);
+  void CreateRequest(string host, string path, SpdyHeaderBlock* headers) {
+    (*headers)[":method"] = "GET";
+    (*headers)[":path"] = path;
+    (*headers)[":authority"] = host;
+    (*headers)[":scheme"] = "https";
   }
 
   string CacheDirectory() {
@@ -65,7 +65,7 @@ TEST_F(QuicInMemoryCacheTest, AddSimpleResponseGetResponse) {
   QuicInMemoryCache* cache = QuicInMemoryCache::GetInstance();
   cache->AddSimpleResponse("www.google.com", "/", 200, response_body);
 
-  BalsaHeaders request_headers;
+  SpdyHeaderBlock request_headers;
   CreateRequest("www.google.com", "/", &request_headers);
   const QuicInMemoryCache::Response* response =
       cache->GetResponse("www.google.com", "/");
@@ -109,7 +109,8 @@ TEST_F(QuicInMemoryCacheTest, ReadsCacheDir) {
   ASSERT_TRUE(response);
   ASSERT_TRUE(ContainsKey(response->headers(), ":status"));
   EXPECT_EQ("200", response->headers().find(":status")->second);
-  ASSERT_FALSE(ContainsKey(response->headers(), "connection"));
+  // Connection headers are not valid in HTTP/2.
+  EXPECT_FALSE(ContainsKey(response->headers(), "connection"));
   EXPECT_LT(0U, response->body().length());
 }
 
@@ -139,7 +140,8 @@ TEST_F(QuicInMemoryCacheTest, UsesOriginalUrl) {
   ASSERT_TRUE(response);
   ASSERT_TRUE(ContainsKey(response->headers(), ":status"));
   EXPECT_EQ("200", response->headers().find(":status")->second);
-  ASSERT_FALSE(ContainsKey(response->headers(), "connection"));
+  // Connection headers are not valid in HTTP/2.
+  EXPECT_FALSE(ContainsKey(response->headers(), "connection"));
   EXPECT_LT(0U, response->body().length());
 }
 

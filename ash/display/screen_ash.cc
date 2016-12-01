@@ -19,6 +19,7 @@
 #include "ui/display/display_finder.h"
 #include "ui/display/manager/display_manager.h"
 #include "ui/display/screen.h"
+#include "ui/display/types/display_constants.h"
 
 namespace ash {
 
@@ -45,7 +46,7 @@ class ScreenForShutdown : public display::Screen {
     return NULL;
   }
   int GetNumDisplays() const override { return display_list_.size(); }
-  std::vector<display::Display> GetAllDisplays() const override {
+  const std::vector<display::Display>& GetAllDisplays() const override {
     return display_list_;
   }
   display::Display GetDisplayNearestWindow(
@@ -110,7 +111,7 @@ int ScreenAsh::GetNumDisplays() const {
   return GetDisplayManager()->GetNumDisplays();
 }
 
-std::vector<display::Display> ScreenAsh::GetAllDisplays() const {
+const std::vector<display::Display>& ScreenAsh::GetAllDisplays() const {
   return GetDisplayManager()->active_display_list();
 }
 
@@ -124,8 +125,8 @@ display::Display ScreenAsh::GetDisplayNearestWindow(
   const RootWindowSettings* rws = GetRootWindowSettings(root_window);
   int64_t id = rws->display_id;
   // if id is |kInvaildDisplayID|, it's being deleted.
-  DCHECK(id != display::Display::kInvalidDisplayID);
-  if (id == display::Display::kInvalidDisplayID)
+  DCHECK(id != display::kInvalidDisplayId);
+  if (id == display::kInvalidDisplayId)
     return GetPrimaryDisplay();
 
   display::DisplayManager* display_manager = GetDisplayManager();

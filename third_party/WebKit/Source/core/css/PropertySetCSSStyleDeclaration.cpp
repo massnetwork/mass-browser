@@ -57,6 +57,7 @@ class StyleAttributeMutationScope {
   STACK_ALLOCATED();
 
  public:
+  DISABLE_CFI_PERF
   StyleAttributeMutationScope(AbstractPropertySetCSSStyleDeclaration* decl) {
     ++s_scopeCount;
 
@@ -91,6 +92,7 @@ class StyleAttributeMutationScope {
     }
   }
 
+  DISABLE_CFI_PERF
   ~StyleAttributeMutationScope() {
     --s_scopeCount;
     if (s_scopeCount)
@@ -300,20 +302,24 @@ void AbstractPropertySetCSSStyleDeclaration::setPropertyInternal(
   StyleAttributeMutationScope mutationScope(this);
   willMutate();
 
-  bool changed = false;
+  bool didChange = false;
   if (unresolvedProperty == CSSPropertyVariable) {
     bool isAnimationTainted = isKeyframeStyle();
-    changed = propertySet().setProperty(AtomicString(customPropertyName), value,
-                                        important, contextStyleSheet(),
-                                        isAnimationTainted);
+    didChange =
+        propertySet()
+            .setProperty(AtomicString(customPropertyName), value, important,
+                         contextStyleSheet(), isAnimationTainted)
+            .didChange;
   } else {
-    changed = propertySet().setProperty(unresolvedProperty, value, important,
-                                        contextStyleSheet());
+    didChange = propertySet()
+                    .setProperty(unresolvedProperty, value, important,
+                                 contextStyleSheet())
+                    .didChange;
   }
 
-  didMutate(changed ? PropertyChanged : NoChanges);
+  didMutate(didChange ? PropertyChanged : NoChanges);
 
-  if (!changed)
+  if (!didChange)
     return;
 
   Element* parent = parentElement();

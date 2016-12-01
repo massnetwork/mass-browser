@@ -13,6 +13,7 @@
 #include "services/service_manager/public/cpp/interface_factory.h"
 #include "services/service_manager/public/cpp/interface_registry.h"
 #include "services/service_manager/public/cpp/service.h"
+#include "services/service_manager/public/cpp/service_context.h"
 #include "services/service_manager/public/cpp/service_runner.h"
 #include "services/service_manager/tests/lifecycle/lifecycle_unittest.mojom.h"
 
@@ -47,9 +48,10 @@ class Parent : public service_manager::Service,
     parent_bindings_.AddBinding(this, std::move(request));
   }
 
-  // Parent:
+  // service_manager::test::mojom::Parent:
   void ConnectToChild(const ConnectToChildCallback& callback) override {
-    child_connection_ = connector()->Connect("service:lifecycle_unittest_app");
+    child_connection_ =
+        context()->connector()->Connect("lifecycle_unittest_app");
     service_manager::test::mojom::LifecycleControlPtr lifecycle;
     child_connection_->GetInterface(&lifecycle);
     {

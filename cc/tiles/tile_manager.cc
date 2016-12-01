@@ -474,11 +474,8 @@ void TileManager::DidFinishRunningAllTileTasks() {
 
   has_scheduled_tile_tasks_ = false;
 
-  bool memory_usage_above_limit = resource_pool_->memory_usage_bytes() >
-                                  global_state_.soft_memory_limit_in_bytes;
-
   if (all_tiles_that_need_to_be_rasterized_are_scheduled_ &&
-      !memory_usage_above_limit) {
+      !resource_pool_->ResourceUsageTooHigh()) {
     // TODO(ericrk): We should find a better way to safely handle re-entrant
     // notifications than always having to schedule a new task.
     // http://crbug.com/498439
@@ -1223,11 +1220,9 @@ void TileManager::CheckIfMoreTilesNeedToBePrepared() {
   CHECK(tile_task_manager_);
   DCHECK(IsReadyToActivate());
   DCHECK(IsReadyToDraw());
+  // Signals notifier is already scheduled above in the same function.
   signals_.ready_to_activate = need_to_signal_activate;
   signals_.ready_to_draw = need_to_signal_draw;
-  // TODO(ericrk): Investigate why we need to schedule this (not just call it
-  // inline). http://crbug.com/498439
-  signals_check_notifier_.Schedule();
 }
 
 bool TileManager::MarkTilesOutOfMemory(

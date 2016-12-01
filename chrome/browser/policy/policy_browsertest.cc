@@ -118,6 +118,7 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/translate/core/browser/language_state.h"
 #include "components/translate/core/browser/translate_infobar_delegate.h"
+#include "components/update_client/update_client.h"
 #include "components/update_client/update_client_errors.h"
 #include "components/update_client/url_request_post_interceptor.h"
 #include "components/user_prefs/user_prefs.h"
@@ -167,6 +168,7 @@
 #include "extensions/common/extension_set.h"
 #include "extensions/common/features/feature_channel.h"
 #include "extensions/common/manifest_handlers/shared_module_info.h"
+#include "media/media_features.h"
 #include "net/base/net_errors.h"
 #include "net/base/url_util.h"
 #include "net/http/http_stream_factory.h"
@@ -179,7 +181,7 @@
 #include "net/url_request/url_request_interceptor.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/WebKit/public/web/WebInputEvent.h"
+#include "third_party/WebKit/public/platform/WebInputEvent.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -195,7 +197,7 @@
 #include "ash/shell.h"
 #include "chrome/browser/chromeos/accessibility/accessibility_manager.h"
 #include "chrome/browser/chromeos/accessibility/magnification_manager.h"
-#include "chrome/browser/chromeos/arc/arc_auth_service.h"
+#include "chrome/browser/chromeos/arc/arc_session_manager.h"
 #include "chrome/browser/chromeos/login/test/js_checker.h"
 #include "chrome/browser/chromeos/system/timezone_resolver_manager.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -277,7 +279,7 @@ const base::FilePath::CharType kUnpackedFullscreenAppName[] =
     FILE_PATH_LITERAL("fullscreen_app");
 #endif  // !defined(OS_MACOSX)
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 // Arbitrary port range for testing the WebRTC UDP port policy.
 const char kTestWebRtcUdpPortRange[] = "10000-10100";
 #endif
@@ -3485,7 +3487,7 @@ IN_PROC_BROWSER_TEST_F(MediaRouterDisabledPolicyTest, MediaRouterDisabled) {
 }
 #endif  // defined(ENABLE_MEDIA_ROUTER)
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
 // Sets the proper policy before the browser is started.
 template <bool enable>
 class WebRtcUdpPortRangePolicyTest : public PolicyTest {
@@ -3530,7 +3532,7 @@ IN_PROC_BROWSER_TEST_F(WebRtcUdpPortRangeDisabledPolicyTest,
   pref->GetValue()->GetAsString(&port_range);
   EXPECT_TRUE(port_range.empty());
 }
-#endif  // defined(ENABLE_WEBRTC)
+#endif  // BUILDFLAG(ENABLE_WEBRTC)
 
 // Tests the ComponentUpdater's EnabledComponentUpdates group policy by
 // calling the OnDemand interface. It uses the network interceptor to inspect
@@ -3625,8 +3627,9 @@ update_client::CrxComponent ComponentUpdaterPolicyTest::MakeCrxComponent(
 
     MOCK_METHOD1(OnUpdateError, void(int error));
     MOCK_METHOD2(Install,
-                 bool(const base::DictionaryValue& manifest,
-                      const base::FilePath& unpack_path));
+                 update_client::CrxInstaller::Result(
+                     const base::DictionaryValue& manifest,
+                     const base::FilePath& unpack_path));
     MOCK_METHOD2(GetInstalledFile,
                  bool(const std::string& file, base::FilePath* installed_file));
     MOCK_METHOD0(Uninstall, bool());
@@ -3950,14 +3953,12 @@ class ArcPolicyTest : public PolicyTest {
 
  protected:
   void SetUpTest() {
-    arc::ArcAuthService::DisableUIForTesting();
+    arc::ArcSessionManager::DisableUIForTesting();
 
     browser()->profile()->GetPrefs()->SetBoolean(prefs::kArcSignedIn, true);
   }
 
-  void TearDownTest() {
-    arc::ArcAuthService::Get()->Shutdown();
-  }
+  void TearDownTest() { arc::ArcSessionManager::Get()->Shutdown(); }
 
   void SetUpInProcessBrowserTestFixture() override {
     PolicyTest::SetUpInProcessBrowserTestFixture();
@@ -3975,8 +3976,8 @@ class ArcPolicyTest : public PolicyTest {
   }
 
   void SetUpCommandLine(base::CommandLine* command_line) override {
-    // ArcAuthService functionality is available only when Arc is enabled. Use
-    // kEnableArc switch that activates it.
+    // ArcSessionManager functionality is available only when Arc is enabled.
+    // Use kEnableArc switch that activates it.
     command_line->AppendSwitch(chromeos::switches::kEnableArc);
   }
 

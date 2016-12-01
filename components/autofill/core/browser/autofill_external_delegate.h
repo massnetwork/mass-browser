@@ -81,9 +81,6 @@ class AutofillExternalDelegate : public AutofillPopupDelegate {
   // values or settings.
   void Reset();
 
-  // The renderer sent an IPC acknowledging an earlier ping IPC.
-  void OnPingAck();
-
  protected:
   base::WeakPtr<AutofillExternalDelegate> GetWeakPtr();
 
@@ -100,8 +97,12 @@ class AutofillExternalDelegate : public AutofillPopupDelegate {
   // this data.
   void FillAutofillFormData(int unique_id, bool is_preview);
 
-  // Handle applying any Autofill warnings to the Autofill popup.
-  void ApplyAutofillWarnings(std::vector<Suggestion>* suggestions);
+  // Will remove Autofill warnings from |suggestions| if there are also
+  // autocomplete entries in the vector. Note: at this point, it is assumed that
+  // if there are Autofill warnings, they will be at the head of the vector and
+  // any entry that is not an Autofill warning is considered an Autocomplete
+  // entry.
+  void PossiblyRemoveAutofillWarnings(std::vector<Suggestion>* suggestions);
 
   // Handle applying any Autofill option listings to the Autofill popup.
   // This function should only get called when there is at least one

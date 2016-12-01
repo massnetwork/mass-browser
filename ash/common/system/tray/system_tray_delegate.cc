@@ -38,6 +38,10 @@ std::string SystemTrayDelegate::GetEnterpriseDomain() const {
   return std::string();
 }
 
+std::string SystemTrayDelegate::GetEnterpriseRealm() const {
+  return std::string();
+}
+
 base::string16 SystemTrayDelegate::GetEnterpriseMessage() const {
   return base::string16();
 }
@@ -68,19 +72,17 @@ void SystemTrayDelegate::GetSystemUpdateInfo(UpdateInfo* info) const {
   info->factory_reset_required = false;
 }
 
-bool SystemTrayDelegate::ShouldShowSettings() {
+bool SystemTrayDelegate::ShouldShowSettings() const {
+  return false;
+}
+
+bool SystemTrayDelegate::ShouldShowNotificationTray() const {
   return false;
 }
 
 void SystemTrayDelegate::ShowEnterpriseInfo() {}
 
 void SystemTrayDelegate::ShowUserLogin() {}
-
-void SystemTrayDelegate::SignOut() {}
-
-void SystemTrayDelegate::RequestRestartForUpdate() {}
-
-void SystemTrayDelegate::RequestShutdown() {}
 
 void SystemTrayDelegate::GetAvailableBluetoothDevices(
     BluetoothDeviceList* list) {}
@@ -105,7 +107,7 @@ void SystemTrayDelegate::ManageBluetoothDevices() {}
 
 void SystemTrayDelegate::ToggleBluetooth() {}
 
-bool SystemTrayDelegate::IsBluetoothDiscovering() {
+bool SystemTrayDelegate::IsBluetoothDiscovering() const {
   return false;
 }
 
@@ -140,6 +142,10 @@ bool SystemTrayDelegate::GetSessionLengthLimit(
   return false;
 }
 
+int SystemTrayDelegate::GetSystemTrayMenuWidth() {
+  return 0;
+}
+
 void SystemTrayDelegate::ActiveUserWasChanged() {}
 
 bool SystemTrayDelegate::IsSearchKeyMappedToCapsLock() {
@@ -151,19 +157,6 @@ void SystemTrayDelegate::AddCustodianInfoTrayObserver(
 
 void SystemTrayDelegate::RemoveCustodianInfoTrayObserver(
     CustodianInfoTrayObserver* observer) {}
-
-void SystemTrayDelegate::AddShutdownPolicyObserver(
-    ShutdownPolicyObserver* observer) {}
-
-void SystemTrayDelegate::RemoveShutdownPolicyObserver(
-    ShutdownPolicyObserver* observer) {}
-
-void SystemTrayDelegate::ShouldRebootOnShutdown(
-    const RebootOnShutdownCallback& callback) {}
-
-VPNDelegate* SystemTrayDelegate::GetVPNDelegate() const {
-  return nullptr;
-}
 
 std::unique_ptr<SystemTrayItem> SystemTrayDelegate::CreateRotationLockTrayItem(
     SystemTray* tray) {

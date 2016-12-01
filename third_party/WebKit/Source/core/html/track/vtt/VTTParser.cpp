@@ -524,10 +524,10 @@ void VTTTreeBuilder::constructTreeFromToken(Document& document) {
       } else if (nodeType == VTTNodeTypeLanguage) {
         m_languageStack.append(m_token.annotation());
         child->setAttribute(VTTElement::langAttributeName(),
-                            m_languageStack.last());
+                            m_languageStack.back());
       }
       if (!m_languageStack.isEmpty())
-        child->setLanguage(m_languageStack.last());
+        child->setLanguage(m_languageStack.back());
       m_currentNode->parserAppendChild(child);
       m_currentNode = child;
       break;
@@ -555,7 +555,7 @@ void VTTTreeBuilder::constructTreeFromToken(Document& document) {
         }
       }
       if (nodeType == VTTNodeTypeLanguage)
-        m_languageStack.removeLast();
+        m_languageStack.pop_back();
       if (m_currentNode->parentNode())
         m_currentNode = m_currentNode->parentNode();
       break;

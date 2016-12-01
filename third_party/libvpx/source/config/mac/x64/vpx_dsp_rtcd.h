@@ -1119,9 +1119,9 @@ void vpx_highbd_idct4x4_16_add_sse2(const tran_low_t *input, uint8_t *dest, int 
 void vpx_highbd_idct4x4_1_add_c(const tran_low_t *input, uint8_t *dest, int dest_stride, int bd);
 #define vpx_highbd_idct4x4_1_add vpx_highbd_idct4x4_1_add_c
 
-void vpx_highbd_idct8x8_10_add_c(const tran_low_t *input, uint8_t *dest, int dest_stride, int bd);
-void vpx_highbd_idct8x8_10_add_sse2(const tran_low_t *input, uint8_t *dest, int dest_stride, int bd);
-#define vpx_highbd_idct8x8_10_add vpx_highbd_idct8x8_10_add_sse2
+void vpx_highbd_idct8x8_12_add_c(const tran_low_t *input, uint8_t *dest, int dest_stride, int bd);
+void vpx_highbd_idct8x8_12_add_sse2(const tran_low_t *input, uint8_t *dest, int dest_stride, int bd);
+#define vpx_highbd_idct8x8_12_add vpx_highbd_idct8x8_12_add_sse2
 
 void vpx_highbd_idct8x8_1_add_c(const tran_low_t *input, uint8_t *dest, int dest_stride, int bd);
 #define vpx_highbd_idct8x8_1_add vpx_highbd_idct8x8_1_add_c
@@ -1549,12 +1549,12 @@ void vpx_lpf_vertical_8_dual_sse2(uint8_t *s, int pitch, const uint8_t *blimit0,
 #define vpx_lpf_vertical_8_dual vpx_lpf_vertical_8_dual_sse2
 
 void vpx_mbpost_proc_across_ip_c(unsigned char *dst, int pitch, int rows, int cols,int flimit);
-void vpx_mbpost_proc_across_ip_xmm(unsigned char *dst, int pitch, int rows, int cols,int flimit);
-#define vpx_mbpost_proc_across_ip vpx_mbpost_proc_across_ip_xmm
+void vpx_mbpost_proc_across_ip_sse2(unsigned char *dst, int pitch, int rows, int cols,int flimit);
+#define vpx_mbpost_proc_across_ip vpx_mbpost_proc_across_ip_sse2
 
 void vpx_mbpost_proc_down_c(unsigned char *dst, int pitch, int rows, int cols,int flimit);
-void vpx_mbpost_proc_down_xmm(unsigned char *dst, int pitch, int rows, int cols,int flimit);
-#define vpx_mbpost_proc_down vpx_mbpost_proc_down_xmm
+void vpx_mbpost_proc_down_sse2(unsigned char *dst, int pitch, int rows, int cols,int flimit);
+#define vpx_mbpost_proc_down vpx_mbpost_proc_down_sse2
 
 void vpx_minmax_8x8_c(const uint8_t *s, int p, const uint8_t *d, int dp, int *min, int *max);
 void vpx_minmax_8x8_sse2(const uint8_t *s, int p, const uint8_t *d, int dp, int *min, int *max);

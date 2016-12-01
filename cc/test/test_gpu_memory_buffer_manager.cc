@@ -153,7 +153,7 @@ void TestGpuMemoryBufferManager::OnGpuMemoryBufferDestroyed(
 }
 
 std::unique_ptr<gfx::GpuMemoryBuffer>
-TestGpuMemoryBufferManager::AllocateGpuMemoryBuffer(
+TestGpuMemoryBufferManager::CreateGpuMemoryBuffer(
     const gfx::Size& size,
     gfx::BufferFormat format,
     gfx::BufferUsage usage,
@@ -187,12 +187,6 @@ TestGpuMemoryBufferManager::CreateGpuMemoryBufferFromHandle(
       handle.stride));
   buffers_[last_gpu_memory_buffer_id_] = result.get();
   return result;
-}
-
-gfx::GpuMemoryBuffer*
-TestGpuMemoryBufferManager::GpuMemoryBufferFromClientBuffer(
-    ClientBuffer buffer) {
-  return reinterpret_cast<gfx::GpuMemoryBuffer*>(buffer);
 }
 
 void TestGpuMemoryBufferManager::SetDestructionSyncToken(

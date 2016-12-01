@@ -10,6 +10,7 @@
 #include "ui/aura/window.h"
 #include "ui/aura/window_event_dispatcher.h"
 #include "ui/events/event.h"
+#include "ui/gfx/geometry/dip_util.h"
 #include "ui/platform_window/stub/stub_window.h"
 #include "ui/views/mus/input_method_mus.h"
 #include "ui/views/mus/native_widget_mus.h"
@@ -23,7 +24,7 @@ bool IsUsingTestContext() {
   return aura::Env::GetInstance()->context_factory()->DoesCreateTestContexts();
 }
 
-}
+}  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 // WindowTreeHostMus, public:
@@ -31,6 +32,7 @@ bool IsUsingTestContext() {
 WindowTreeHostMus::WindowTreeHostMus(NativeWidgetMus* native_widget,
                                      ui::Window* window)
     : native_widget_(native_widget) {
+  CreateCompositor();
   gfx::AcceleratedWidget accelerated_widget;
   if (IsUsingTestContext()) {
     accelerated_widget = gfx::kNullAcceleratedWidget;
@@ -56,7 +58,8 @@ WindowTreeHostMus::WindowTreeHostMus(NativeWidgetMus* native_widget,
   compositor()->SetWindow(window);
 
   // Initialize the stub platform window bounds to those of the ui::Window.
-  platform_window()->SetBounds(window->bounds());
+  platform_window()->SetBounds(gfx::ConvertRectToPixel(
+      compositor()->device_scale_factor(), window->bounds()));
 
   compositor()->SetHostHasTransparentBackground(true);
 }

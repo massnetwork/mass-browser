@@ -136,6 +136,7 @@ class PageCyclerV2IntlHiRu(_PageCyclerV2):
           cache_temperature.PCV1_COLD, cache_temperature.PCV1_WARM])
 
 
+@benchmark.Disabled('android')  # crbug.com/666898
 class PageCyclerV2IntlJaZh(_PageCyclerV2):
   """Page load time benchmark for a variety of pages in Japanese and Chinese.
 
@@ -215,7 +216,7 @@ class PageCyclerV2BasicOopifIsolated(_PageCyclerV2):
     return page_sets.OopifBasicPageSet(cache_temperatures=[
           cache_temperature.PCV1_COLD, cache_temperature.PCV1_WARM])
 
-
+@benchmark.Disabled('android')
 class PageCyclerV2BasicOopif(_PageCyclerV2):
   """ A benchmark measuring performance of the out-of-process iframes page
   set, without running in out-of-process iframes mode.. """

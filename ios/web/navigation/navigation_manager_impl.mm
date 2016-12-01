@@ -256,8 +256,14 @@ int NavigationManagerImpl::GetCurrentItemIndex() const {
 }
 
 int NavigationManagerImpl::GetPendingItemIndex() const {
-  if ([session_controller_ hasPendingEntry])
+  if ([session_controller_ hasPendingEntry]) {
+    if ([session_controller_ pendingEntryIndex] != -1) {
+      return [session_controller_ pendingEntryIndex];
+    }
+    // TODO(crbug.com/665189): understand why current item index is
+    // returned here.
     return GetCurrentItemIndex();
+  }
   return -1;
 }
 
@@ -281,19 +287,28 @@ bool NavigationManagerImpl::RemoveItemAtIndex(int index) {
 }
 
 bool NavigationManagerImpl::CanGoBack() const {
-  return [session_controller_ canGoBack];
+  return CanGoToOffset(-1);
 }
 
 bool NavigationManagerImpl::CanGoForward() const {
-  return [session_controller_ canGoForward];
+  return CanGoToOffset(1);
+}
+
+bool NavigationManagerImpl::CanGoToOffset(int offset) const {
+  int index = GetIndexForOffset(offset);
+  return 0 <= index && index < GetItemCount();
 }
 
 void NavigationManagerImpl::GoBack() {
-  delegate_->GoToOffset(-1);
+  delegate_->GoToIndex(GetIndexForOffset(-1));
 }
 
 void NavigationManagerImpl::GoForward() {
-  delegate_->GoToOffset(1);
+  delegate_->GoToIndex(GetIndexForOffset(1));
+}
+
+void NavigationManagerImpl::GoToIndex(int index) {
+  delegate_->GoToIndex(index);
 }
 
 void NavigationManagerImpl::Reload(bool check_for_reposts) {
@@ -321,6 +336,61 @@ void NavigationManagerImpl::RemoveTransientURLRewriters() {
 void NavigationManagerImpl::CopyState(
     NavigationManagerImpl* navigation_manager) {
   SetSessionController([navigation_manager->GetSessionController() copy]);
+}
+
+int NavigationManagerImpl::GetIndexForOffset(int offset) const {
+  int result = [session_controller_ pendingEntryIndex] == -1
+                   ? GetCurrentItemIndex()
+                   : static_cast<int>([session_controller_ pendingEntryIndex]);
+
+  if (offset < 0) {
+    if (GetTransientItem()) {
+      // Going back from transient entry is a matter of discarding it and there
+      // is no need to move navigation index back.
+      offset++;
+    }
+
+    while (offset < 0) {
+      // To stop the user getting 'stuck' on redirecting pages they weren't
+      // even aware existed, it is necessary to pass over pages that would
+      // immediately result in a redirect (the entry *before* the redirected
+      // page).
+      while (result > 0 && IsRedirectItemAtIndex(result)) {
+        --result;
+      }
+      --result;
+      ++offset;
+    }
+  } else if (offset > 0) {
+    if (GetPendingItem() && [session_controller_ pendingEntryIndex] == -1) {
+      // Chrome for iOS does not allow forward navigation if there is another
+      // pending navigation in progress. Returning invalid index indicates that
+      // forward navigation will not be allowed (and |INT_MAX| works for that).
+      // This is different from other platforms which allow forward navigation
+      // if pending entry exist.
+      // TODO(crbug.com/661858): Remove this once back-forward navigation uses
+      // pending index.
+      return INT_MAX;
+    }
+
+    while (offset > 0) {
+      ++result;
+      --offset;
+      // As with going back, skip over redirects.
+      while (result + 1 < GetItemCount() && IsRedirectItemAtIndex(result + 1)) {
+        ++result;
+      }
+    }
+  }
+
+  return result;
+}
+
+bool NavigationManagerImpl::IsRedirectItemAtIndex(int index) const {
+  DCHECK_GT(index, 0);
+  DCHECK_LT(index, GetItemCount());
+  ui::PageTransition transition = GetItemAtIndex(index)->GetTransitionType();
+  return transition & ui::PAGE_TRANSITION_IS_REDIRECT_MASK;
 }
 
 }  // namespace web

@@ -6,6 +6,7 @@ import("//build/config/features.gni")
 import("//build/config/ui.gni")
 import("//media/media_options.gni")
 import("//mojo/public/tools/bindings/mojom.gni")
+import("//ppapi/features/features.gni")
 import("//tools/ipc_fuzzer/ipc_fuzzer.gni")
 if (is_mac) {
   import("//build/config/mac/mac_sdk.gni")
@@ -138,6 +139,8 @@ source_set("common") {
     "in_process_child_thread_params.cc",
     "in_process_child_thread_params.h",
     "indexed_db/indexed_db_constants.h",
+    "indexed_db/indexed_db_enum_traits.cc",
+    "indexed_db/indexed_db_enum_traits.h",
     "indexed_db/indexed_db_key.cc",
     "indexed_db/indexed_db_key.h",
     "indexed_db/indexed_db_key_path.cc",
@@ -159,6 +162,8 @@ source_set("common") {
     "input/input_event.h",
     "input/input_event_ack.cc",
     "input/input_event_ack.h",
+    "input/input_event_ack_source.h",
+    "input/input_event_ack_state.h",
     "input/input_event_dispatch_type.h",
     "input/input_event_stream_validator.cc",
     "input/input_event_stream_validator.h",
@@ -383,6 +388,7 @@ source_set("common") {
     "//mojo/common:common_base",
     "//mojo/edk/system",
     "//net",
+    "//ppapi/features",
     "//sandbox",
     "//services/service_manager",
     "//services/service_manager/public/cpp",
@@ -567,10 +573,11 @@ mojom("mojo_bindings") {
     "render_message_filter.mojom",
     "render_widget_window_tree_client_factory.mojom",
     "renderer.mojom",
+    "screen_orientation.mojom",
     "service_worker/embedded_worker.mojom",
     "service_worker/embedded_worker_setup.mojom",
-    "service_worker/fetch_event_dispatcher.mojom",
     "service_worker/service_worker.mojom",
+    "service_worker/service_worker_event_dispatcher.mojom",
     "service_worker/service_worker_types.mojom",
     "storage_partition_service.mojom",
     "url_loader.mojom",

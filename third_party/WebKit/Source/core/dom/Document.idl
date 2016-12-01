@@ -23,7 +23,8 @@
 // https://html.spec.whatwg.org/#the-document-object
 enum DocumentReadyState { "loading", "interactive", "complete" };
 
-// http://www.w3.org/TR/page-visibility/#VisibilityState
+
+// https://w3c.github.io/page-visibility/#visibility-states-and-the-visibilitystate-enum
 enum VisibilityState { "hidden", "visible", "prerender", "unloaded" };
 
 // https://mikewest.github.io/cors-rfc1918/#feature-detect
@@ -77,7 +78,7 @@ interface Document : Node {
     [NewObject] TreeWalker createTreeWalker(Node root, optional unsigned long whatToShow = 0xFFFFFFFF, optional NodeFilter? filter = null);
 
     // NonDocumentRootScroller (https://github.com/bokand/NonDocumentRootScroller)
-    [RaisesException=Setter, RuntimeEnabled=SetRootScroller] attribute Element? rootScroller;
+    [RaisesException=Setter, RuntimeEnabled=SetRootScroller, Measure] attribute Element? rootScroller;
 
     // FIXME: xmlEncoding/xmlVersion/xmlStandalone have been removed from the spec.
     [MeasureAs=DocumentXMLEncoding] readonly attribute DOMString? xmlEncoding;
@@ -156,7 +157,7 @@ interface Document : Node {
     // Touch Events
     // http://rawgit.com/w3c/touch-events/v1-errata/touchevents.html#extensions-to-the-document-interface
     // FIXME: The arguments should not be optional.
-    [RuntimeEnabled=Touch, Measure, LegacyInterfaceTypeChecking, Custom=CallPrologue]
+    [RuntimeEnabled=TouchEventAPI, Measure, LegacyInterfaceTypeChecking, Custom=CallPrologue]
     Touch createTouch([Default=Undefined] optional Window window,
                       [Default=Undefined] optional EventTarget target,
                       [Default=Undefined] optional long identifier,
@@ -168,7 +169,7 @@ interface Document : Node {
                       [Default=Undefined] optional unrestricted double radiusY,
                       [Default=Undefined] optional unrestricted float rotationAngle,
                       [Default=Undefined] optional unrestricted float force);
-    [RuntimeEnabled=Touch] TouchList createTouchList(Touch... touches);
+    [RuntimeEnabled=TouchEventAPI] TouchList createTouchList(Touch... touches);
 
     // Custom Elements
     // http://w3c.github.io/webcomponents/spec/custom/#extensions-to-document-interface-to-register

@@ -20,7 +20,6 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
-#include "cc/animation/target_property.h"
 #include "cc/base/cc_export.h"
 #include "cc/debug/micro_benchmark.h"
 #include "cc/debug/micro_benchmark_controller.h"
@@ -42,16 +41,14 @@
 #include "cc/trees/layer_tree_settings.h"
 #include "cc/trees/proxy.h"
 #include "cc/trees/swap_promise_manager.h"
+#include "cc/trees/target_property.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/geometry/rect.h"
 
 namespace cc {
-class AnimationHost;
-class AnimationEvents;
-class BeginFrameSource;
+class MutatorEvents;
 class ClientPictureCache;
 class EnginePictureCache;
-class HeadsUpDisplayLayer;
 class ImageSerializationProcessor;
 class Layer;
 class LayerTreeHostClient;
@@ -59,20 +56,13 @@ class LayerTreeHostImpl;
 class LayerTreeHostImplClient;
 class LayerTreeHostSingleThreadClient;
 class LayerTreeMutator;
+class MutatorHost;
 class PropertyTrees;
-class Region;
-class RemoteProtoChannel;
 class RenderingStatsInstrumentation;
-class ResourceProvider;
-class ResourceUpdateQueue;
 class TaskGraphRunner;
-struct PendingPageScaleAnimation;
+struct ReflectedMainFrameState;
 struct RenderingStats;
 struct ScrollAndScaleSet;
-
-namespace proto {
-class LayerTreeHost;
-}
 
 class CC_EXPORT LayerTreeHostInProcess : public LayerTreeHost {
  public:
@@ -84,7 +74,7 @@ class CC_EXPORT LayerTreeHostInProcess : public LayerTreeHost {
     LayerTreeSettings const* settings = nullptr;
     scoped_refptr<base::SingleThreadTaskRunner> main_task_runner;
     ImageSerializationProcessor* image_serialization_processor = nullptr;
-    std::unique_ptr<AnimationHost> animation_host;
+    MutatorHost* mutator_host;
 
     InitParams();
     ~InitParams();
@@ -96,21 +86,6 @@ class CC_EXPORT LayerTreeHostInProcess : public LayerTreeHost {
 
   static std::unique_ptr<LayerTreeHostInProcess> CreateSingleThreaded(
       LayerTreeHostSingleThreadClient* single_thread_client,
-      InitParams* params);
-
-  static std::unique_ptr<LayerTreeHostInProcess> CreateRemoteServer(
-      RemoteProtoChannel* remote_proto_channel,
-      InitParams* params);
-
-  // The lifetime of this LayerTreeHostInProcess is tied to the lifetime of the
-  // remote server LayerTreeHostInProcess. It should be created on receiving
-  // CompositorMessageToImpl::InitializeImpl message and destroyed on receiving
-  // a CompositorMessageToImpl::CloseImpl message from the server. This ensures
-  // that the client will not send any compositor messages once the
-  // LayerTreeHostInProcess on the server is destroyed.
-  static std::unique_ptr<LayerTreeHostInProcess> CreateRemoteClient(
-      RemoteProtoChannel* remote_proto_channel,
-      scoped_refptr<base::SingleThreadTaskRunner> impl_task_runner,
       InitParams* params);
 
   ~LayerTreeHostInProcess() override;
@@ -187,6 +162,13 @@ class CC_EXPORT LayerTreeHostInProcess : public LayerTreeHost {
   void DidCompletePageScaleAnimation();
   void ApplyScrollAndScale(ScrollAndScaleSet* info);
 
+  void SetReflectedMainFrameState(
+      std::unique_ptr<ReflectedMainFrameState> reflected_main_frame_state);
+  const ReflectedMainFrameState* reflected_main_frame_state_for_testing()
+      const {
+    return reflected_main_frame_state_.get();
+  }
+
   LayerTreeHostClient* client() { return client_; }
 
   bool gpu_rasterization_histogram_recorded() const {
@@ -199,7 +181,7 @@ class CC_EXPORT LayerTreeHostInProcess : public LayerTreeHost {
     return rendering_stats_instrumentation_.get();
   }
 
-  void SetAnimationEvents(std::unique_ptr<AnimationEvents> events);
+  void SetAnimationEvents(std::unique_ptr<MutatorEvents> events);
 
   bool has_gpu_rasterization_trigger() const {
     return has_gpu_rasterization_trigger_;
@@ -207,24 +189,8 @@ class CC_EXPORT LayerTreeHostInProcess : public LayerTreeHost {
 
   Proxy* proxy() const { return proxy_.get(); }
 
-  // Serializes the parts of this LayerTreeHostInProcess that is needed for a
-  // commit to a protobuf message. Not all members are serialized as they are
-  // not helpful for remote usage.
-  // The |swap_promise_list_| is transferred to the serializer in
-  // |swap_promises|.
-  void ToProtobufForCommit(
-      proto::LayerTreeHost* proto,
-      std::vector<std::unique_ptr<SwapPromise>>* swap_promises);
-
-  // Deserializes the protobuf into this LayerTreeHostInProcess before a commit.
-  // The expected input is a serialized remote LayerTreeHost. After
-  // deserializing the protobuf, the normal commit-flow should continue.
-  void FromProtobufForCommit(const proto::LayerTreeHost& proto);
-
   bool IsSingleThreaded() const;
   bool IsThreaded() const;
-  bool IsRemoteServer() const;
-  bool IsRemoteClient() const;
 
   ImageSerializationProcessor* image_serialization_processor() const {
     return image_serialization_processor_;
@@ -251,13 +217,6 @@ class CC_EXPORT LayerTreeHostInProcess : public LayerTreeHost {
   void InitializeSingleThreaded(
       LayerTreeHostSingleThreadClient* single_thread_client,
       scoped_refptr<base::SingleThreadTaskRunner> main_task_runner);
-  void InitializeRemoteServer(
-      RemoteProtoChannel* remote_proto_channel,
-      scoped_refptr<base::SingleThreadTaskRunner> main_task_runner);
-  void InitializeRemoteClient(
-      RemoteProtoChannel* remote_proto_channel,
-      scoped_refptr<base::SingleThreadTaskRunner> main_task_runner,
-      scoped_refptr<base::SingleThreadTaskRunner> impl_task_runner);
   void InitializeForTesting(
       std::unique_ptr<TaskRunnerProvider> task_runner_provider,
       std::unique_ptr<Proxy> proxy_for_testing);
@@ -348,6 +307,15 @@ class CC_EXPORT LayerTreeHostInProcess : public LayerTreeHost {
 
   SurfaceSequenceGenerator surface_sequence_generator_;
   uint32_t num_consecutive_frames_suitable_for_gpu_ = 0;
+
+  // The state that was expected to be reflected from the main thread during
+  // BeginMainFrame, but could not be done. The client provides these deltas
+  // to use during the commit instead of applying them at that point because
+  // its necessary for these deltas to be applied *after* PropertyTrees are
+  // built/updated on the main thread.
+  // TODO(khushalsagar): Investigate removing this after SPV2, since then we
+  // should get these PropertyTrees directly from blink?
+  std::unique_ptr<ReflectedMainFrameState> reflected_main_frame_state_;
 
   DISALLOW_COPY_AND_ASSIGN(LayerTreeHostInProcess);
 };

@@ -74,6 +74,7 @@
 #include "public/platform/WebCursorInfo.h"
 #include "public/platform/WebFloatRect.h"
 #include "public/platform/WebFrameScheduler.h"
+#include "public/platform/WebInputEvent.h"
 #include "public/platform/WebRect.h"
 #include "public/platform/WebURLRequest.h"
 #include "public/platform/WebViewScheduler.h"
@@ -84,7 +85,6 @@
 #include "public/web/WebConsoleMessage.h"
 #include "public/web/WebFrameClient.h"
 #include "public/web/WebInputElement.h"
-#include "public/web/WebInputEvent.h"
 #include "public/web/WebKit.h"
 #include "public/web/WebNode.h"
 #include "public/web/WebPageImportanceSignals.h"
@@ -260,7 +260,10 @@ void ChromeClientImpl::startDragging(LocalFrame* frame,
                                      WebDragOperationsMask mask,
                                      const WebImage& dragImage,
                                      const WebPoint& dragImageOffset) {
-  m_webView->startDragging(frame, dragData, mask, dragImage, dragImageOffset);
+  WebLocalFrameImpl* webFrame = WebLocalFrameImpl::fromFrame(frame);
+  WebReferrerPolicy policy = webFrame->document().referrerPolicy();
+  webFrame->localRoot()->frameWidget()->startDragging(
+      policy, dragData, mask, dragImage, dragImageOffset);
 }
 
 bool ChromeClientImpl::acceptsLoadDrops() const {
@@ -364,7 +367,7 @@ Page* ChromeClientImpl::createWindow(LocalFrame* frame,
   if (!m_webView->client())
     return nullptr;
 
-  if (!frame->page() || frame->page()->defersLoading())
+  if (!frame->page() || frame->page()->suspended())
     return nullptr;
 
   WebNavigationPolicy policy =
@@ -627,18 +630,25 @@ void ChromeClientImpl::showMouseOverURL(const HitTestResult& result) {
     return;
 
   WebURL url;
-  // Find out if the mouse is over a link, and if so, let our UI know...
-  if (result.isLiveLink() && !result.absoluteLinkURL().getString().isEmpty()) {
-    url = result.absoluteLinkURL();
-  } else if (result.innerNode() && (isHTMLObjectElement(*result.innerNode()) ||
-                                    isHTMLEmbedElement(*result.innerNode()))) {
-    LayoutObject* object = result.innerNode()->layoutObject();
-    if (object && object->isLayoutPart()) {
-      Widget* widget = toLayoutPart(object)->widget();
-      if (widget && widget->isPluginContainer()) {
-        WebPluginContainerImpl* plugin = toWebPluginContainerImpl(widget);
-        url = plugin->plugin()->linkAtPosition(
-            result.roundedPointInInnerNodeFrame());
+
+  // Ignore URL if hitTest include scrollbar since we might have both a
+  // scrollbar and an element in the case of overlay scrollbars.
+  if (!result.scrollbar()) {
+    // Find out if the mouse is over a link, and if so, let our UI know...
+    if (result.isLiveLink() &&
+        !result.absoluteLinkURL().getString().isEmpty()) {
+      url = result.absoluteLinkURL();
+    } else if (result.innerNode() &&
+               (isHTMLObjectElement(*result.innerNode()) ||
+                isHTMLEmbedElement(*result.innerNode()))) {
+      LayoutObject* object = result.innerNode()->layoutObject();
+      if (object && object->isLayoutPart()) {
+        Widget* widget = toLayoutPart(object)->widget();
+        if (widget && widget->isPluginContainer()) {
+          WebPluginContainerImpl* plugin = toWebPluginContainerImpl(widget);
+          url = plugin->plugin()->linkAtPosition(
+              result.roundedPointInInnerNodeFrame());
+        }
       }
     }
   }
@@ -845,8 +855,8 @@ void ChromeClientImpl::enterFullscreenForElement(Element* element) {
   m_webView->enterFullscreenForElement(element);
 }
 
-void ChromeClientImpl::exitFullscreenForElement(Element* element) {
-  m_webView->exitFullscreenForElement(element);
+void ChromeClientImpl::exitFullscreen(LocalFrame* frame) {
+  m_webView->exitFullscreen(frame);
 }
 
 void ChromeClientImpl::clearCompositedSelection(LocalFrame* frame) {

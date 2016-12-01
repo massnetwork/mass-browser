@@ -73,13 +73,13 @@ const char* fontStyleToString(FontStyle style) {
 
 const char* textTransformToString(ETextTransform transform) {
   switch (transform) {
-    case CAPITALIZE:
+    case ETextTransform::Capitalize:
       return "capitalize";
-    case UPPERCASE:
+    case ETextTransform::Uppercase:
       return "uppercase";
-    case LOWERCASE:
+    case ETextTransform::Lowercase:
       return "lowercase";
-    case TTNONE:
+    case ETextTransform::None:
       return "none";
   }
   NOTREACHED();
@@ -491,8 +491,7 @@ void PopupMenuImpl::show() {
 }
 
 void PopupMenuImpl::hide() {
-  if (m_popup)
-    m_chromeClient->closePagePopup(m_popup);
+  closePopup();
 }
 
 void PopupMenuImpl::updateFromElement(UpdateReason) {

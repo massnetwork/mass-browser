@@ -56,10 +56,9 @@ class CORE_EXPORT DragController final
  public:
   static DragController* create(Page*);
 
-  DragSession dragEntered(DragData*);
-  void dragExited(DragData*);
-  DragSession dragUpdated(DragData*);
-  bool performDrag(DragData*);
+  DragSession dragEnteredOrUpdated(DragData*, LocalFrame& localRoot);
+  void dragExited(DragData*, LocalFrame& localRoot);
+  bool performDrag(DragData*, LocalFrame& localRoot);
 
   enum SelectionDragPolicy {
     ImmediateSelectionDragResolution,
@@ -86,12 +85,14 @@ class CORE_EXPORT DragController final
   DragController(Page*);
 
   DispatchEventResult dispatchTextInputEventFor(LocalFrame*, DragData*);
-  bool canProcessDrag(DragData*);
+  bool canProcessDrag(DragData*, LocalFrame& localRoot);
   bool concludeEditDrag(DragData*);
-  DragSession dragEnteredOrUpdated(DragData*);
-  DragOperation operationForLoad(DragData*);
-  bool tryDocumentDrag(DragData*, DragDestinationAction, DragSession&);
-  bool tryDHTMLDrag(DragData*, DragOperation&);
+  DragOperation operationForLoad(DragData*, LocalFrame& localRoot);
+  bool tryDocumentDrag(DragData*,
+                       DragDestinationAction,
+                       DragSession&,
+                       LocalFrame& localRoot);
+  bool tryDHTMLDrag(DragData*, DragOperation&, LocalFrame& localRoot);
   DragOperation dragOperation(DragData*);
   void cancelDrag();
   bool dragIsMove(FrameSelection&, DragData*);

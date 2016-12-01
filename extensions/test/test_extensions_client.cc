@@ -37,8 +37,9 @@ SimpleFeature* CreateFeature() {
 
 }  // namespace
 
-TestExtensionsClient::TestExtensionsClient() {
-}
+TestExtensionsClient::TestExtensionsClient()
+    : webstore_base_url_(extension_urls::kChromeWebstoreBaseURL),
+      webstore_update_url_(extension_urls::kChromeWebstoreUpdateURL) {}
 
 TestExtensionsClient::~TestExtensionsClient() {
 }
@@ -147,16 +148,16 @@ bool TestExtensionsClient::ShouldSuppressFatalErrors() const {
 void TestExtensionsClient::RecordDidSuppressFatalError() {
 }
 
-std::string TestExtensionsClient::GetWebstoreBaseURL() const {
-  return extension_urls::kChromeWebstoreBaseURL;
+const GURL& TestExtensionsClient::GetWebstoreBaseURL() const {
+  return webstore_base_url_;
 }
 
-std::string TestExtensionsClient::GetWebstoreUpdateURL() const {
-  return extension_urls::kChromeWebstoreUpdateURL;
+const GURL& TestExtensionsClient::GetWebstoreUpdateURL() const {
+  return webstore_update_url_;
 }
 
 bool TestExtensionsClient::IsBlacklistUpdateURL(const GURL& url) const {
-  return true;
+  return false;
 }
 
 std::set<base::FilePath> TestExtensionsClient::GetBrowserImagePaths(

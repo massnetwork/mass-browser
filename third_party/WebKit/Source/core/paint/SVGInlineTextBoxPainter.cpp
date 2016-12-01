@@ -9,7 +9,6 @@
 #include "core/editing/markers/RenderedDocumentMarker.h"
 #include "core/frame/LocalFrame.h"
 #include "core/layout/LayoutTheme.h"
-#include "core/layout/LayoutView.h"
 #include "core/layout/api/LineLayoutAPIShim.h"
 #include "core/layout/api/SelectionState.h"
 #include "core/layout/line/InlineFlowBox.h"
@@ -21,6 +20,7 @@
 #include "core/paint/LayoutObjectDrawingRecorder.h"
 #include "core/paint/PaintInfo.h"
 #include "core/paint/SVGPaintContext.h"
+#include "core/style/AppliedTextDecoration.h"
 #include "core/style/ShadowList.h"
 #include "platform/graphics/GraphicsContextStateSaver.h"
 #include <memory>
@@ -51,12 +51,9 @@ FloatRect SVGInlineTextBoxPainter::boundsForDrawingRecorder(
     const ComputedStyle& style,
     const LayoutPoint& paintOffset,
     bool includeSelectionRect) const {
-  // We compute the paint rect with what looks like the logical values, to match
-  // the computation in SVGInlineTextBox::calculateBoundaries, and the fact that
-  // vertical (etc) layouts are handled by SVGTextLayoutEngine.
-  LayoutRect bounds(LayoutPoint(m_svgInlineTextBox.topLeft() + paintOffset),
-                    LayoutSize(m_svgInlineTextBox.logicalWidth(),
-                               m_svgInlineTextBox.logicalHeight()));
+  LayoutRect bounds(
+      m_svgInlineTextBox.locationIncludingFlipping() + paintOffset,
+      m_svgInlineTextBox.size());
   if (hasShadow(paintInfo, style))
     bounds.expand(style.textShadow()->rectOutsetsIncludingOriginal());
   if (includeSelectionRect) {
@@ -176,11 +173,14 @@ void SVGInlineTextBoxPainter::paintTextFragments(
     // Spec: All text decorations except line-through should be drawn before the
     // text is filled and stroked; thus, the text is rendered on top of these
     // decorations.
-    unsigned decorations = style.textDecorationsInEffect();
-    if (decorations & TextDecorationUnderline)
-      paintDecoration(paintInfo, TextDecorationUnderline, fragment);
-    if (decorations & TextDecorationOverline)
-      paintDecoration(paintInfo, TextDecorationOverline, fragment);
+    const Vector<AppliedTextDecoration>& decorations =
+        style.appliedTextDecorations();
+    for (const AppliedTextDecoration& decoration : decorations) {
+      if (decoration.lines() & TextDecorationUnderline)
+        paintDecoration(paintInfo, TextDecorationUnderline, fragment);
+      if (decoration.lines() & TextDecorationOverline)
+        paintDecoration(paintInfo, TextDecorationOverline, fragment);
+    }
 
     for (int i = 0; i < 3; i++) {
       switch (svgStyle.paintOrderType(i)) {
@@ -205,8 +205,10 @@ void SVGInlineTextBoxPainter::paintTextFragments(
 
     // Spec: Line-through should be drawn after the text is filled and stroked;
     // thus, the line-through is rendered on top of the text.
-    if (decorations & TextDecorationLineThrough)
-      paintDecoration(paintInfo, TextDecorationLineThrough, fragment);
+    for (const AppliedTextDecoration& decoration : decorations) {
+      if (decoration.lines() & TextDecorationLineThrough)
+        paintDecoration(paintInfo, TextDecorationLineThrough, fragment);
+    }
   }
 }
 
@@ -366,11 +368,16 @@ void SVGInlineTextBoxPainter::paintDecoration(const PaintInfo& paintInfo,
                   ApplyToStrokeMode, strokePaint))
             break;
           strokePaint.setAntiAlias(true);
+          float strokeScaleFactor =
+              svgDecorationStyle.vectorEffect() == VE_NON_SCALING_STROKE
+                  ? 1 / scalingFactor
+                  : 1;
           StrokeData strokeData;
           SVGLayoutSupport::applyStrokeStyleToStrokeData(
-              strokeData, decorationStyle, *decorationLayoutObject, 1);
-          if (svgDecorationStyle.vectorEffect() == VE_NON_SCALING_STROKE)
-            strokeData.setThickness(strokeData.thickness() / scalingFactor);
+              strokeData, decorationStyle, *decorationLayoutObject,
+              strokeScaleFactor);
+          if (strokeScaleFactor != 1)
+            strokeData.setThickness(strokeData.thickness() * strokeScaleFactor);
           strokeData.setupPaint(&strokePaint);
           paintInfo.context.drawPath(path.getSkPath(), strokePaint);
         }
@@ -408,19 +415,21 @@ bool SVGInlineTextBoxPainter::setupTextPaint(const PaintInfo& paintInfo,
   paint.setAntiAlias(true);
 
   if (hasShadow(paintInfo, style)) {
-    std::unique_ptr<DrawLooperBuilder> drawLooperBuilder =
-        style.textShadow()->createDrawLooper(
-            DrawLooperBuilder::ShadowRespectsAlpha,
-            style.visitedDependentColor(CSSPropertyColor));
-    paint.setLooper(drawLooperBuilder->detachDrawLooper());
+    paint.setLooper(style.textShadow()->createDrawLooper(
+        DrawLooperBuilder::ShadowRespectsAlpha,
+        style.visitedDependentColor(CSSPropertyColor)));
   }
 
   if (resourceMode == ApplyToStrokeMode) {
+    // The stroke geometry needs be generated based on the scaled font.
+    float strokeScaleFactor =
+        style.svgStyle().vectorEffect() != VE_NON_SCALING_STROKE ? scalingFactor
+                                                                 : 1;
     StrokeData strokeData;
     SVGLayoutSupport::applyStrokeStyleToStrokeData(
-        strokeData, style, parentInlineLayoutObject(), 1);
-    if (style.svgStyle().vectorEffect() != VE_NON_SCALING_STROKE)
-      strokeData.setThickness(strokeData.thickness() * scalingFactor);
+        strokeData, style, parentInlineLayoutObject(), strokeScaleFactor);
+    if (strokeScaleFactor != 1)
+      strokeData.setThickness(strokeData.thickness() * strokeScaleFactor);
     strokeData.setupPaint(&paint);
   }
   return true;

@@ -30,6 +30,7 @@
 
 #include "bindings/core/v8/WindowProxy.h"
 
+#include "bindings/core/v8/ConditionalFeatures.h"
 #include "bindings/core/v8/DOMWrapperWorld.h"
 #include "bindings/core/v8/ScriptController.h"
 #include "bindings/core/v8/V8Binding.h"
@@ -42,6 +43,7 @@
 #include "bindings/core/v8/V8Initializer.h"
 #include "bindings/core/v8/V8ObjectConstructor.h"
 #include "bindings/core/v8/V8PagePopupControllerBinding.h"
+#include "bindings/core/v8/V8PrivateProperty.h"
 #include "bindings/core/v8/V8Window.h"
 #include "core/frame/LocalFrame.h"
 #include "core/frame/csp/ContentSecurityPolicy.h"
@@ -115,8 +117,20 @@ void WindowProxy::disposeContext(GlobalDetachmentBehavior behavior) {
 
   m_document.clear();
 
-  if (behavior == DetachGlobal)
+  if (behavior == DetachGlobal) {
+    // Clean up state on the global proxy, which will be reused.
+    if (!m_globalProxy.isEmpty()) {
+      // TODO(yukishiino): This DCHECK failed on Canary (M57) and Dev (M56).
+      // We need to figure out why m_globalProxy != context->Global().
+      DCHECK(m_globalProxy == context->Global());
+      DCHECK_EQ(toScriptWrappable(context->Global()),
+                toScriptWrappable(
+                    context->Global()->GetPrototype().As<v8::Object>()));
+      m_globalProxy.get().SetWrapperClassId(0);
+    }
+    V8DOMWrapper::clearNativeInfo(m_isolate, context->Global());
     m_scriptState->detachGlobalObject();
+  }
 
   m_scriptState->disposePerContextData();
 
@@ -266,11 +280,6 @@ bool WindowProxy::initialize() {
     setSecurityToken(origin);
   }
 
-  // All interfaces must be registered to V8PerContextData.
-  // So we explicitly call constructorForType for the global object.
-  V8PerContextData::from(context)->constructorForType(
-      &V8Window::wrapperTypeInfo);
-
   if (m_frame->isLocalFrame()) {
     LocalFrame* frame = toLocalFrame(m_frame);
     MainThreadDebugger::instance()->contextCreated(m_scriptState.get(), frame,
@@ -278,6 +287,12 @@ bool WindowProxy::initialize() {
     frame->loader().client()->didCreateScriptContext(
         context, m_world->extensionGroup(), m_world->worldId());
   }
+  // If conditional features for window have been queued before the V8 context
+  // was ready, then inject them into the context now
+  if (m_world->isMainWorld()) {
+    installPendingConditionalFeaturesOnWindow(m_scriptState.get());
+  }
+
   return true;
 }
 
@@ -365,25 +380,33 @@ bool WindowProxy::setupWindowPrototypeChain() {
 
   DOMWindow* window = m_frame->domWindow();
   const WrapperTypeInfo* wrapperTypeInfo = window->wrapperTypeInfo();
-
   v8::Local<v8::Context> context = m_scriptState->context();
+
   // The global proxy object.  Note this is not the global object.
   v8::Local<v8::Object> globalProxy = context->Global();
+  CHECK(m_globalProxy == globalProxy);
+  V8DOMWrapper::setNativeInfo(m_isolate, globalProxy, wrapperTypeInfo, window);
+  // Mark the handle to be traced by Oilpan, since the global proxy has a
+  // reference to the DOMWindow.
+  m_globalProxy.get().SetWrapperClassId(wrapperTypeInfo->wrapperClassId);
+
   // The global object, aka window wrapper object.
   v8::Local<v8::Object> windowWrapper =
       globalProxy->GetPrototype().As<v8::Object>();
   windowWrapper = V8DOMWrapper::associateObjectWithWrapper(
       m_isolate, window, wrapperTypeInfo, windowWrapper);
+
   // The prototype object of Window interface.
   v8::Local<v8::Object> windowPrototype =
       windowWrapper->GetPrototype().As<v8::Object>();
-  RELEASE_ASSERT(!windowPrototype.IsEmpty());
+  CHECK(!windowPrototype.IsEmpty());
   V8DOMWrapper::setNativeInfo(m_isolate, windowPrototype, wrapperTypeInfo,
                               window);
+
   // The named properties object of Window interface.
   v8::Local<v8::Object> windowProperties =
       windowPrototype->GetPrototype().As<v8::Object>();
-  RELEASE_ASSERT(!windowProperties.IsEmpty());
+  CHECK(!windowProperties.IsEmpty());
   V8DOMWrapper::setNativeInfo(m_isolate, windowProperties, wrapperTypeInfo,
                               window);
 
@@ -421,12 +444,10 @@ void WindowProxy::updateDocumentProperty() {
   checkDocumentWrapper(m_document.newLocal(m_isolate), frame->document());
 
   ASSERT(documentWrapper->IsObject());
-  // TODO(jochen): Don't replace the accessor with a data value. We need a way
-  // to tell v8 that the accessor's return value won't change after this point.
-  if (!v8CallBoolean(context->Global()->ForceSet(
-          context, v8AtomicString(m_isolate, "document"), documentWrapper,
-          static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontDelete))))
-    return;
+
+  // Update cached accessor.
+  CHECK(V8PrivateProperty::getWindowDocumentCachedAccessor(m_isolate).set(
+      context, context->Global(), documentWrapper));
 }
 
 void WindowProxy::updateActivityLogger() {

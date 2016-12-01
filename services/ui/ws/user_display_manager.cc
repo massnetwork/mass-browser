@@ -10,6 +10,7 @@
 #include "services/ui/ws/display.h"
 #include "services/ui/ws/display_manager.h"
 #include "services/ui/ws/user_display_manager_delegate.h"
+#include "ui/display/types/display_constants.h"
 
 namespace ui {
 namespace ws {
@@ -31,18 +32,14 @@ void UserDisplayManager::OnFrameDecorationValuesChanged() {
     got_valid_frame_decorations_ = true;
     display_manager_observers_.ForAllPtrs([this](
         mojom::DisplayManagerObserver* observer) { CallOnDisplays(observer); });
-    if (test_observer_)
-      CallOnDisplays(test_observer_);
     return;
   }
 
   mojo::Array<mojom::WsDisplayPtr> displays = GetAllDisplays();
   display_manager_observers_.ForAllPtrs(
       [this, &displays](mojom::DisplayManagerObserver* observer) {
-        observer->OnDisplaysChanged(displays.Clone());
+        observer->OnDisplaysChanged(displays.Clone().PassStorage());
       });
-  if (test_observer_)
-    test_observer_->OnDisplaysChanged(displays.Clone());
 }
 
 void UserDisplayManager::AddDisplayManagerBinding(
@@ -59,10 +56,8 @@ void UserDisplayManager::OnDisplayUpdate(Display* display) {
 
   display_manager_observers_.ForAllPtrs(
       [&displays](mojom::DisplayManagerObserver* observer) {
-        observer->OnDisplaysChanged(displays.Clone());
+        observer->OnDisplaysChanged(displays.Clone().PassStorage());
       });
-  if (test_observer_)
-    test_observer_->OnDisplaysChanged(displays.Clone());
 }
 
 void UserDisplayManager::OnWillDestroyDisplay(Display* display) {
@@ -73,8 +68,6 @@ void UserDisplayManager::OnWillDestroyDisplay(Display* display) {
       [&display](mojom::DisplayManagerObserver* observer) {
         observer->OnDisplayRemoved(display->GetId());
       });
-  if (test_observer_)
-    test_observer_->OnDisplayRemoved(display->GetId());
 }
 
 void UserDisplayManager::OnPrimaryDisplayChanged(int64_t primary_display_id) {
@@ -85,8 +78,6 @@ void UserDisplayManager::OnPrimaryDisplayChanged(int64_t primary_display_id) {
       [primary_display_id](mojom::DisplayManagerObserver* observer) {
         observer->OnPrimaryDisplayChanged(primary_display_id);
       });
-  if (test_observer_)
-    test_observer_->OnPrimaryDisplayChanged(primary_display_id);
 }
 
 void UserDisplayManager::OnMouseCursorLocationChanged(const gfx::Point& point) {
@@ -119,6 +110,13 @@ mojo::ScopedSharedBufferHandle UserDisplayManager::GetCursorLocationMemory() {
 
   return cursor_location_handle_->Clone(
       mojo::SharedBufferHandle::AccessMode::READ_ONLY);
+}
+
+void UserDisplayManager::AddObserver(
+    mojom::DisplayManagerObserverPtr observer) {
+  mojom::DisplayManagerObserver* observer_impl = observer.get();
+  display_manager_observers_.AddPtr(std::move(observer));
+  OnObserverAdded(observer_impl);
 }
 
 void UserDisplayManager::OnObserverAdded(
@@ -159,16 +157,9 @@ void UserDisplayManager::CallOnDisplays(
     mojom::DisplayManagerObserver* observer) {
   // TODO(kylechar): Pass internal display id to clients here.
   observer->OnDisplays(
-      GetAllDisplays(),
+      GetAllDisplays().PassStorage(),
       display::PlatformScreen::GetInstance()->GetPrimaryDisplayId(),
-      display::Display::kInvalidDisplayID);
-}
-
-void UserDisplayManager::AddObserver(
-    mojom::DisplayManagerObserverPtr observer) {
-  mojom::DisplayManagerObserver* observer_impl = observer.get();
-  display_manager_observers_.AddPtr(std::move(observer));
-  OnObserverAdded(observer_impl);
+      display::kInvalidDisplayId);
 }
 
 }  // namespace ws

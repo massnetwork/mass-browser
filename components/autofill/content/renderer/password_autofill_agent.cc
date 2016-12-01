@@ -33,13 +33,13 @@
 #include "content/public/renderer/render_view.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "services/service_manager/public/cpp/interface_registry.h"
+#include "third_party/WebKit/public/platform/WebInputEvent.h"
 #include "third_party/WebKit/public/platform/WebSecurityOrigin.h"
 #include "third_party/WebKit/public/platform/WebVector.h"
 #include "third_party/WebKit/public/web/WebAutofillClient.h"
 #include "third_party/WebKit/public/web/WebDocument.h"
 #include "third_party/WebKit/public/web/WebElement.h"
 #include "third_party/WebKit/public/web/WebFormElement.h"
-#include "third_party/WebKit/public/web/WebInputEvent.h"
 #include "third_party/WebKit/public/web/WebLocalFrame.h"
 #include "third_party/WebKit/public/web/WebNode.h"
 #include "third_party/WebKit/public/web/WebUserGestureIndicator.h"
@@ -947,10 +947,6 @@ void PasswordAutofillAgent::SendPasswordForms(bool only_visible) {
   }
 
   blink::WebLocalFrame* frame = render_frame()->GetWebFrame();
-  // RenderFrameObserver::DidFinishLoad() can fire when Frame is
-  // detaching. crbug.com/654654
-  if (frame->isFrameDetachedForSpecialOneOffStopTheCrashingHackBug561873())
-    return;
 
   // Make sure that this security origin is allowed to use password manager.
   blink::WebSecurityOrigin origin = frame->document().getSecurityOrigin();

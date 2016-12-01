@@ -11,6 +11,24 @@
             ]
         }
     ],
+    "AndroidSpellChecker": [
+        {
+            "platforms": [
+                "android"
+            ],
+            "experiments": [
+                {
+                    "name": "Enabled_NonLowEnd",
+                    "enable_features": [
+                        "AndroidSpellCheckerNonLowEnd"
+                    ],
+                    "disable_features": [
+                        "AndroidSpellChecker"
+                    ]
+                }
+            ]
+        }
+    ],
     "AsyncDNS": [
         {
             "platforms": [
@@ -194,14 +212,7 @@
             ],
             "experiments": [
                 {
-                    "name": "Enabled",
-                    "params": {
-                        "Background": "3;8;0.1;0;30000",
-                        "BackgroundFileIO": "3;8;0.1;0;30000",
-                        "Foreground": "8;32;0.3;0;30000",
-                        "ForegroundFileIO": "8;32;0.3;0;30000",
-                        "RedirectSequencedWorkerPools": "true"
-                    }
+                    "name": "Default"
                 },
                 {
                     "name": "EnableViaFlag",
@@ -211,8 +222,13 @@
                         "BackgroundFileIO": "3;8;0.1;0;30000",
                         "Foreground": "8;32;0.3;0;30000",
                         "ForegroundFileIO": "8;32;0.3;0;30000",
+                        "RedirectHistoryService": "true",
                         "RedirectSequencedWorkerPools": "true"
                     }
+                },
+                {
+                    "name": "DisableViaFlag",
+                    "forcing_flag": "disable-browser-task-scheduler"
                 }
             ]
         }
@@ -308,10 +324,10 @@
                 {
                     "name": "Expected",
                     "params": {
+                        "cs-contextual-cards-bar-integration": "true",
                         "enable_quick_answers": "true",
                         "enable_translation": "true",
-                        "recent_scroll_duration_ms": "300",
-                        "suppression_taps": "10"
+                        "recent_scroll_duration_ms": "300"
                     }
                 }
             ]
@@ -504,6 +520,7 @@
                 {
                     "name": "DocumentWriteScriptBlockGroup",
                     "params": {
+                        "disallowFetchForDocWrittenScriptsInMainFrame": "false",
                         "disallowFetchForDocWrittenScriptsInMainFrameOnSlowConnections": "true"
                     },
                     "disable_features": [
@@ -601,6 +618,23 @@
         {
             "platforms": [
                 "linux",
+                "win"
+            ],
+            "experiments": [
+                {
+                    "name": "Enabled"
+                }
+            ]
+        }
+    ],
+    "EnableSyncClientToServerCompression": [
+        {
+            "platforms": [
+                "android",
+                "chromeos",
+                "ios",
+                "linux",
+                "mac",
                 "win"
             ],
             "experiments": [
@@ -850,6 +884,23 @@
             ]
         }
     ],
+    "MarkNonSecureAs": [
+        {
+            "platforms": [
+                "android",
+                "chromeos",
+                "ios",
+                "linux",
+                "mac",
+                "win"
+            ],
+            "experiments": [
+                {
+                    "name": "show-non-secure-passwords-cc-ui"
+                }
+            ]
+        }
+    ],
     "MaterialDesignDownloads": [
         {
             "platforms": [
@@ -933,6 +984,24 @@
             "experiments": [
                 {
                     "name": "Enabled"
+                }
+            ]
+        }
+    ],
+    "NTPRecentForeignTabs": [
+        {
+            "platforms": [
+                "android"
+            ],
+            "experiments": [
+                {
+                    "name": "Enabled-ThreeHour",
+                    "params": {
+                        "max_foreign_tabs_age_in_minutes": "180"
+                    },
+                    "enable_features": [
+                        "NTPForeignSessionsSuggestions"
+                    ]
                 }
             ]
         }
@@ -1978,26 +2047,6 @@
             ]
         }
     ],
-    "SyncHttpContentCompression": [
-        {
-            "platforms": [
-                "android",
-                "chromeos",
-                "ios",
-                "linux",
-                "mac",
-                "win"
-            ],
-            "experiments": [
-                {
-                    "name": "Enabled"
-                },
-                {
-                    "name": "Disabled"
-                }
-            ]
-        }
-    ],
     "TLS13Negotiation": [
         {
             "platforms": [
@@ -2235,7 +2284,7 @@
             ]
         }
     ],
-    "WebBluetoothBlacklist": [
+    "WebBluetoothBlocklist": [
         {
             "platforms": [
                 "android",
@@ -2247,11 +2296,11 @@
             "experiments": [
                 {
                     "//1": "The value 'ed5f25a4:e' is included for the",
-                    "//2": "WebBluetoothTest BlacklistShouldBlock test.",
+                    "//2": "WebBluetoothTest BlocklistShouldBlock test.",
                     "//3": "TODO(643013): Remove other values in Chrome 55 or later.",
                     "name": "TestGroup",
                     "params": {
-                        "blacklist_additions": "00060000:e,fffd:e,ed5f25a4:e"
+                        "blocklist_additions": "00060000:e,fffd:e,ed5f25a4:e"
                     }
                 }
             ]

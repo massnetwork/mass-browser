@@ -20,13 +20,20 @@
         testRunner.waitUntilDone();
         testRunner.setCanOpenWindows();
         testRunner.setCloseRemainingWindowsWhenComplete(true);
+        testRunner.setDumpJavaScriptDialogs(false);
     }
 
     // Disable the default output of testharness.js.  The default output formats
     // test results into an HTML table.  When that table is dumped as text, no
     // spacing between cells is preserved, and it is therefore not readable. By
     // setting output to false, the HTML table will not be created.
-    setup({"output":false});
+    // Also, disable timeout (except for explicit timeout), since the Blink
+    // layout test runner has its own timeout mechanism.
+    // See: https://github.com/w3c/testharness.js/blob/master/docs/api.md#setup
+    setup({
+        "output": false,
+        "explicit_timeout": true
+    });
 
     // Function used to convert the test status code into the corresponding
     // string
@@ -81,12 +88,32 @@
 
     function isWPTManualTest() {
         var path = location.pathname;
+        if (location.hostname == 'web-platform.test' && path.endsWith('-manual.html'))
+            return true;
         return /\/imported\/wpt\/.*-manual\.html$/.test(path);
     }
 
+    // Returns a directory part relative to WPT root and a basename part of the
+    // current test. e.g.
+    // Current test: file:///.../LayoutTests/imported/wpt/pointerevents/foobar.html
+    // Output: "/pointerevents/foobar"
+    function pathAndBaseNameInWPT() {
+        var path = location.pathname;
+        if (location.hostname == 'web-platform.test') {
+            var matches = path.match(/^(\/.*)\.html$/);
+            return matches ? matches[1] : null;
+        }
+        var matches = path.match(/imported\/wpt(\/.*)\.html$/);
+        return matches ? matches[1] : null;
+    }
+
     function loadAutomationScript() {
-        var testPath = location.pathname;
-        var automationPath = testPath.replace(/\/imported\/wpt\/.*$/, '/imported/wpt_automation');
+        var pathAndBase = pathAndBaseNameInWPT();
+        if (!pathAndBase)
+            return;
+        var automationPath = location.pathname.replace(/\/imported\/wpt\/.*$/, '/imported/wpt_automation');
+        if (location.hostname == 'web-platform.test')
+            automationPath = '/wpt_automation';
 
         // Export importAutomationScript for use by the automation scripts.
         window.importAutomationScript = function(relativePath) {
@@ -96,13 +123,13 @@
         }
 
         var src;
-        if (testPath.includes('/imported/wpt/fullscreen/')) {
+        if (pathAndBase.startsWith('/fullscreen/')) {
             // Fullscreen tests all use the same automation script.
             src = automationPath + '/fullscreen/auto-click.js';
-        } else if (testPath.includes('/imported/wpt/pointerevents/')
-                   || testPath.includes('/imported/wpt/uievents/')) {
+        } else if (pathAndBase.startsWith('/pointerevents/')
+                   || pathAndBase.startsWith('/uievents/')) {
             // Per-test automation scripts.
-            src = testPath.replace(/\/imported\/wpt\/(.*)\.html$/, "/imported/wpt_automation/$1-automation.js");
+            src = automationPath + pathAndBase + '-automation.js';
         } else {
             return;
         }
@@ -180,6 +207,11 @@
 
         function done() {
             if (self.testRunner) {
+                // The following DOM operations may show console messages.  We
+                // suppress them because they are not related to the running
+                // test.
+                testRunner.setDumpConsoleMessages(false);
+
                 if (isCSSWGTest() || isJSTest()) {
                     // Anything isn't material to the testrunner output, so
                     // should be hidden from the text dump.

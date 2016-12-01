@@ -16,7 +16,6 @@
 #include "base/process/launch.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/sys_info.h"
 #include "base/timer/timer.h"
 #include "base/values.h"
@@ -43,6 +42,7 @@
 #include "gpu/command_buffer/service/gpu_switches.h"
 #include "gpu/ipc/service/switches.h"
 #include "media/base/media_switches.h"
+#include "media/media_features.h"
 #include "third_party/cros_system_api/switches/chrome_switches.h"
 #include "ui/app_list/app_list_switches.h"
 #include "ui/base/ui_base_switches.h"
@@ -166,18 +166,17 @@ void DeriveCommandLine(const GURL& start_url,
     ::switches::kDisableWebGLImageChromium,
     ::switches::kEnableWebGLImageChromium,
     ::switches::kEnableWebVR,
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
     ::switches::kDisableWebRtcHWDecoding,
     ::switches::kDisableWebRtcHWEncoding,
 #endif
     ::switches::kDisableVaapiAcceleratedVideoEncode,
 #if defined(USE_OZONE)
-    ::switches::kOzoneInitialDisplayBounds,
-    ::switches::kOzoneInitialDisplayPhysicalSizeMm,
     ::switches::kOzonePlatform,
 #endif
     app_list::switches::kDisableSyncAppList,
     app_list::switches::kEnableSyncAppList,
+    ash::switches::kAshEnableTabletPowerButton,
     ash::switches::kAshEnableTouchView,
     ash::switches::kAshEnablePalette,
     ash::switches::kAshEnablePaletteOnAllDisplays,

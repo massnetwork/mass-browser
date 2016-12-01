@@ -157,8 +157,8 @@ void ExtensionInstalledBubbleView::UpdateAnchorView() {
 }
 
 void ExtensionInstalledBubbleView::CloseBubble() {
-  // This function should only be called once.
-  CHECK(!GetWidget()->IsClosed());
+  if (GetWidget()->IsClosed())
+    return;
   if (controller_->anchor_position() ==
       ExtensionInstalledBubble::ANCHOR_PAGE_ACTION) {
     BrowserView* browser_view =

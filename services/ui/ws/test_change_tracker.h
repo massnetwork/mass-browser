@@ -89,7 +89,6 @@ struct Change {
   int32_t cursor_id;
   uint32_t change_id;
   cc::SurfaceId surface_id;
-  cc::SurfaceSequence surface_sequence;
   gfx::Size frame_size;
   float device_scale_factor;
 };
@@ -112,7 +111,7 @@ std::string SingleWindowDescription(const std::vector<TestWindow>& windows);
 std::string ChangeWindowDescription(const std::vector<Change>& changes);
 
 // Converts WindowDatas to TestWindows.
-void WindowDatasToTestWindows(const mojo::Array<mojom::WindowDataPtr>& data,
+void WindowDatasToTestWindows(const std::vector<mojom::WindowDataPtr>& data,
                               std::vector<TestWindow>* test_windows);
 
 // TestChangeTracker is used to record WindowTreeClient functions. It notifies
@@ -176,7 +175,6 @@ class TestChangeTracker {
                          bool drawn);
   void OnWindowSurfaceChanged(Id window_id,
                               const cc::SurfaceId& surface_id,
-                              const cc::SurfaceSequence& surface_sequence,
                               const gfx::Size& frame_size,
                               float device_scale_factor);
 

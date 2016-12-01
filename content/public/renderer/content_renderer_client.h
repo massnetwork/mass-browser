@@ -41,7 +41,6 @@ class WebMIDIAccessorClient;
 class WebMediaStreamCenter;
 class WebMediaStreamCenterClient;
 class WebPlugin;
-class WebPluginContainer;
 class WebPrescientNetworking;
 class WebRTCPeerConnectionHandler;
 class WebRTCPeerConnectionHandlerClient;
@@ -59,7 +58,6 @@ struct WebURLError;
 namespace cc {
 class ImageSerializationProcessor;
 class RemoteCompositorBridge;
-class RemoteProtoChannel;
 }
 
 namespace gfx {
@@ -67,9 +65,7 @@ class ICCProfile;
 }
 
 namespace media {
-class GpuVideoAcceleratorFactories;
 class KeySystemProperties;
-class MediaLog;
 class RendererFactory;
 }
 
@@ -79,12 +75,10 @@ class InterfaceRegistry;
 
 namespace content {
 class BrowserPluginDelegate;
-class DocumentState;
 class MediaStreamRendererFactory;
+class RemoteProtoChannel;
 class RenderFrame;
 class RenderView;
-class SynchronousCompositor;
-struct WebPluginInfo;
 
 // Embedder API for participating in renderer logic.
 class CONTENT_EXPORT ContentRendererClient {
@@ -219,7 +213,7 @@ class CONTENT_EXPORT ContentRendererClient {
   // ignored by WebKit. This method is used by CEF and android_webview.
   virtual bool HandleNavigation(RenderFrame* render_frame,
                                 bool is_content_initiated,
-                                int opener_id,
+                                bool render_view_was_created_by_renderer,
                                 blink::WebFrame* frame,
                                 const blink::WebURLRequest& request,
                                 blink::WebNavigationType type,
@@ -282,7 +276,7 @@ class CONTENT_EXPORT ContentRendererClient {
   // The |remote_proto_channel| outlives the RemoteCompositorBridge.
   virtual std::unique_ptr<cc::RemoteCompositorBridge>
   CreateRemoteCompositorBridge(
-      cc::RemoteProtoChannel* remote_proto_channel,
+      RemoteProtoChannel* remote_proto_channel,
       scoped_refptr<base::SingleThreadTaskRunner> compositor_main_task_runner);
 
   // Allows an embedder to provide a default image decode color space.

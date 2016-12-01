@@ -29,10 +29,12 @@
 #include "components/offline_pages/offline_page_model.h"
 #include "components/prefs/pref_member.h"
 #include "components/search_engines/template_url_service.h"
+#include "media/media_features.h"
+#include "ppapi/features/features.h"
 #include "storage/common/quota/quota_types.h"
 #include "url/gurl.h"
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 #include "chrome/browser/pepper_flash_settings_manager.h"
 #endif
 
@@ -43,8 +45,6 @@
 class BrowsingDataFilterBuilder;
 class BrowsingDataFlashLSOHelper;
 class BrowsingDataRemoverFactory;
-class HostContentSettingsMap;
-class IOThread;
 class Profile;
 class WebappRegistry;
 
@@ -56,10 +56,6 @@ namespace content {
 class BrowserContext;
 class PluginDataRemover;
 class StoragePartition;
-}
-
-namespace net {
-class URLRequestContextGetter;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,7 +91,7 @@ class URLRequestContextGetter;
 ////////////////////////////////////////////////////////////////////////////////
 
 class BrowsingDataRemover : public KeyedService
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
                             , public PepperFlashSettingsManager::Client
 #endif
 {
@@ -151,6 +147,10 @@ class BrowsingDataRemover : public KeyedService
                        REMOVE_SITE_USAGE_DATA |
                        REMOVE_DURABLE_PERMISSION,
 
+    // Datatypes protected by Important Sites.
+    IMPORTANT_SITES_DATATYPES = REMOVE_SITE_DATA |
+                                REMOVE_CACHE,
+
     // Datatypes that can be deleted partially per URL / origin / domain,
     // whichever makes sense.
     FILTERABLE_DATATYPES = REMOVE_SITE_DATA |
@@ -171,6 +171,12 @@ class BrowsingDataRemover : public KeyedService
     // disk as soon as possible.
     REMOVE_WIPE_PROFILE = REMOVE_ALL | REMOVE_NOCHECKS,
   };
+
+  // Important sites protect a small set of sites from the deletion of certain
+  // datatypes. Therefore, those datatypes must be filterable by
+  // url/origin/domain.
+  static_assert(0 == (IMPORTANT_SITES_DATATYPES & ~FILTERABLE_DATATYPES),
+                "All important sites datatypes must be filterable.");
 
   // A helper enum to report the deletion of cookies and/or cache. Do not
   // reorder the entries, as this enum is passed to UMA.
@@ -276,7 +282,7 @@ class BrowsingDataRemover : public KeyedService
       std::unique_ptr<WebappRegistry> webapp_registry);
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   void OverrideFlashLSOHelperForTesting(
       scoped_refptr<BrowsingDataFlashLSOHelper> flash_lso_helper);
 #endif
@@ -305,9 +311,6 @@ class BrowsingDataRemover : public KeyedService
       Observer* observer);
 
  private:
-  // The clear API needs to be able to toggle removing_ in order to test that
-  // only one BrowsingDataRemover instance can be called at a time.
-  FRIEND_TEST_ALL_PREFIXES(ExtensionBrowsingDataTest, OneAtATime);
   // Testing the private RemovalTask.
   FRIEND_TEST_ALL_PREFIXES(BrowsingDataRemoverTest, MultipleTasks);
 
@@ -348,7 +351,7 @@ class BrowsingDataRemover : public KeyedService
   // clears the respective waiting flag, and invokes NotifyIfDone.
   void OnKeywordsLoaded(base::Callback<bool(const GURL&)> url_filter);
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   // Called when plugin data has been cleared. Invokes NotifyIfDone.
   void OnWaitableEventSignaled(base::WaitableEvent* waitable_event);
 
@@ -454,7 +457,7 @@ class BrowsingDataRemover : public KeyedService
   // Callback on UI thread when the storage partition related data are cleared.
   void OnClearedStoragePartitionData();
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   // Callback on UI thread when the WebRTC logs have been deleted.
   void OnClearedWebRtcLogs();
 #endif
@@ -499,7 +502,7 @@ class BrowsingDataRemover : public KeyedService
   // to artificially delay completion. Used for testing.
   static CompletionInhibitor* completion_inhibitor_;
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   // Used to delete plugin data.
   std::unique_ptr<content::PluginDataRemover> plugin_data_remover_;
   base::WaitableEventWatcher watcher_;
@@ -542,7 +545,7 @@ class BrowsingDataRemover : public KeyedService
   bool waiting_for_clear_offline_page_data_ = false;
 #endif
   bool waiting_for_clear_storage_partition_data_ = false;
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   bool waiting_for_clear_webrtc_logs_ = false;
 #endif
   bool waiting_for_clear_auto_sign_in_ = false;

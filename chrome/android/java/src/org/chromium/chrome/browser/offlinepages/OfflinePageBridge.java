@@ -47,7 +47,7 @@ public class OfflinePageBridge {
     /** Whether an offline sub-feature is enabled or not. */
     private static Boolean sOfflineBookmarksEnabled;
     private static Boolean sBackgroundLoadingEnabled;
-    private static Boolean sPageSharingEnabled;
+    private static Boolean sIsPageSharingEnabled;
 
     /**
      * Callback used when saving an offline page.
@@ -91,10 +91,9 @@ public class OfflinePageBridge {
 
     /**
      * Creates an offline page bridge for a given profile.
-     * Accessible by the package for testability.
      */
     @VisibleForTesting
-    OfflinePageBridge(long nativeOfflinePageBridge) {
+    protected OfflinePageBridge(long nativeOfflinePageBridge) {
         mNativeOfflinePageBridge = nativeOfflinePageBridge;
     }
 
@@ -118,27 +117,15 @@ public class OfflinePageBridge {
     }
 
     /**
-     * @return True if saving offline pages in the background is enabled.
-     */
-    @VisibleForTesting
-    public static boolean isBackgroundLoadingEnabled() {
-        ThreadUtils.assertOnUiThread();
-        if (sBackgroundLoadingEnabled == null) {
-            sBackgroundLoadingEnabled = nativeIsBackgroundLoadingEnabled();
-        }
-        return sBackgroundLoadingEnabled;
-    }
-
-    /**
      * @return True if offline pages sharing is enabled.
      */
     @VisibleForTesting
     public static boolean isPageSharingEnabled() {
         ThreadUtils.assertOnUiThread();
-        if (sPageSharingEnabled == null) {
-            sPageSharingEnabled = nativeIsPageSharingEnabled();
+        if (sIsPageSharingEnabled == null) {
+            sIsPageSharingEnabled = nativeIsPageSharingEnabled();
         }
-        return sPageSharingEnabled;
+        return sIsPageSharingEnabled;
     }
 
     /**
@@ -445,7 +432,7 @@ public class OfflinePageBridge {
     }
 
     @CalledByNative
-    void offlinePageModelLoaded() {
+    protected void offlinePageModelLoaded() {
         mIsNativeOfflinePageModelLoaded = true;
         for (OfflinePageModelObserver observer : mObservers) {
             observer.offlinePageModelLoaded();
@@ -453,7 +440,7 @@ public class OfflinePageBridge {
     }
 
     @CalledByNative
-    private void offlinePageModelChanged() {
+    protected void offlinePageModelChanged() {
         for (OfflinePageModelObserver observer : mObservers) {
             observer.offlinePageModelChanged();
         }
@@ -463,7 +450,7 @@ public class OfflinePageBridge {
      * Removes references to the native OfflinePageBridge when it is being destroyed.
      */
     @CalledByNative
-    private void offlinePageBridgeDestroyed() {
+    protected void offlinePageBridgeDestroyed() {
         ThreadUtils.assertOnUiThread();
         assert mNativeOfflinePageBridge != 0;
 
@@ -503,7 +490,6 @@ public class OfflinePageBridge {
     }
 
     private static native boolean nativeIsOfflineBookmarksEnabled();
-    private static native boolean nativeIsBackgroundLoadingEnabled();
     private static native boolean nativeIsPageSharingEnabled();
     private static native boolean nativeCanSavePage(String url);
     private static native OfflinePageBridge nativeGetOfflinePageBridgeForProfile(Profile profile);

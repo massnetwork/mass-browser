@@ -17,7 +17,6 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/path_service.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/stringprintf.h"
 #include "base/threading/thread.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
@@ -38,6 +37,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/tracing_controller.h"
+#include "printing/features/features.h"
 
 #if defined(OS_WIN)
 #include "chrome/browser/first_run/upgrade_util_win.h"
@@ -60,7 +60,7 @@
 #include "chrome/browser/chromeos/boot_times_recorder.h"
 #endif
 
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 #include "chrome/browser/service_process/service_process_control.h"
 #endif
 
@@ -154,7 +154,7 @@ bool ShutdownPreThreadsStop() {
   chromeos::BootTimesRecorder::Get()->AddLogoutTimeMarker(
       "BrowserShutdownStarted", false);
 #endif
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   // Shutdown the IPC channel to the service processes.
   ServiceProcessControl::GetInstance()->Disconnect();
 #endif  // ENABLE_PRINT_PREVIEW

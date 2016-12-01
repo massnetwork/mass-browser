@@ -13,6 +13,7 @@
 #include "chrome/test/base/ui_test_utils.h"
 #include "components/guest_view/browser/test_guest_view_manager.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/test/browser_test_utils.h"
 #include "extensions/browser/api/extensions_api_client.h"
@@ -130,9 +131,9 @@ class MimeHandlerViewTest : public ExtensionApiTest,
   void SetUpOnMainThread() override {
     ExtensionApiTest::SetUpOnMainThread();
 
-    ASSERT_TRUE(StartEmbeddedTestServer());
     embedded_test_server()->ServeFilesFromDirectory(
         test_data_dir_.AppendASCII("mime_handler_view"));
+    ASSERT_TRUE(StartEmbeddedTestServer());
   }
 
   // TODO(ekaramad): These tests run for OOPIF guests too, except that they
@@ -144,8 +145,15 @@ class MimeHandlerViewTest : public ExtensionApiTest,
     ExtensionApiTest::SetUpCommandLine(command_line);
 
     bool use_cross_process_frames_for_guests = GetParam();
-    if (use_cross_process_frames_for_guests)
-      command_line->AppendSwitch(switches::kUseCrossProcessFramesForGuests);
+    if (use_cross_process_frames_for_guests) {
+      command_line->AppendSwitchASCII(
+          switches::kEnableFeatures,
+          ::features::kGuestViewCrossProcessFrames.name);
+    } else {
+      command_line->AppendSwitchASCII(
+          switches::kDisableFeatures,
+          ::features::kGuestViewCrossProcessFrames.name);
+    }
   }
 
   // TODO(paulmeyer): This function is implemented over and over by the

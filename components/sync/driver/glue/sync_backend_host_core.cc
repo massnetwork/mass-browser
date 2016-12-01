@@ -11,6 +11,7 @@
 #include "base/location.h"
 #include "base/memory/ptr_util.h"
 #include "base/single_thread_task_runner.h"
+#include "base/trace_event/memory_dump_manager.h"
 #include "components/data_use_measurement/core/data_use_user_data.h"
 #include "components/invalidation/public/invalidation_util.h"
 #include "components/invalidation/public/object_id_invalidation_map.h"
@@ -66,6 +67,8 @@ DoInitializeOptions::DoInitializeOptions(
     const std::string& invalidator_client_id,
     std::unique_ptr<SyncManagerFactory> sync_manager_factory,
     bool delete_sync_data_folder,
+    bool enable_local_sync_backend,
+    const base::FilePath& local_sync_backend_folder,
     const std::string& restored_key_for_bootstrapping,
     const std::string& restored_keystore_key_for_bootstrapping,
     std::unique_ptr<EngineComponentsFactory> engine_components_factory,
@@ -85,6 +88,8 @@ DoInitializeOptions::DoInitializeOptions(
       invalidator_client_id(invalidator_client_id),
       sync_manager_factory(std::move(sync_manager_factory)),
       delete_sync_data_folder(delete_sync_data_folder),
+      enable_local_sync_backend(enable_local_sync_backend),
+      local_sync_backend_folder(local_sync_backend_folder),
       restored_key_for_bootstrapping(restored_key_for_bootstrapping),
       restored_keystore_key_for_bootstrapping(
           restored_keystore_key_for_bootstrapping),
@@ -122,6 +127,16 @@ SyncBackendHostCore::SyncBackendHostCore(
 
 SyncBackendHostCore::~SyncBackendHostCore() {
   DCHECK(!sync_manager_.get());
+}
+
+bool SyncBackendHostCore::OnMemoryDump(
+    const base::trace_event::MemoryDumpArgs& args,
+    base::trace_event::ProcessMemoryDump* pmd) {
+  DCHECK(sync_loop_->task_runner()->BelongsToCurrentThread());
+  if (!sync_manager_)
+    return false;
+  sync_manager_->OnMemoryDump(pmd);
+  return true;
 }
 
 void SyncBackendHostCore::OnSyncCycleCompleted(
@@ -407,6 +422,8 @@ void SyncBackendHostCore::DoInitialize(
   args.database_location = sync_data_folder_path_;
   args.event_handler = options->event_handler;
   args.service_url = options->service_url;
+  args.enable_local_sync_backend = options->enable_local_sync_backend;
+  args.local_sync_backend_folder = options->local_sync_backend_folder;
   args.post_factory = std::move(options->http_bridge_factory);
   args.workers = options->workers;
   args.extensions_activity = options->extensions_activity.get();
@@ -425,6 +442,8 @@ void SyncBackendHostCore::DoInitialize(
   args.cancelation_signal = &stop_syncing_signal_;
   args.saved_nigori_state = std::move(options->saved_nigori_state);
   sync_manager_->Init(&args);
+  base::trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
+      this, "SyncDirectory", sync_loop_->task_runner());
 }
 
 void SyncBackendHostCore::DoUpdateCredentials(
@@ -538,6 +557,8 @@ void SyncBackendHostCore::DoShutdown(ShutdownReason reason) {
 
 void SyncBackendHostCore::DoDestroySyncManager(ShutdownReason reason) {
   DCHECK(sync_loop_->task_runner()->BelongsToCurrentThread());
+  base::trace_event::MemoryDumpManager::GetInstance()->UnregisterDumpProvider(
+      this);
   if (sync_manager_) {
     DisableDirectoryTypeDebugInfoForwarding();
     save_changes_timer_.reset();

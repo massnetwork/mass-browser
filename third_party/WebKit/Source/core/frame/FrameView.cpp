@@ -38,6 +38,7 @@
 #include "core/dom/IntersectionObserverCallback.h"
 #include "core/dom/IntersectionObserverController.h"
 #include "core/dom/IntersectionObserverInit.h"
+#include "core/dom/TaskRunnerHelper.h"
 #include "core/editing/EditingUtilities.h"
 #include "core/editing/FrameSelection.h"
 #include "core/editing/RenderedPosition.h"
@@ -50,11 +51,12 @@
 #include "core/frame/LocalFrame.h"
 #include "core/frame/Location.h"
 #include "core/frame/PageScaleConstraintsSet.h"
+#include "core/frame/PerformanceMonitor.h"
 #include "core/frame/Settings.h"
 #include "core/frame/VisualViewport.h"
 #include "core/html/HTMLFrameElement.h"
 #include "core/html/HTMLPlugInElement.h"
-#include "core/html/HTMLTextFormControlElement.h"
+#include "core/html/TextControlElement.h"
 #include "core/html/parser/TextResourceDecoder.h"
 #include "core/input/EventHandler.h"
 #include "core/inspector/InspectorInstrumentation.h"
@@ -87,6 +89,7 @@
 #include "core/page/FocusController.h"
 #include "core/page/FrameTree.h"
 #include "core/page/Page.h"
+#include "core/page/scrolling/RootScrollerUtil.h"
 #include "core/page/scrolling/ScrollingCoordinator.h"
 #include "core/page/scrolling/TopDocumentRootScrollerController.h"
 #include "core/paint/FramePainter.h"
@@ -112,7 +115,6 @@
 #include "platform/graphics/paint/PaintController.h"
 #include "platform/graphics/paint/ScopedPaintChunkProperties.h"
 #include "platform/json/JSONValues.h"
-#include "platform/scheduler/CancellableTaskFactory.h"
 #include "platform/scroll/ScrollAnimatorBase.h"
 #include "platform/scroll/ScrollbarTheme.h"
 #include "platform/text/TextStream.h"
@@ -148,14 +150,18 @@ static const double resourcePriorityUpdateDelayAfterScroll = 0.250;
 
 static bool s_initialTrackAllPaintInvalidations = false;
 
-FrameView::FrameView(LocalFrame* frame)
+FrameView::FrameView(LocalFrame& frame)
     : m_frame(frame),
       m_displayMode(WebDisplayModeBrowser),
       m_canHaveScrollbars(true),
       m_hasPendingLayout(false),
       m_inSynchronousPostLayout(false),
-      m_postLayoutTasksTimer(this, &FrameView::postLayoutTimerFired),
-      m_updateWidgetsTimer(this, &FrameView::updateWidgetsTimerFired),
+      m_postLayoutTasksTimer(TaskRunnerHelper::get(TaskType::Internal, &frame),
+                             this,
+                             &FrameView::postLayoutTimerFired),
+      m_updateWidgetsTimer(TaskRunnerHelper::get(TaskType::Internal, &frame),
+                           this,
+                           &FrameView::updateWidgetsTimerFired),
       m_isTransparent(false),
       m_baseBackgroundColor(Color::white),
       m_mediaType(MediaTypeNames::screen),
@@ -180,6 +186,8 @@ FrameView::FrameView(LocalFrame* frame)
       m_frameTimingRequestsDirty(true),
       m_hiddenForThrottling(false),
       m_subtreeThrottled(false),
+      m_lifecycleUpdatesThrottled(false),
+      m_needsPaintPropertyUpdate(true),
       m_currentUpdateLifecyclePhasesTargetState(
           DocumentLifecycle::Uninitialized),
       m_scrollAnchor(this),
@@ -187,17 +195,16 @@ FrameView::FrameView(LocalFrame* frame)
       m_needsScrollbarsUpdate(false),
       m_suppressAdjustViewSize(false),
       m_allowsLayoutInvalidationAfterLayoutClean(true) {
-  ASSERT(m_frame);
   init();
 }
 
-FrameView* FrameView::create(LocalFrame* frame) {
+FrameView* FrameView::create(LocalFrame& frame) {
   FrameView* view = new FrameView(frame);
   view->show();
   return view;
 }
 
-FrameView* FrameView::create(LocalFrame* frame, const IntSize& initialSize) {
+FrameView* FrameView::create(LocalFrame& frame, const IntSize& initialSize) {
   FrameView* view = new FrameView(frame);
   view->Widget::setFrameRect(IntRect(view->location(), initialSize));
   view->setLayoutSizeInternal(initialSize);
@@ -227,6 +234,12 @@ DEFINE_TRACE(FrameView) {
 }
 
 void FrameView::reset() {
+  // The compositor throttles the main frame using deferred commits, we can't
+  // throttle it here or it seems the root compositor doesn't get setup
+  // properly.
+  if (RuntimeEnabledFeatures::
+          renderingPipelineThrottlingLoadingIframesEnabled())
+    m_lifecycleUpdatesThrottled = !frame().isMainFrame();
   m_hasPendingLayout = false;
   m_layoutSchedulingEnabled = true;
   m_inSynchronousPostLayout = false;
@@ -298,6 +311,7 @@ void FrameView::setupRenderThrottling() {
                          [](FrameView* frameView, bool isVisible) {
                            frameView->updateRenderThrottlingStatus(
                                !isVisible, frameView->m_subtreeThrottled);
+                           frameView->maybeRecordLoadReason();
                          },
                          wrapWeakPersistent(this)));
   m_visibilityObserver->start();
@@ -319,9 +333,9 @@ void FrameView::dispose() {
   // from non-GC'd objects and RootFrameViewport will still have a pointer to
   // this class.
   if (m_viewportScrollableArea)
-    m_viewportScrollableArea->clearScrollAnimators();
+    m_viewportScrollableArea->clearScrollableArea();
 
-  clearScrollAnimators();
+  clearScrollableArea();
 
   // Destroy |m_autoSizeInfo| as early as possible, to avoid dereferencing
   // partially destroyed |this| via |m_autoSizeInfo->m_frameView|.
@@ -506,14 +520,7 @@ void FrameView::setFrameRect(const IntRect& newRect) {
 
   frameRectsChanged();
 
-  updateScrollableAreaSet();
-
-  if (LayoutViewItem layoutView = this->layoutViewItem()) {
-    // TODO(majidvp): It seems that this only needs to be called when size
-    // is updated ignoring any change in the location.
-    if (layoutView.usesCompositing())
-      layoutView.compositor()->frameViewDidChangeSize();
-  }
+  updateParentScrollableAreaSet();
 
   if (frameSizeChanged) {
     viewportSizeChanged(newRect.width() != oldRect.width(),
@@ -550,6 +557,19 @@ CompositorAnimationTimeline* FrameView::compositorAnimationTimeline() const {
 
 LayoutBox* FrameView::layoutBox() const {
   return layoutView();
+}
+
+FloatQuad FrameView::localToVisibleContentQuad(
+    const FloatQuad& quad,
+    const LayoutObject* localObject,
+    MapCoordinatesFlags flags) const {
+  LayoutBox* box = layoutBox();
+  if (!box)
+    return quad;
+  DCHECK(localObject);
+  FloatQuad result = localObject->localToAncestorQuad(quad, box, flags);
+  result.move(-scrollOffset());
+  return result;
 }
 
 void FrameView::setCanHaveScrollbars(bool canHaveScrollbars) {
@@ -620,10 +640,16 @@ void FrameView::setContentsSize(const IntSize& size) {
   if (!page)
     return;
 
-  updateScrollableAreaSet();
+  updateParentScrollableAreaSet();
 
   page->chromeClient().contentsSizeChanged(m_frame.get(), size);
   frame().loader().restoreScrollPositionAndViewState();
+
+  if (!RuntimeEnabledFeatures::rootLayerScrollingEnabled()) {
+    // The presence of overflow depends on the contents size. The scroll
+    // properties can change depending on whether overflow scrolling occurs.
+    setNeedsPaintPropertyUpdate();
+  }
 }
 
 void FrameView::adjustViewSize() {
@@ -913,11 +939,10 @@ void FrameView::performPreLayoutTasks() {
   bool mainFrameRotation =
       m_frame->isMainFrame() && m_frame->settings() &&
       m_frame->settings()->mainFrameResizesAreOrientationChanges();
-  if (!document->styleResolver() ||
-      (wasResized &&
-       document->styleResolver()->mediaQueryAffectedByViewportChange()) ||
+  if ((wasResized &&
+       document->styleEngine().mediaQueryAffectedByViewportChange()) ||
       (wasResized && mainFrameRotation &&
-       document->styleResolver()->mediaQueryAffectedByDeviceChange())) {
+       document->styleEngine().mediaQueryAffectedByDeviceChange())) {
     document->mediaQueryAffectingValueChanged();
   } else if (wasResized) {
     document->evaluateMediaQueryList();
@@ -952,7 +977,7 @@ void FrameView::prepareLayoutAnalyzer() {
     return;
   }
   if (!m_analyzer)
-    m_analyzer = wrapUnique(new LayoutAnalyzer());
+    m_analyzer = makeUnique<LayoutAnalyzer>();
   m_analyzer->reset();
 }
 
@@ -1076,12 +1101,12 @@ void FrameView::layout() {
   DocumentLifecycle::Scope lifecycleScope(lifecycle(),
                                           DocumentLifecycle::LayoutClean);
 
+  Document* document = m_frame->document();
   TRACE_EVENT_BEGIN1("devtools.timeline", "Layout", "beginData",
                      InspectorLayoutEvent::beginData(this));
+  PerformanceMonitor::willUpdateLayout(document);
 
   performPreLayoutTasks();
-
-  Document* document = m_frame->document();
 
   // TODO(crbug.com/460956): The notion of a single root for layout is no longer
   // applicable. Remove or update this code.
@@ -1223,6 +1248,7 @@ void FrameView::layout() {
   TRACE_EVENT_END1("devtools.timeline", "Layout", "endData",
                    InspectorLayoutEvent::endData(rootForThisLayout));
   InspectorInstrumentation::didUpdateLayout(m_frame.get());
+  PerformanceMonitor::didUpdateLayout(document);
 
   m_nestedLayoutCount--;
   if (m_nestedLayoutCount)
@@ -1332,6 +1358,8 @@ FloatSize FrameView::viewportSizeForViewportUnits() const {
 }
 
 DocumentLifecycle& FrameView::lifecycle() const {
+  DCHECK(m_frame);
+  DCHECK(m_frame->document());
   return m_frame->document()->lifecycle();
 }
 
@@ -1406,9 +1434,9 @@ void FrameView::setDisplayMode(WebDisplayMode mode) {
 }
 
 void FrameView::setMediaType(const AtomicString& mediaType) {
-  ASSERT(m_frame->document());
-  m_frame->document()->mediaQueryAffectingValueChanged();
+  DCHECK(m_frame->document());
   m_mediaType = mediaType;
+  m_frame->document()->mediaQueryAffectingValueChanged();
 }
 
 AtomicString FrameView::mediaType() const {
@@ -1445,8 +1473,12 @@ void FrameView::addBackgroundAttachmentFixedObject(LayoutObject* object) {
     scrollingCoordinator->frameViewHasBackgroundAttachmentFixedObjectsDidChange(
         this);
 
-  // TODO(pdr): When slimming paint v2 is enabled, invalidate the scroll paint
-  // property subtree for this so main thread scroll reasons are recomputed.
+  // Ensure main thread scrolling reasons are recomputed.
+  if (RuntimeEnabledFeatures::slimmingPaintV2Enabled()) {
+    setNeedsPaintPropertyUpdate();
+    // The object's scroll properties are not affected by its own background.
+    object->setAncestorsNeedPaintPropertyUpdateForMainThreadScrolling();
+  }
 }
 
 void FrameView::removeBackgroundAttachmentFixedObject(LayoutObject* object) {
@@ -1457,8 +1489,12 @@ void FrameView::removeBackgroundAttachmentFixedObject(LayoutObject* object) {
     scrollingCoordinator->frameViewHasBackgroundAttachmentFixedObjectsDidChange(
         this);
 
-  // TODO(pdr): When slimming paint v2 is enabled, invalidate the scroll paint
-  // property subtree for this so main thread scroll reasons are recomputed.
+  // Ensure main thread scrolling reasons are recomputed.
+  if (RuntimeEnabledFeatures::slimmingPaintV2Enabled()) {
+    setNeedsPaintPropertyUpdate();
+    // The object's scroll properties are not affected by its own background.
+    object->setAncestorsNeedPaintPropertyUpdateForMainThreadScrolling();
+  }
 }
 
 void FrameView::addViewportConstrainedObject(LayoutObject* object) {
@@ -1488,6 +1524,21 @@ void FrameView::removeViewportConstrainedObject(LayoutObject* object) {
 void FrameView::viewportSizeChanged(bool widthChanged, bool heightChanged) {
   DCHECK(widthChanged || heightChanged);
 
+  if (LayoutViewItem layoutView = this->layoutViewItem()) {
+    if (layoutView.usesCompositing())
+      layoutView.compositor()->frameViewDidChangeSize();
+  }
+
+  // Ensure the root scroller compositing layers update geometry in response to
+  // the URL bar resizing.
+  if (m_frame->isMainFrame()) {
+    m_frame->document()
+        ->frameHost()
+        ->globalRootScrollerController()
+        .mainFrameViewResized();
+  }
+
+  showOverlayScrollbars();
   if (RuntimeEnabledFeatures::rootLayerScrollingEnabled()) {
     // The background must be repainted when the FrameView is resized, even if
     // the initial containing block does not change (so we can't rely on layout
@@ -1498,6 +1549,23 @@ void FrameView::viewportSizeChanged(bool widthChanged, bool heightChanged) {
     LayoutViewItem lvi = layoutViewItem();
     if (!lvi.isNull())
       lvi.setShouldDoFullPaintInvalidation();
+  }
+
+  if (RuntimeEnabledFeatures::inertTopControlsEnabled() && layoutView() &&
+      layoutView()->style()->hasFixedBackgroundImage()) {
+    // In the case where we don't change layout size from top control resizes,
+    // we wont perform a layout. If we have a fixed background image however,
+    // the background layer needs to get resized so we should request a layout
+    // explicitly.
+    PaintLayer* layer = layoutView()->layer();
+    if (layoutView()->compositor()->needsFixedRootBackgroundLayer(layer)) {
+      setNeedsLayout();
+    } else if (!RuntimeEnabledFeatures::rootLayerScrollingEnabled()) {
+      // If root layer scrolls is on, we've already issued a full invalidation
+      // above.
+      layoutView()->setShouldDoFullPaintInvalidationOnResizeIfNeeded(
+          widthChanged, heightChanged);
+    }
   }
 
   if (!hasViewportConstrainedObjects())
@@ -1544,6 +1612,17 @@ void FrameView::scrollContentsIfNeededRecursive() {
 void FrameView::invalidateBackgroundAttachmentFixedObjects() {
   for (const auto& layoutObject : m_backgroundAttachmentFixedObjects)
     layoutObject->setShouldDoFullPaintInvalidation();
+}
+
+bool FrameView::hasBackgroundAttachmentFixedDescendants(
+    const LayoutObject& object) const {
+  for (const auto* potentialDescendant : m_backgroundAttachmentFixedObjects) {
+    if (potentialDescendant == &object)
+      continue;
+    if (potentialDescendant->isDescendantOf(&object))
+      return true;
+  }
+  return false;
 }
 
 bool FrameView::invalidateViewportConstrainedObjects() {
@@ -1841,10 +1920,11 @@ bool FrameView::computeCompositedSelection(LocalFrame& frame,
   selection.type = visibleSelection.getSelectionType();
   selection.isEditable = visibleSelection.isContentEditable();
   if (selection.isEditable) {
-    if (HTMLTextFormControlElement* enclosingTextFormControlElement =
-            enclosingTextFormControl(visibleSelection.rootEditableElement()))
-      selection.isEmptyTextFormControl =
-          enclosingTextFormControlElement->value().isEmpty();
+    if (TextControlElement* enclosingTextControlElement =
+            enclosingTextControl(visibleSelection.rootEditableElement())) {
+      selection.isEmptyTextControl =
+          enclosingTextControlElement->value().isEmpty();
+    }
   }
   selection.start.isTextDirectionRTL |=
       primaryDirectionOf(*visibleSelection.start().anchorNode()) == RTL;
@@ -1914,18 +1994,18 @@ void FrameView::scrollbarExistenceDidChange() {
   if (!frame().view())
     return;
 
-  bool hasOverlayScrollbars = this->hasOverlayScrollbars();
+  bool usesOverlayScrollbars = ScrollbarTheme::theme().usesOverlayScrollbars();
 
   // FIXME: this call to layout() could be called within FrameView::layout(),
   // but before performLayout(), causing double-layout. See also
   // crbug.com/429242.
-  if (!hasOverlayScrollbars && needsLayout())
+  if (!usesOverlayScrollbars && needsLayout())
     layout();
 
   if (!layoutViewItem().isNull() && layoutViewItem().usesCompositing()) {
     layoutViewItem().compositor()->frameViewScrollbarsExistenceDidChange();
 
-    if (!hasOverlayScrollbars)
+    if (!usesOverlayScrollbars)
       layoutViewItem().compositor()->frameViewDidChangeSize();
   }
 }
@@ -2246,7 +2326,6 @@ bool FrameView::updateWidgets() {
 
 void FrameView::updateWidgetsTimerFired(TimerBase*) {
   ASSERT(!isInPerformLayout());
-  m_updateWidgetsTimer.stop();
   for (unsigned i = 0; i < maxUpdateWidgetsIterations; ++i) {
     if (updateWidgets())
       return;
@@ -2257,8 +2336,10 @@ void FrameView::flushAnyPendingPostLayoutTasks() {
   ASSERT(!isInPerformLayout());
   if (m_postLayoutTasksTimer.isActive())
     performPostLayoutTasks();
-  if (m_updateWidgetsTimer.isActive())
-    updateWidgetsTimerFired(0);
+  if (m_updateWidgetsTimer.isActive()) {
+    m_updateWidgetsTimer.stop();
+    updateWidgetsTimerFired(nullptr);
+  }
 }
 
 void FrameView::scheduleUpdateWidgetsIfNecessary() {
@@ -2408,6 +2489,7 @@ bool FrameView::scrollbarsCanBeActive() const {
 }
 
 void FrameView::scrollbarVisibilityChanged() {
+  updateScrollbarEnabledState();
   LayoutViewItem viewItem = layoutViewItem();
   if (!viewItem.isNull())
     viewItem.clearHitTestCache();
@@ -2462,7 +2544,7 @@ FrameView::ScrollingReasons FrameView::getScrollingReasons() {
   return Scrollable;
 }
 
-void FrameView::updateScrollableAreaSet() {
+void FrameView::updateParentScrollableAreaSet() {
   // That ensures that only inner frames are cached.
   FrameView* parentFrameView = this->parentFrameView();
   if (!parentFrameView)
@@ -2611,6 +2693,25 @@ FrameView* FrameView::parentFrameView() const {
     return toLocalFrame(parentFrame)->view();
 
   return nullptr;
+}
+
+void FrameView::didChangeGlobalRootScroller() {
+  if (!m_frame->settings() || !m_frame->settings()->viewportEnabled())
+    return;
+
+  // Avoid drawing two sets of scrollbars when visual viewport is enabled.
+  bool hasHorizontalScrollbar = horizontalScrollbar();
+  bool hasVerticalScrollbar = verticalScrollbar();
+  bool shouldHaveHorizontalScrollbar = false;
+  bool shouldHaveVerticalScrollbar = false;
+  computeScrollbarExistence(shouldHaveHorizontalScrollbar,
+                            shouldHaveVerticalScrollbar, contentsSize());
+  m_scrollbarManager.setHasHorizontalScrollbar(shouldHaveHorizontalScrollbar);
+  m_scrollbarManager.setHasVerticalScrollbar(shouldHaveVerticalScrollbar);
+
+  if (hasHorizontalScrollbar != shouldHaveHorizontalScrollbar ||
+      hasVerticalScrollbar != shouldHaveVerticalScrollbar)
+    scrollbarExistenceDidChange();
 }
 
 void FrameView::updateWidgetGeometriesIfNeeded() {
@@ -3002,22 +3103,9 @@ void FrameView::updateStyleAndLayoutIfNeededRecursiveInternal() {
   for (const auto& frameView : frameViews)
     frameView->updateStyleAndLayoutIfNeededRecursiveInternal();
 
-  checkDoesNotNeedLayout();
-
-  // When SVG filters are invalidated using
-  // Document::scheduleSVGFilterLayerUpdateHack() they may trigger an extra
-  // style recalc. See PaintLayer::filterNeedsPaintInvalidation().
-  if (m_frame->document()->hasSVGFilterElementsRequiringLayerUpdate()) {
-    m_frame->document()->updateStyleAndLayoutTree();
-
-    if (needsLayout())
-      layout();
-  }
-
   // These asserts ensure that parent frames are clean, when child frames
   // finished updating layout and style.
   checkDoesNotNeedLayout();
-  ASSERT(!m_frame->document()->hasSVGFilterElementsRequiringLayerUpdate());
 #if ENABLE(ASSERT)
   m_frame->document()->layoutView()->assertLaidOut();
 #endif
@@ -3432,7 +3520,7 @@ void FrameView::setParent(Widget* parentView) {
 
   Widget::setParent(parentView);
 
-  updateScrollableAreaSet();
+  updateParentScrollableAreaSet();
   setNeedsUpdateViewportIntersection();
   setupRenderThrottling();
 
@@ -3450,9 +3538,21 @@ void FrameView::removeChild(Widget* child) {
   m_children.remove(child);
 }
 
-bool FrameView::visualViewportSuppliesScrollbars() const {
-  return m_frame->isMainFrame() && m_frame->settings() &&
-         m_frame->settings()->viewportEnabled();
+bool FrameView::visualViewportSuppliesScrollbars() {
+  // On desktop, we always use the layout viewport's scrollbars.
+  if (!m_frame->settings() || !m_frame->settings()->viewportEnabled() ||
+      !m_frame->document() || !m_frame->host())
+    return false;
+
+  const TopDocumentRootScrollerController& controller =
+      m_frame->host()->globalRootScrollerController();
+
+  if (!controller.globalRootScroller())
+    return false;
+
+  return RootScrollerUtil::scrollableAreaForRootScroller(
+             *controller.globalRootScroller()) ==
+         layoutViewportScrollableArea();
 }
 
 AXObjectCache* FrameView::axObjectCache() const {
@@ -3493,6 +3593,14 @@ void FrameView::didAddScrollbar(Scrollbar& scrollbar,
 
 void FrameView::setBrowserControlsViewportAdjustment(float adjustment) {
   m_browserControlsViewportAdjustment = adjustment;
+}
+
+PaintLayer* FrameView::layer() const {
+  LayoutViewItem layoutView = layoutViewItem();
+  if (layoutView.isNull() || !layoutView.compositor())
+    return nullptr;
+
+  return layoutView.compositor()->rootLayer();
 }
 
 IntSize FrameView::maximumScrollOffsetInt() const {
@@ -3625,6 +3733,8 @@ void FrameView::updateScrollOffset(const ScrollOffset& offset,
   if (scrollDelta.isZero())
     return;
 
+  showOverlayScrollbars();
+
   if (RuntimeEnabledFeatures::rootLayerScrollingEnabled()) {
     // Don't scroll the FrameView!
     ASSERT_NOT_REACHED();
@@ -3635,7 +3745,8 @@ void FrameView::updateScrollOffset(const ScrollOffset& offset,
   if (!scrollbarsSuppressed())
     m_pendingScrollDelta += scrollDelta;
 
-  clearFragmentAnchor();
+  if (scrollTypeClearsFragmentAnchor(scrollType))
+    clearFragmentAnchor();
   updateLayersAndCompositingAfterScrollIfNeeded(scrollDelta);
 
   Document* document = m_frame->document();
@@ -3675,6 +3786,11 @@ void FrameView::didChangeScrollOffset() {
   frame().loader().client()->didChangeScrollOffset();
   if (frame().isMainFrame())
     frame().host()->chromeClient().mainFrameScrollOffsetChanged();
+
+  if (!RuntimeEnabledFeatures::rootLayerScrollingEnabled()) {
+    // The scroll translation paint property depends on scroll offset.
+    setNeedsPaintPropertyUpdate();
+  }
 }
 
 void FrameView::clearScrollAnchor() {
@@ -3693,8 +3809,9 @@ void FrameView::computeScrollbarExistence(
     bool& newHasHorizontalScrollbar,
     bool& newHasVerticalScrollbar,
     const IntSize& docSize,
-    ComputeScrollbarExistenceOption option) const {
-  if (m_frame->settings() && m_frame->settings()->hideScrollbars()) {
+    ComputeScrollbarExistenceOption option) {
+  if ((m_frame->settings() && m_frame->settings()->hideScrollbars()) ||
+      visualViewportSuppliesScrollbars()) {
     newHasHorizontalScrollbar = false;
     newHasVerticalScrollbar = false;
     return;
@@ -3742,10 +3859,25 @@ void FrameView::computeScrollbarExistence(
   }
 }
 
+void FrameView::updateScrollbarEnabledState() {
+  bool forceDisabled =
+      ScrollbarTheme::theme().shouldDisableInvisibleScrollbars() &&
+      scrollbarsHidden();
+
+  if (horizontalScrollbar()) {
+    horizontalScrollbar()->setEnabled(contentsWidth() > visibleWidth() &&
+                                      !forceDisabled);
+  }
+  if (verticalScrollbar()) {
+    verticalScrollbar()->setEnabled(contentsHeight() > visibleHeight() &&
+                                    !forceDisabled);
+  }
+}
+
 void FrameView::updateScrollbarGeometry() {
+  updateScrollbarEnabledState();
   if (horizontalScrollbar()) {
     int thickness = horizontalScrollbar()->scrollbarThickness();
-    int clientWidth = visibleWidth();
     IntRect oldRect(horizontalScrollbar()->frameRect());
     IntRect hBarRect(
         (shouldPlaceVerticalScrollbarOnLeft() && verticalScrollbar())
@@ -3758,15 +3890,12 @@ void FrameView::updateScrollbarGeometry() {
     if (oldRect != horizontalScrollbar()->frameRect())
       setScrollbarNeedsPaintInvalidation(HorizontalScrollbar);
 
-    horizontalScrollbar()->setEnabled(contentsWidth() > clientWidth &&
-                                      !scrollbarsHidden());
-    horizontalScrollbar()->setProportion(clientWidth, contentsWidth());
+    horizontalScrollbar()->setProportion(visibleWidth(), contentsWidth());
     horizontalScrollbar()->offsetDidChange();
   }
 
   if (verticalScrollbar()) {
     int thickness = verticalScrollbar()->scrollbarThickness();
-    int clientHeight = visibleHeight();
     IntRect oldRect(verticalScrollbar()->frameRect());
     IntRect vBarRect(
         shouldPlaceVerticalScrollbarOnLeft() ? 0 : (width() - thickness), 0,
@@ -3777,9 +3906,7 @@ void FrameView::updateScrollbarGeometry() {
     if (oldRect != verticalScrollbar()->frameRect())
       setScrollbarNeedsPaintInvalidation(VerticalScrollbar);
 
-    verticalScrollbar()->setEnabled(contentsHeight() > clientHeight &&
-                                    !scrollbarsHidden());
-    verticalScrollbar()->setProportion(clientHeight, contentsHeight());
+    verticalScrollbar()->setProportion(visibleHeight(), contentsHeight());
     verticalScrollbar()->offsetDidChange();
   }
 }
@@ -3844,10 +3971,6 @@ void FrameView::updateScrollbarsIfNeeded() {
   if (m_needsScrollbarsUpdate || needsScrollbarReconstruction() ||
       scrollOriginChanged())
     updateScrollbars();
-}
-
-void FrameView::didChangeScrollbarsHidden() {
-  updateScrollbars();
 }
 
 void FrameView::updateScrollbars() {
@@ -4010,15 +4133,6 @@ IntRect FrameView::contentsToScreen(const IntRect& rect) const {
   if (!window)
     return IntRect();
   return window->viewportToScreen(contentsToViewport(rect), this);
-}
-
-IntRect FrameView::soonToBeRemovedContentsToUnscaledViewport(
-    const IntRect& rectInContents) const {
-  IntRect rectInFrame = contentsToFrame(rectInContents);
-  IntRect rectInRootFrame = convertToRootFrame(rectInFrame);
-  return enclosingIntRect(
-      m_frame->host()->visualViewport().mainViewToViewportCSSPixels(
-          rectInRootFrame));
 }
 
 IntPoint FrameView::soonToBeRemovedUnscaledViewportToContents(
@@ -4282,8 +4396,11 @@ void FrameView::setParentVisible(bool visible) {
 void FrameView::show() {
   if (!isSelfVisible()) {
     setSelfVisible(true);
+    if (ScrollingCoordinator* scrollingCoordinator =
+            this->scrollingCoordinator())
+      scrollingCoordinator->frameViewVisibilityDidChange();
     setNeedsCompositingUpdate(layoutViewItem(), CompositingUpdateRebuildTree);
-    updateScrollableAreaSet();
+    updateParentScrollableAreaSet();
     if (isParentVisible()) {
       for (const auto& child : m_children)
         child->setParentVisible(true);
@@ -4300,8 +4417,11 @@ void FrameView::hide() {
         child->setParentVisible(false);
     }
     setSelfVisible(false);
+    if (ScrollingCoordinator* scrollingCoordinator =
+            this->scrollingCoordinator())
+      scrollingCoordinator->frameViewVisibilityDidChange();
     setNeedsCompositingUpdate(layoutViewItem(), CompositingUpdateRebuildTree);
-    updateScrollableAreaSet();
+    updateParentScrollableAreaSet();
   }
 
   Widget::hide();
@@ -4440,6 +4560,19 @@ void FrameView::updateRenderThrottlingStatus(bool hidden,
       hasHandlers)
     scrollingCoordinator->touchEventTargetRectsDidChange();
 
+#if DCHECK_IS_ON()
+  // Make sure we never have an unthrottled frame inside a throttled one.
+  FrameView* parent = parentFrameView();
+  while (parent) {
+    DCHECK(canThrottleRendering() || !parent->canThrottleRendering());
+    parent = parent->parentFrameView();
+  }
+#endif
+}
+
+// TODO(esprehn): Rename this and the method on Document to
+// recordDeferredLoadReason().
+void FrameView::maybeRecordLoadReason() {
   FrameView* parent = parentFrameView();
   if (frame().document()->frame()) {
     if (!parent) {
@@ -4470,31 +4603,40 @@ void FrameView::updateRenderThrottlingStatus(bool hidden,
       }
     }
   }
-
-#if DCHECK_IS_ON()
-  // Make sure we never have an unthrottled frame inside a throttled one.
-  while (parent) {
-    DCHECK(canThrottleRendering() || !parent->canThrottleRendering());
-    parent = parent->parentFrameView();
-  }
-#endif
 }
 
 bool FrameView::shouldThrottleRendering() const {
-  return canThrottleRendering() && lifecycle().throttlingAllowed();
+  return canThrottleRendering() && m_frame->document() &&
+         lifecycle().throttlingAllowed();
 }
 
 bool FrameView::canThrottleRendering() const {
+  if (m_lifecycleUpdatesThrottled)
+    return true;
   if (!RuntimeEnabledFeatures::renderingPipelineThrottlingEnabled())
     return false;
-  // We only throttle the rendering pipeline in cross-origin frames. This is
-  // to avoid a situation where an ancestor frame directly depends on the
-  // pipeline timing of a descendant and breaks as a result of throttling.
-  // The rationale is that cross-origin frames must already communicate with
-  // asynchronous messages, so they should be able to tolerate some delay in
-  // receiving replies from a throttled peer.
-  return m_subtreeThrottled ||
-         (m_hiddenForThrottling && m_frame->isCrossOriginSubframe());
+  if (m_subtreeThrottled)
+    return true;
+  // We only throttle hidden cross-origin frames. This is to avoid a situation
+  // where an ancestor frame directly depends on the pipeline timing of a
+  // descendant and breaks as a result of throttling. The rationale is that
+  // cross-origin frames must already communicate with asynchronous messages,
+  // so they should be able to tolerate some delay in receiving replies from a
+  // throttled peer.
+  return m_hiddenForThrottling && m_frame->isCrossOriginSubframe();
+}
+
+void FrameView::beginLifecycleUpdates() {
+  // Avoid pumping frames for the initially empty document.
+  if (!frame().loader().stateMachine()->committedFirstRealDocumentLoad())
+    return;
+  m_lifecycleUpdatesThrottled = false;
+  setupRenderThrottling();
+  updateRenderThrottlingStatus(m_hiddenForThrottling, m_subtreeThrottled);
+  // The compositor will "defer commits" for the main frame until we
+  // explicitly request them.
+  if (frame().isMainFrame())
+    frame().host()->chromeClient().beginLifecycleUpdates();
 }
 
 void FrameView::setInitialViewportSize(const IntSize& viewportSize) {

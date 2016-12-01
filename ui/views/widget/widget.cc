@@ -983,10 +983,6 @@ void Widget::SynthesizeMouseMoveEvent() {
   root_view_->OnMouseMoved(mouse_event);
 }
 
-void Widget::OnRootViewLayout() {
-  native_widget_->OnRootViewLayout();
-}
-
 bool Widget::IsTranslucentWindowOpacitySupported() const {
   return native_widget_->IsTranslucentWindowOpacitySupported();
 }
@@ -1375,6 +1371,7 @@ internal::RootView* Widget::CreateRootView() {
 }
 
 void Widget::DestroyRootView() {
+  NotifyWillRemoveView(root_view_.get());
   non_client_view_ = NULL;
   root_view_.reset();
 }

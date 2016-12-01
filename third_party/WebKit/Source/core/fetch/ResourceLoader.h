@@ -55,8 +55,9 @@ class CORE_EXPORT ResourceLoader final
              WebTaskRunner* loadingTaskRunner,
              bool defersLoading);
 
-  // This method is currently only used for service worker fallback request,
-  // other users should be careful not to break ResourceLoader state.
+  // This method is currently only used for service worker fallback request and
+  // cache-aware loading, other users should be careful not to break
+  // ResourceLoader state.
   void restart(const ResourceRequest&,
                WebTaskRunner* loadingTaskRunner,
                bool defersLoading);
@@ -66,6 +67,14 @@ class CORE_EXPORT ResourceLoader final
   void setDefersLoading(bool);
 
   void didChangePriority(ResourceLoadPriority, int intraPriorityValue);
+
+  // Called before start() to activate cache-aware loading if enabled in
+  // |m_resource->options()| and applicable.
+  void activateCacheAwareLoadingIfNeeded(const ResourceRequest&);
+
+  bool isCacheAwareLoadingActivated() const {
+    return m_isCacheAwareLoadingActivated;
+  }
 
   // WebURLLoaderClient
   //
@@ -88,20 +97,23 @@ class CORE_EXPORT ResourceLoader final
   void didReceiveResponse(WebURLLoader*, const WebURLResponse&) override;
   void didReceiveResponse(WebURLLoader*,
                           const WebURLResponse&,
-                          WebDataConsumerHandle*) override;
+                          std::unique_ptr<WebDataConsumerHandle>) override;
   void didReceiveCachedMetadata(WebURLLoader*,
                                 const char* data,
                                 int length) override;
   void didReceiveData(WebURLLoader*,
                       const char*,
                       int,
-                      int encodedDataLength,
-                      int encodedBodyLength) override;
+                      int encodedDataLength) override;
   void didDownloadData(WebURLLoader*, int, int) override;
   void didFinishLoading(WebURLLoader*,
                         double finishTime,
-                        int64_t encodedDataLength) override;
-  void didFail(WebURLLoader*, const WebURLError&) override;
+                        int64_t encodedDataLength,
+                        int64_t encodedBodyLength) override;
+  void didFail(WebURLLoader*,
+               const WebURLError&,
+               int64_t encodedDataLength,
+               int64_t encodedBodyLength) override;
 
   void didFinishLoadingFirstPartInMultipart();
   void didFail(const ResourceError&);
@@ -116,6 +128,7 @@ class CORE_EXPORT ResourceLoader final
   std::unique_ptr<WebURLLoader> m_loader;
   Member<ResourceFetcher> m_fetcher;
   Member<Resource> m_resource;
+  bool m_isCacheAwareLoadingActivated;
 };
 
 }  // namespace blink

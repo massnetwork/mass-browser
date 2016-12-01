@@ -16,17 +16,16 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
-#include "base/sequenced_task_runner.h"
 #include "base/threading/non_thread_safe.h"
 #include "components/data_reduction_proxy/core/browser/data_reduction_proxy_metrics.h"
 #include "components/data_reduction_proxy/core/browser/db_data_owner.h"
 #include "components/data_reduction_proxy/core/common/data_reduction_proxy_event_storage_delegate.h"
 
-class GURL;
 class PrefService;
 
 namespace base {
 class SequencedTaskRunner;
+class SingleThreadTaskRunner;
 class TimeDelta;
 class Value;
 }

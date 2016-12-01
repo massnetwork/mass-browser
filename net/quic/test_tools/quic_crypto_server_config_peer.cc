@@ -45,7 +45,7 @@ ProofSource* QuicCryptoServerConfigPeer::GetProofSource() const {
 string QuicCryptoServerConfigPeer::NewSourceAddressToken(
     string config_id,
     SourceAddressTokens previous_tokens,
-    const IPAddress& ip,
+    const QuicIpAddress& ip,
     QuicRandom* rand,
     QuicWallTime now,
     CachedNetworkParameters* cached_network_params) {
@@ -57,7 +57,7 @@ string QuicCryptoServerConfigPeer::NewSourceAddressToken(
 HandshakeFailureReason QuicCryptoServerConfigPeer::ValidateSourceAddressTokens(
     string config_id,
     StringPiece srct,
-    const IPAddress& ip,
+    const QuicIpAddress& ip,
     QuicWallTime now,
     CachedNetworkParameters* cached_network_params) {
   SourceAddressTokens tokens;
@@ -74,7 +74,7 @@ HandshakeFailureReason QuicCryptoServerConfigPeer::ValidateSourceAddressTokens(
 HandshakeFailureReason
 QuicCryptoServerConfigPeer::ValidateSingleSourceAddressToken(
     StringPiece token,
-    const IPAddress& ip,
+    const QuicIpAddress& ip,
     QuicWallTime now) {
   SourceAddressTokens tokens;
   HandshakeFailureReason parse_status = server_config_->ParseSourceAddressToken(
@@ -90,16 +90,6 @@ QuicCryptoServerConfigPeer::ValidateSingleSourceAddressToken(
 string QuicCryptoServerConfigPeer::NewServerNonce(QuicRandom* rand,
                                                   QuicWallTime now) const {
   return server_config_->NewServerNonce(rand, now);
-}
-
-HandshakeFailureReason QuicCryptoServerConfigPeer::ValidateServerNonce(
-    StringPiece token,
-    QuicWallTime now) {
-  return server_config_->ValidateServerNonce(token, now);
-}
-
-base::Lock* QuicCryptoServerConfigPeer::GetStrikeRegisterClientLock() {
-  return &server_config_->strike_register_client_lock_;
 }
 
 void QuicCryptoServerConfigPeer::CheckConfigs(const char* server_config_id1,
@@ -198,16 +188,6 @@ uint32_t QuicCryptoServerConfigPeer::source_address_token_future_secs() {
 
 uint32_t QuicCryptoServerConfigPeer::source_address_token_lifetime_secs() {
   return server_config_->source_address_token_lifetime_secs_;
-}
-
-uint32_t
-QuicCryptoServerConfigPeer::server_nonce_strike_register_max_entries() {
-  return server_config_->server_nonce_strike_register_max_entries_;
-}
-
-uint32_t
-QuicCryptoServerConfigPeer::server_nonce_strike_register_window_secs() {
-  return server_config_->server_nonce_strike_register_window_secs_;
 }
 
 }  // namespace test

@@ -100,6 +100,7 @@ source_set("app") {
     "//content/public/app:both",
     "//content/public/browser",
     "//content/public/common",
+    "//content/public/common:service_names",
     "//content/public/renderer",
     "//content/public/utility",
     "//device/geolocation",
@@ -577,6 +578,7 @@ source_set("renderer_unit_tests") {
 
   sources = [
     "renderer/blimp_engine_picture_cache_unittest.cc",
+    "renderer/blimp_remote_compositor_bridge_unittest.cc",
     "renderer/blob_channel_sender_proxy_unittest.cc",
     "renderer/frame_scheduler_unittest.cc",
   ]
@@ -590,6 +592,7 @@ source_set("renderer_unit_tests") {
     "//blimp/engine:blob_channel_service",
     "//blimp/net:test_support",
     "//blimp/test:support",
+    "//cc/proto",
     "//mojo/public",
     "//skia",
     "//testing/gmock",

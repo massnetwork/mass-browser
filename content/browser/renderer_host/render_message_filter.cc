@@ -144,7 +144,6 @@ RenderMessageFilter::RenderMessageFilter(
       resource_context_(browser_context->GetResourceContext()),
       render_widget_helper_(render_widget_helper),
       dom_storage_context_(dom_storage_context),
-      gpu_process_id_(0),
       render_process_id_(render_process_id),
       media_internals_(media_internals),
       cache_storage_context_(cache_storage_context),
@@ -161,7 +160,7 @@ RenderMessageFilter::~RenderMessageFilter() {
   BrowserGpuMemoryBufferManager* gpu_memory_buffer_manager =
       BrowserGpuMemoryBufferManager::current();
   if (gpu_memory_buffer_manager)
-    gpu_memory_buffer_manager->ProcessRemoved(PeerHandle(), render_process_id_);
+    gpu_memory_buffer_manager->ProcessRemoved(render_process_id_);
   discardable_memory::DiscardableSharedMemoryManager::current()->ClientRemoved(
       render_process_id_);
 }
@@ -169,8 +168,6 @@ RenderMessageFilter::~RenderMessageFilter() {
 bool RenderMessageFilter::OnMessageReceived(const IPC::Message& message) {
   bool handled = true;
   IPC_BEGIN_MESSAGE_MAP(RenderMessageFilter, message)
-    IPC_MESSAGE_HANDLER(ViewHostMsg_CreateFullscreenWidget,
-                        OnCreateFullscreenWidget)
 #if defined(OS_MACOSX)
     // On Mac, the IPCs ViewHostMsg_SwapCompositorFrame, ViewHostMsg_UpdateRect,
     // and GpuCommandBufferMsg_SwapBuffersCompleted need to be handled in a
@@ -185,11 +182,9 @@ bool RenderMessageFilter::OnMessageReceived(const IPC::Message& message) {
         ViewHostMsg_SetNeedsBeginFrames,
         ResizeHelperPostMsgToUIThread(render_process_id_, message))
 #endif
-    // NB: The SyncAllocateSharedMemory, SyncAllocateGpuMemoryBuffer, and
-    // DeletedGpuMemoryBuffer IPCs are handled here for renderer processes. For
-    // non-renderer child processes, they are handled in ChildProcessHostImpl.
-    IPC_MESSAGE_HANDLER_DELAY_REPLY(
-        ChildProcessHostMsg_SyncAllocateSharedMemory, OnAllocateSharedMemory)
+    // NB: The SyncAllocateGpuMemoryBuffer and DeletedGpuMemoryBuffer IPCs are
+    // handled here for renderer processes. For non-renderer child processes,
+    // they are handled in ChildProcessHostImpl.
     IPC_MESSAGE_HANDLER_DELAY_REPLY(
         ChildProcessHostMsg_SyncAllocateSharedBitmap, OnAllocateSharedBitmap)
     IPC_MESSAGE_HANDLER_DELAY_REPLY(
@@ -239,11 +234,6 @@ void RenderMessageFilter::OverrideThreadForMessage(const IPC::Message& message,
                                                    BrowserThread::ID* thread) {
   if (message.type() == ViewHostMsg_MediaLogEvents::ID)
     *thread = BrowserThread::UI;
-}
-
-void RenderMessageFilter::OnCreateFullscreenWidget(int opener_id,
-                                                   int* route_id) {
-  render_widget_helper_->CreateNewFullscreenWidget(opener_id, route_id);
 }
 
 void RenderMessageFilter::GenerateRoutingID(
@@ -305,6 +295,14 @@ void RenderMessageFilter::CreateNewWidget(
   callback.Run(route_id);
 }
 
+void RenderMessageFilter::CreateFullscreenWidget(
+    int opener_id,
+    const CreateFullscreenWidgetCallback& callback) {
+  int route_id = 0;
+  render_widget_helper_->CreateNewFullscreenWidget(opener_id, &route_id);
+  callback.Run(route_id);
+}
+
 #if defined(OS_MACOSX)
 
 void RenderMessageFilter::OnLoadFont(const FontDescriptor& font,
@@ -334,25 +332,6 @@ void RenderMessageFilter::SendLoadFontReply(IPC::Message* reply,
 }
 
 #endif  // defined(OS_MACOSX)
-
-void RenderMessageFilter::AllocateSharedMemoryOnFileThread(
-    uint32_t buffer_size,
-    IPC::Message* reply_msg) {
-  base::SharedMemoryHandle handle;
-  ChildProcessHostImpl::AllocateSharedMemory(buffer_size, PeerHandle(),
-                                             &handle);
-  ChildProcessHostMsg_SyncAllocateSharedMemory::WriteReplyParams(reply_msg,
-                                                                 handle);
-  Send(reply_msg);
-}
-
-void RenderMessageFilter::OnAllocateSharedMemory(uint32_t buffer_size,
-                                                 IPC::Message* reply_msg) {
-  BrowserThread::PostTask(
-      BrowserThread::FILE_USER_BLOCKING, FROM_HERE,
-      base::Bind(&RenderMessageFilter::AllocateSharedMemoryOnFileThread, this,
-                 buffer_size, reply_msg));
-}
 
 void RenderMessageFilter::AllocateSharedBitmapOnFileThread(
     uint32_t buffer_size,
@@ -610,8 +589,7 @@ void RenderMessageFilter::OnAllocateGpuMemoryBuffer(gfx::GpuMemoryBufferId id,
 
   BrowserGpuMemoryBufferManager::current()
       ->AllocateGpuMemoryBufferForChildProcess(
-          id, gfx::Size(width, height), format, usage, PeerHandle(),
-          render_process_id_,
+          id, gfx::Size(width, height), format, usage, render_process_id_,
           base::Bind(&RenderMessageFilter::GpuMemoryBufferAllocated, this,
                      reply));
 }
@@ -630,16 +608,12 @@ void RenderMessageFilter::OnEstablishGpuChannel(
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
   std::unique_ptr<IPC::Message> reply(reply_ptr);
 
-  GpuProcessHost* host = GpuProcessHost::FromID(gpu_process_id_);
+  GpuProcessHost* host =
+      GpuProcessHost::Get(GpuProcessHost::GPU_PROCESS_KIND_SANDBOXED);
   if (!host) {
-    host = GpuProcessHost::Get(GpuProcessHost::GPU_PROCESS_KIND_SANDBOXED);
-    if (!host) {
-      reply->set_reply_error();
-      Send(reply.release());
-      return;
-    }
-
-    gpu_process_id_ = host->host_id();
+    reply->set_reply_error();
+    Send(reply.release());
+    return;
   }
 
   bool preempts = false;
@@ -687,7 +661,7 @@ void RenderMessageFilter::OnDeletedGpuMemoryBuffer(
   DCHECK(BrowserGpuMemoryBufferManager::current());
 
   BrowserGpuMemoryBufferManager::current()->ChildProcessDeletedGpuMemoryBuffer(
-      id, PeerHandle(), render_process_id_, sync_token);
+      id, render_process_id_, sync_token);
 }
 
 }  // namespace content

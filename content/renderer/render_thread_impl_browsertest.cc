@@ -15,6 +15,7 @@
 #include "base/run_loop.h"
 #include "base/single_thread_task_runner.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/threading/sequenced_worker_pool.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "cc/output/buffer_to_texture_target_map.h"
 #include "content/app/mojo/mojo_init.h"
@@ -27,7 +28,7 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/service_manager_connection.h"
-#include "content/public/common/service_names.h"
+#include "content/public/common/service_names.mojom.h"
 #include "content/public/renderer/content_renderer_client.h"
 #include "content/public/test/content_browser_test.h"
 #include "content/public/test/content_browser_test_utils.h"
@@ -167,6 +168,12 @@ class QuitOnTestMsgFilter : public IPC::MessageFilter {
 class RenderThreadImplBrowserTest : public testing::Test {
  public:
   void SetUp() override {
+    // SequencedWorkerPool is enabled by default in tests. Disable it for this
+    // test to avoid a DCHECK failure when RenderThreadImpl::Init enables it.
+    // TODO(fdoray): Remove this once the SequencedWorkerPool to TaskScheduler
+    // redirection experiment concludes https://crbug.com/622400.
+    base::SequencedWorkerPool::DisableForProcessForTesting();
+
     content_renderer_client_.reset(new ContentRendererClient());
     SetRendererClientForTesting(content_renderer_client_.get());
 
@@ -179,7 +186,7 @@ class RenderThreadImplBrowserTest : public testing::Test {
     ipc_support_.reset(new mojo::edk::test::ScopedIPCSupport(io_task_runner));
     shell_context_.reset(new TestServiceManagerContext);
     child_connection_.reset(new ChildConnection(
-        kRendererServiceName, "test", mojo::edk::GenerateRandomToken(),
+        mojom::kRendererServiceName, "test", mojo::edk::GenerateRandomToken(),
         ServiceManagerConnection::GetForProcess()->GetConnector(),
         io_task_runner));
 
@@ -330,7 +337,7 @@ IN_PROC_BROWSER_TEST_P(RenderThreadImplGpuMemoryBufferBrowserTest,
   gfx::Size buffer_size(4, 4);
 
   std::unique_ptr<gfx::GpuMemoryBuffer> buffer =
-      memory_buffer_manager()->AllocateGpuMemoryBuffer(
+      memory_buffer_manager()->CreateGpuMemoryBuffer(
           buffer_size, format, gfx::BufferUsage::GPU_READ_CPU_READ_WRITE,
           gpu::kNullSurfaceHandle);
   ASSERT_TRUE(buffer);

@@ -35,12 +35,14 @@
 #include "content/public/browser/browser_main_runner.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/common/content_descriptors.h"
+#include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "gin/public/isolate_holder.h"
 #include "gin/v8_initializer.h"
-#include "gpu/command_buffer/client/gl_in_process_context.h"
 #include "gpu/command_buffer/service/gpu_switches.h"
+#include "gpu/ipc/gl_in_process_context.h"
 #include "media/base/media_switches.h"
+#include "media/media_features.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/events/gesture_detection/gesture_configuration.h"
 
@@ -81,7 +83,7 @@ bool AwMainDelegate::BasicStartupComplete(int* exit_code) {
   cl->AppendSwitch(switches::kDisableNotifications);
 
   // WebRTC hardware decoding is not supported, internal bug 15075307
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   cl->AppendSwitch(switches::kDisableWebRtcHWDecoding);
 #endif
 
@@ -139,6 +141,8 @@ bool AwMainDelegate::BasicStartupComplete(int* exit_code) {
 
   CommandLineHelper::AddEnabledFeature(
       *cl, spellcheck::kAndroidSpellCheckerNonLowEnd.name);
+
+  CommandLineHelper::AddDisabledFeature(*cl, features::kWebPayments.name);
 
   return false;
 }

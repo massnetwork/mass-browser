@@ -10,7 +10,7 @@
 #include "base/strings/utf_string_conversions.h"
 #import "testing/gtest_mac.h"
 #include "ui/accessibility/ax_enums.h"
-#include "ui/accessibility/ax_view_state.h"
+#include "ui/accessibility/ax_node_data.h"
 #import "ui/accessibility/platform/ax_platform_node_mac.h"
 #include "ui/base/ime/text_input_type.h"
 #import "ui/gfx/mac/coordinate_conversion.h"
@@ -45,9 +45,9 @@ class FlexibleRoleTestView : public View {
   }
 
   // View:
-  void GetAccessibleState(ui::AXViewState* state) override {
-    View::GetAccessibleState(state);
-    state->role = role_;
+  void GetAccessibleNodeData(ui::AXNodeData* node_data) override {
+    View::GetAccessibleNodeData(node_data);
+    node_data->role = role_;
   }
 
  private:
@@ -173,7 +173,7 @@ TEST_F(NativeWidgetMacAccessibilityTest, PositionAttribute) {
 TEST_F(NativeWidgetMacAccessibilityTest, HelpAttribute) {
   Label* label = new Label(base::SysNSStringToUTF16(kTestPlaceholderText));
   label->SetSize(GetWidgetBounds().size());
-  EXPECT_NSEQ(nil, AttributeValueAtMidpoint(NSAccessibilityHelpAttribute));
+  EXPECT_NSEQ(@"", AttributeValueAtMidpoint(NSAccessibilityHelpAttribute));
   label->SetTooltipText(base::SysNSStringToUTF16(kTestPlaceholderText));
   widget()->GetContentsView()->AddChildView(label);
   EXPECT_NSEQ(kTestPlaceholderText,
@@ -304,11 +304,42 @@ TEST_F(NativeWidgetMacAccessibilityTest, TextfieldEditableAttributes) {
                 NSAccessibilityVisibleCharacterRangeAttribute) rangeValue]));
 }
 
-// Test writing accessibility attributes via an accessibility client.
+// Test writing accessibility attributes via an accessibility client for normal
+// Views.
+TEST_F(NativeWidgetMacAccessibilityTest, ViewWritableAttributes) {
+  FlexibleRoleTestView* view = new FlexibleRoleTestView(ui::AX_ROLE_GROUP);
+  view->SetSize(GetWidgetBounds().size());
+  widget()->GetContentsView()->AddChildView(view);
+
+  // Get the FlexibleRoleTestView accessibility object.
+  NSPoint midpoint = gfx::ScreenPointToNSPoint(GetWidgetBounds().CenterPoint());
+  id ax_node = [widget()->GetNativeWindow() accessibilityHitTest:midpoint];
+  EXPECT_TRUE(ax_node);
+
+  // Make sure it's the correct accessibility object.
+  id value = [ax_node accessibilityAttributeValue:NSAccessibilityRoleAttribute];
+  EXPECT_NSEQ(NSAccessibilityGroupRole, value);
+
+  // Make sure |view| is focusable, then focus/unfocus it.
+  view->SetFocusBehavior(View::FocusBehavior::ALWAYS);
+  EXPECT_FALSE(view->HasFocus());
+  EXPECT_FALSE(
+      [AttributeValueAtMidpoint(NSAccessibilityFocusedAttribute) boolValue]);
+  EXPECT_TRUE([ax_node
+      accessibilityIsAttributeSettable:NSAccessibilityFocusedAttribute]);
+  [ax_node accessibilitySetValue:[NSNumber numberWithBool:YES]
+                    forAttribute:NSAccessibilityFocusedAttribute];
+  EXPECT_TRUE(
+      [AttributeValueAtMidpoint(NSAccessibilityFocusedAttribute) boolValue]);
+  EXPECT_TRUE(view->HasFocus());
+}
+
+// Test writing accessibility attributes via an accessibility client for
+// editable controls (in this case, views::Textfields).
 TEST_F(NativeWidgetMacAccessibilityTest, TextfieldWritableAttributes) {
   Textfield* textfield = AddChildTextfield(GetWidgetBounds().size());
 
-  // Get the textfield accessibility object.
+  // Get the Textfield accessibility object.
   NSPoint midpoint = gfx::ScreenPointToNSPoint(GetWidgetBounds().CenterPoint());
   id ax_node = [widget()->GetNativeWindow() accessibilityHitTest:midpoint];
   EXPECT_TRUE(ax_node);

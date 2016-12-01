@@ -7,11 +7,12 @@
 
 #include "bindings/core/v8/ActiveScriptWrappable.h"
 #include "bindings/core/v8/ScriptPromise.h"
-#include "bindings/core/v8/ScriptState.h"
 #include "bindings/core/v8/TraceWrapperMember.h"
+#include "core/dom/ContextLifecycleObserver.h"
 #include "core/events/EventTarget.h"
 #include "modules/ModulesExport.h"
 #include "platform/heap/Handle.h"
+#include "public/platform/modules/remoteplayback/WebRemotePlaybackAvailability.h"
 #include "public/platform/modules/remoteplayback/WebRemotePlaybackClient.h"
 #include "public/platform/modules/remoteplayback/WebRemotePlaybackState.h"
 #include "wtf/Compiler.h"
@@ -24,16 +25,18 @@ class ExecutionContext;
 class HTMLMediaElement;
 class RemotePlaybackAvailabilityCallback;
 class ScriptPromiseResolver;
+class ScriptState;
 
 class MODULES_EXPORT RemotePlayback final
     : public EventTargetWithInlineData,
       public ActiveScriptWrappable,
-      WTF_NON_EXPORTED_BASE(private WebRemotePlaybackClient) {
+      public ContextLifecycleObserver,
+      NON_EXPORTED_BASE(public WebRemotePlaybackClient) {
   DEFINE_WRAPPERTYPEINFO();
   USING_GARBAGE_COLLECTED_MIXIN(RemotePlayback);
 
  public:
-  static RemotePlayback* create(ScriptState*, HTMLMediaElement&);
+  static RemotePlayback* create(HTMLMediaElement&);
 
   // Notifies this object that disableRemotePlayback attribute was set on the
   // corresponding media element.
@@ -46,23 +49,26 @@ class MODULES_EXPORT RemotePlayback final
   // Starts notifying the page about the changes to the remote playback devices
   // availability via the provided callback. May start the monitoring of remote
   // playback devices if it isn't running yet.
-  ScriptPromise watchAvailability(RemotePlaybackAvailabilityCallback*);
+  ScriptPromise watchAvailability(ScriptState*,
+                                  RemotePlaybackAvailabilityCallback*);
 
   // Cancels updating the page via the callback specified by its id.
-  ScriptPromise cancelWatchAvailability(int id);
+  ScriptPromise cancelWatchAvailability(ScriptState*, int id);
 
   // Cancels all the callbacks watching remote playback availability changes
   // registered with this element.
-  ScriptPromise cancelWatchAvailability();
+  ScriptPromise cancelWatchAvailability(ScriptState*);
 
   // Shows the UI allowing user to change the remote playback state of the media
   // element (by picking a remote playback device from the list, for example).
-  ScriptPromise prompt();
+  ScriptPromise prompt(ScriptState*);
 
   String state() const;
 
   // ScriptWrappable implementation.
   bool hasPendingActivity() const final;
+
+  void contextDestroyed() override;
 
   DEFINE_ATTRIBUTE_EVENT_LISTENER(connecting);
   DEFINE_ATTRIBUTE_EVENT_LISTENER(connect);
@@ -75,7 +81,7 @@ class MODULES_EXPORT RemotePlayback final
   friend class V8RemotePlayback;
   friend class RemotePlaybackTest;
 
-  explicit RemotePlayback(ScriptState*, HTMLMediaElement&);
+  explicit RemotePlayback(HTMLMediaElement&);
 
   // Calls the specified availability callback with the current availability.
   // Need a void() method to post it as a task.
@@ -83,8 +89,9 @@ class MODULES_EXPORT RemotePlayback final
 
   // WebRemotePlaybackClient implementation.
   void stateChanged(WebRemotePlaybackState) override;
-  void availabilityChanged(bool available) override;
+  void availabilityChanged(WebRemotePlaybackAvailability) override;
   void promptCancelled() override;
+  bool remotePlaybackAvailable() const override;
 
   // Prevent v8 from garbage collecting the availability callbacks.
   // TODO(avayvod): remove when crbug.com/468240 is fixed and the references
@@ -92,9 +99,8 @@ class MODULES_EXPORT RemotePlayback final
   void setV8ReferencesForCallbacks(v8::Isolate*,
                                    const v8::Persistent<v8::Object>& wrapper);
 
-  RefPtr<ScriptState> m_scriptState;
   WebRemotePlaybackState m_state;
-  bool m_availability;
+  WebRemotePlaybackAvailability m_availability;
   HeapHashMap<int, TraceWrapperMember<RemotePlaybackAvailabilityCallback>>
       m_availabilityCallbacks;
   Member<HTMLMediaElement> m_mediaElement;

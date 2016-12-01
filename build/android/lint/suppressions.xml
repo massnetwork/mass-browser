@@ -40,7 +40,6 @@ Still reading?
   </issue>
   <issue id="ContentDescription" severity="Error">
     <ignore regexp="blimp/client/app/android/java/res/layout/blimp_main.xml"/>
-    <ignore regexp="chrome/android/java/res/layout/download_content.xml"/>
     <ignore regexp="chromecast/internal"/>
   </issue>
   <issue id="DefaultLocale">
@@ -172,6 +171,7 @@ Still reading?
   </issue>
   <issue id="MissingTranslation">
     <ignore regexp="blimp/client/app/android/java/res/values/arrays.xml"/>
+    <ignore regexp="blimp/client/core/resources/android/java/res/values/arrays.xml"/>
     <ignore regexp="chrome/android/java/res/values/arrays.xml"/>
     <ignore regexp="chrome/android/java/res/values/strings.xml"/>
     <ignore regexp="chromecast/internal"/>
@@ -293,16 +293,19 @@ Still reading?
     <ignore regexp="blimp/client/app/android/java/res/drawable-hdpi/btn_reload.png"/>
     <ignore regexp="blimp/client/app/android/java/res/drawable-hdpi/textbox.9.png"/>
     <ignore regexp="blimp/client/app/android/java/res/drawable-hdpi/web_input_background.9.png"/>
+    <ignore regexp="blimp/client/app/android/java/res/drawable/dotted_line.xml"/>
     <ignore regexp="blimp/client/app/android/java/res/layout/blimp_main.xml"/>
     <ignore regexp="blimp/client/app/android/java/res/layout/debug_stats_overlay.xml"/>
     <ignore regexp="blimp/client/app/android/java/res/layout/text_input_popup.xml"/>
     <ignore regexp="blimp/client/app/android/java/res/layout/toolbar_popup_item.xml"/>
+    <ignore regexp="blimp/client/app/android/java/res/layout/web_input_bottom_panel.xml"/>
     <ignore regexp="blimp/client/app/android/java/res/mipmap-hdpi/app_icon.png"/>
     <ignore regexp="blimp/client/app/android/java/res/values/arrays.xml"/>
     <ignore regexp="blimp/client/app/android/java/res/values/colors.xml"/>
     <ignore regexp="blimp/client/app/android/java/res/values/dimens.xml"/>
     <ignore regexp="blimp/client/app/android/java/res/xml/about_blimp_preferences.xml"/>
     <ignore regexp="blimp/client/app/android/java/res/xml/blimp_preferences.xml"/>
+    <ignore regexp="blimp/client/core/resources/android/java/res/*"/>
     <ignore regexp="chrome/android/chrome_strings_grd.resources.zip/values/android_chrome_strings.xml"/>
     <ignore regexp="chrome/android/java/res/anim/accelerate_quart.xml"/>
     <ignore regexp="chrome/android/java/res/anim/activity_close_exit.xml"/>
@@ -328,12 +331,12 @@ Still reading?
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_autofill_cc.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_blocked_popups.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_camera.png"/>
+    <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_chrome.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_desktop_notifications.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_geolocation.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_microphone.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_midi.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_multiple_downloads.png"/>
-    <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_previews.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_protected_media_identifier.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_restore.png"/>
     <ignore regexp="chrome/android/java/res/drawable-hdpi/infobar_screen_share.png"/>
@@ -474,9 +477,15 @@ Still reading?
     <ignore regexp="content/public/android/content_strings_grd.resources.zip/values/android_content_strings.xml"/>
     <ignore regexp="content/public/android/java/res/drawable-hdpi/ic_menu_share_holo_light.png"/>
     <ignore regexp="content/public/android/java/res/drawable-hdpi/ic_search.png"/>
+    <ignore regexp="content/public/android/java/res/drawable-hdpi/ondemand_overlay.9.png"/>
+    <ignore regexp="content/public/android/java/res/layout/date_time_picker_dialog.xml"/>
+    <ignore regexp="content/public/android/java/res/layout/date_time_suggestion.xml"/>
+    <ignore regexp="content/public/android/java/res/layout/multi_field_time_picker_dialog.xml"/>
+    <ignore regexp="content/public/android/java/res/layout/two_field_date_picker.xml"/>
     <ignore regexp="content/public/android/java/res/menu/select_action_menu.xml"/>
     <ignore regexp="content/public/android/java/res/raw/empty.wav"/>
     <ignore regexp="content/public/android/java/res/values-v17/styles.xml"/>
+    <ignore regexp="content/public/android/java/res/values/dimens.xml"/>
     <ignore regexp="content/shell/android/java/res/drawable/ic_refresh.png"/>
     <ignore regexp="content/shell/android/java/res/drawable/progress.xml"/>
     <ignore regexp="content/shell/android/java/res/layout/shell_view.xml"/>
@@ -488,6 +497,8 @@ Still reading?
     <ignore regexp="gen/android_webview/locale_paks.resources.zip/*"/>
     <ignore regexp="gen/android_webview/strings_grd.resources.zip/values/android_webview_strings.xml"/>
     <ignore regexp="gen/blimp/client/app/blimp_strings_grd.resources.zip/values/android_blimp_strings.xml"/>
+    <ignore regexp="gen/blimp/client/core/resources/strings_grd.resources.zip/values/blimp_strings.xml"/>
+    <ignore regexp="gen/chrome/android/chrome_public_apk_template_resources.resources.zip/xml/chromebackupscheme.xml"/>
     <ignore regexp="gen/chrome/app/java_strings_grd.resources.zip/values/generated_resources.xml"/>
     <ignore regexp="gen/components/strings/components_locale_settings_grd.resources.zip/values/components_locale_settings.xml"/>
     <ignore regexp="gen/components/strings/components_strings_grd.resources.zip/values.*/components_strings.xml"/>
@@ -506,6 +517,13 @@ Still reading?
     <ignore regexp="remoting/android/java/res/values-v17/styles.xml"/>
     <ignore regexp="restriction_values.xml"/>
     <ignore regexp="ui/android/java/res/drawable-hdpi/verify_checkmark.png"/>
+    <ignore regexp="ui/android/java/res/drawable-v21/button_borderless_compat.xml"/>
+    <ignore regexp="ui/android/java/res/drawable-v21/button_compat.xml"/>
+    <ignore regexp="ui/android/java/res/drawable/button_compat_shape.xml"/>
+    <ignore regexp="ui/android/java/res/drawable/dropdown_label_color.xml"/>
+    <ignore regexp="ui/android/java/res/layout/dropdown_item.xml"/>
+    <ignore regexp="ui/android/java/res/values-v17/styles.xml"/>
+    <ignore regexp="ui/android/java/res/values/colors.xml"/>
     <ignore regexp="ui/android/java/res/values/dimens.xml"/>
   </issue>
   <issue id="UseCompoundDrawables">

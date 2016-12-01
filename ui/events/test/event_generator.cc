@@ -94,7 +94,7 @@ EventGenerator::EventGenerator(gfx::NativeWindow root_window)
       flags_(0),
       grab_(false),
       async_(false),
-      targeting_application_(false) {
+      target_(Target::WIDGET) {
   Init(root_window, NULL);
 }
 
@@ -105,7 +105,7 @@ EventGenerator::EventGenerator(gfx::NativeWindow root_window,
       flags_(0),
       grab_(false),
       async_(false),
-      targeting_application_(false) {
+      target_(Target::WIDGET) {
   Init(root_window, NULL);
 }
 
@@ -115,7 +115,7 @@ EventGenerator::EventGenerator(gfx::NativeWindow root_window,
       flags_(0),
       grab_(false),
       async_(false),
-      targeting_application_(false) {
+      target_(Target::WIDGET) {
   Init(root_window, window);
 }
 
@@ -125,7 +125,7 @@ EventGenerator::EventGenerator(EventGeneratorDelegate* delegate)
       flags_(0),
       grab_(false),
       async_(false),
-      targeting_application_(false) {
+      target_(Target::WIDGET) {
   Init(NULL, NULL);
 }
 
@@ -548,6 +548,22 @@ void EventGenerator::ScrollSequence(const gfx::Point& start,
                               offsets[steps - 1].x(), offsets[steps - 1].y(),
                               num_fingers);
   Dispatch(&fling_start);
+}
+
+void EventGenerator::GenerateTrackpadRest() {
+  int num_fingers = 2;
+  ui::ScrollEvent scroll(ui::ET_SCROLL, current_location_,
+                         ui::EventTimeForNow(), 0, 0, 0, 0, 0, num_fingers,
+                         EventMomentumPhase::MAY_BEGIN);
+  Dispatch(&scroll);
+}
+
+void EventGenerator::CancelTrackpadRest() {
+  int num_fingers = 2;
+  ui::ScrollEvent scroll(ui::ET_SCROLL, current_location_,
+                         ui::EventTimeForNow(), 0, 0, 0, 0, 0, num_fingers,
+                         EventMomentumPhase::END);
+  Dispatch(&scroll);
 }
 
 void EventGenerator::PressKey(ui::KeyboardCode key_code, int flags) {

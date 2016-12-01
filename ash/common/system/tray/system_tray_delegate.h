@@ -16,8 +16,6 @@
 #include "base/i18n/time_formatting.h"
 #include "base/strings/string16.h"
 
-class AccountId;
-
 namespace base {
 class TimeDelta;
 class TimeTicks;
@@ -32,7 +30,6 @@ struct IMEInfo;
 struct IMEPropertyInfo;
 
 class CustodianInfoTrayObserver;
-class ShutdownPolicyObserver;
 class SystemTray;
 class SystemTrayItem;
 
@@ -74,16 +71,13 @@ struct ASH_EXPORT UpdateInfo {
 
 class CastConfigDelegate;
 class NetworkingConfigDelegate;
-class VPNDelegate;
-
-using RebootOnShutdownCallback = base::Callback<void(bool)>;
 
 // SystemTrayDelegate is intended for delegating tasks in the System Tray to the
 // application (e.g. Chrome). These tasks should be limited to application
 // (browser) specific tasks. For non application specific tasks, where possible,
 // components/, chromeos/, device/, etc., code should be used directly. If more
 // than one related method is being added, consider adding an additional
-// specific delegate (e.g. VPNDelegate).
+// specific delegate (e.g. CastConfigDelegate).
 //
 // These methods should all have trivial default implementations for platforms
 // that do not implement the method (e.g. return false or nullptr). This
@@ -103,6 +97,10 @@ class ASH_EXPORT SystemTrayDelegate {
 
   // Returns the domain that manages the device, if it is enterprise-enrolled.
   virtual std::string GetEnterpriseDomain() const;
+
+  // Returns the realm that manages the device, if it is enterprise enrolled
+  // with Active Directory and joined the realm (Active Directory domain).
+  virtual std::string GetEnterpriseRealm() const;
 
   // Returns notification for enterprise enrolled devices.
   virtual base::string16 GetEnterpriseMessage() const;
@@ -130,22 +128,16 @@ class ASH_EXPORT SystemTrayDelegate {
   virtual void GetSystemUpdateInfo(UpdateInfo* info) const;
 
   // Returns true if settings menu item should appear.
-  virtual bool ShouldShowSettings();
+  virtual bool ShouldShowSettings() const;
+
+  // Returns true if notification tray should appear.
+  virtual bool ShouldShowNotificationTray() const;
 
   // Shows information about enterprise enrolled devices.
   virtual void ShowEnterpriseInfo();
 
   // Shows login UI to add other users to this session.
   virtual void ShowUserLogin();
-
-  // Attempts to sign out the user.
-  virtual void SignOut();
-
-  // Attempts to restart the system for update.
-  virtual void RequestRestartForUpdate();
-
-  // Attempts to shut down the system.
-  virtual void RequestShutdown();
 
   // Returns a list of available bluetooth devices.
   virtual void GetAvailableBluetoothDevices(BluetoothDeviceList* devices);
@@ -160,7 +152,7 @@ class ASH_EXPORT SystemTrayDelegate {
   virtual void ConnectToBluetoothDevice(const std::string& address);
 
   // Returns true if bluetooth adapter is discovering bluetooth devices.
-  virtual bool IsBluetoothDiscovering();
+  virtual bool IsBluetoothDiscovering() const;
 
   // Returns the currently selected IME.
   virtual void GetCurrentIME(IMEInfo* info);
@@ -204,6 +196,11 @@ class ASH_EXPORT SystemTrayDelegate {
   // Retrieves the session length limit. Returns |false| if no limit is set.
   virtual bool GetSessionLengthLimit(base::TimeDelta* session_length_limit);
 
+  // Get the system tray menu size in pixels (dependent on the language).
+  // This is not used in material design and should be removed during pre-MD
+  // code cleanup. See https://crbug.com/614453.
+  virtual int GetSystemTrayMenuWidth();
+
   // The active user has been changed. This will be called when the UI is ready
   // to be switched to the new user.
   // Note: This will happen after SessionStateObserver::ActiveUserChanged fires.
@@ -218,21 +215,6 @@ class ASH_EXPORT SystemTrayDelegate {
 
   virtual void RemoveCustodianInfoTrayObserver(
       CustodianInfoTrayObserver* observer);
-
-  // Adds an observer whose |OnShutdownPolicyChanged| function is called when
-  // the |DeviceRebootOnShutdown| policy changes. If this policy is set to
-  // true, a device cannot be shut down anymore but only rebooted.
-  virtual void AddShutdownPolicyObserver(ShutdownPolicyObserver* observer);
-
-  virtual void RemoveShutdownPolicyObserver(ShutdownPolicyObserver* observer);
-
-  // Determines whether the device is automatically rebooted when shut down as
-  // specified by the device policy |DeviceRebootOnShutdown|. This function
-  // asynchronously calls |callback| once a trusted policy becomes available.
-  virtual void ShouldRebootOnShutdown(const RebootOnShutdownCallback& callback);
-
-  // Returns VPNDelegate. May return nullptr.
-  virtual VPNDelegate* GetVPNDelegate() const;
 
   // Creates a system tray item for display rotation lock.
   // TODO(jamescook): Remove this when mus has support for display management

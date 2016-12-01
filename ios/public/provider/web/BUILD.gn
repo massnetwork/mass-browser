@@ -3,9 +3,12 @@
 # found in the LICENSE file.
 
 source_set("web") {
+  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "web_controller_provider.h",
     "web_controller_provider.mm",
+    "web_controller_provider_factory.h",
+    "web_controller_provider_factory.mm",
   ]
 
   deps = [

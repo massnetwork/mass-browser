@@ -10,6 +10,7 @@
 #include "services/service_manager/public/cpp/interface_factory.h"
 #include "services/service_manager/public/cpp/interface_registry.h"
 #include "services/service_manager/public/cpp/service.h"
+#include "services/service_manager/public/cpp/service_context.h"
 #include "services/service_manager/public/cpp/service_runner.h"
 #include "services/service_manager/tests/shutdown/shutdown_unittest.mojom.h"
 
@@ -41,7 +42,8 @@ class ShutdownClientApp
   // mojom::ShutdownTestClientController:
   void ConnectAndWait(const ConnectAndWaitCallback& callback) override {
     mojom::ShutdownTestServicePtr service;
-    connector()->ConnectToInterface("service:shutdown_service", &service);
+    context()->connector()->ConnectToInterface(
+        "shutdown_service", &service);
 
     mojo::Binding<mojom::ShutdownTestClient> client_binding(this);
 

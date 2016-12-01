@@ -199,26 +199,26 @@ void MostVisitedSitesBridge::AddOrRemoveBlacklistedUrl(
   most_visited_.AddOrRemoveBlacklistedUrl(url, add_url);
 }
 
-void MostVisitedSitesBridge::RecordTileTypeMetrics(
+void MostVisitedSitesBridge::RecordPageImpression(
     JNIEnv* env,
     const JavaParamRef<jobject>& obj,
     const JavaParamRef<jintArray>& jtile_types,
     const JavaParamRef<jintArray>& jsources) {
-  std::vector<int> int_tile_types;
-  base::android::JavaIntArrayToIntVector(env, jtile_types, &int_tile_types);
-  std::vector<MostVisitedTileType> tile_types;
-  for (int source : int_tile_types) {
-    tile_types.push_back(static_cast<MostVisitedTileType>(source));
-  }
-
   std::vector<int> int_sources;
   base::android::JavaIntArrayToIntVector(env, jsources, &int_sources);
-  std::vector<NTPTileSource> sources;
-  for (int source : int_sources) {
-    sources.push_back(static_cast<NTPTileSource>(source));
-  }
+  std::vector<int> int_tile_types;
+  base::android::JavaIntArrayToIntVector(env, jtile_types, &int_tile_types);
 
-  ntp_tiles::metrics::RecordImpressionTileTypes(tile_types, sources);
+  DCHECK_EQ(int_sources.size(), int_tile_types.size());
+
+  std::vector<std::pair<NTPTileSource, MostVisitedTileType>> tiles;
+  for (size_t i = 0; i < int_sources.size(); i++) {
+    NTPTileSource source = static_cast<NTPTileSource>(int_sources[i]);
+    MostVisitedTileType tile_type =
+        static_cast<MostVisitedTileType>(int_tile_types[i]);
+    tiles.emplace_back(source, tile_type);
+  }
+  ntp_tiles::metrics::RecordPageImpression(tiles);
 }
 
 void MostVisitedSitesBridge::RecordOpenedMostVisitedItem(

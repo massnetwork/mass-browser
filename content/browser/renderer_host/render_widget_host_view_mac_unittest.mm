@@ -34,6 +34,7 @@
 #include "content/public/test/test_utils.h"
 #include "content/test/test_render_view_host.h"
 #include "gpu/ipc/common/gpu_messages.h"
+#include "gpu/ipc/service/image_transport_surface.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/gtest_mac.h"
@@ -254,6 +255,8 @@ class RenderWidgetHostViewMacTest : public RenderViewHostImplTestHarness {
 
   void SetUp() override {
     RenderViewHostImplTestHarness::SetUp();
+    gpu::ImageTransportSurface::SetAllowOSMesaForTesting(true);
+
     // TestRenderViewHost's destruction assumes that its view is a
     // TestRenderWidgetHostView, so store its view and reset it back to the
     // stored view in |TearDown()|.
@@ -315,6 +318,29 @@ TEST_F(RenderWidgetHostViewMacTest, Basic) {
 TEST_F(RenderWidgetHostViewMacTest, AcceptsFirstResponder) {
   // The RWHVCocoa should normally accept first responder status.
   EXPECT_TRUE([rwhv_cocoa_.get() acceptsFirstResponder]);
+}
+
+// This test verifies that RenderWidgetHostViewCocoa's implementation of
+// NSTextInputClientConformance conforms to requirements.
+TEST_F(RenderWidgetHostViewMacTest, NSTextInputClientConformance) {
+  NSRange selectedRange = [rwhv_cocoa_ selectedRange];
+  EXPECT_EQ(0u, selectedRange.location);
+  EXPECT_EQ(0u, selectedRange.length);
+
+  NSRange actualRange = NSMakeRange(1u, 2u);
+  NSAttributedString* actualString = [rwhv_cocoa_
+      attributedSubstringForProposedRange:NSMakeRange(NSNotFound, 0u)
+                              actualRange:&actualRange];
+  EXPECT_EQ(nil, actualString);
+  EXPECT_EQ(static_cast<NSUInteger>(NSNotFound), actualRange.location);
+  EXPECT_EQ(0u, actualRange.length);
+
+  actualString = [rwhv_cocoa_
+      attributedSubstringForProposedRange:NSMakeRange(NSNotFound, 15u)
+                              actualRange:&actualRange];
+  EXPECT_EQ(nil, actualString);
+  EXPECT_EQ(static_cast<NSUInteger>(NSNotFound), actualRange.location);
+  EXPECT_EQ(0u, actualRange.length);
 }
 
 TEST_F(RenderWidgetHostViewMacTest, Fullscreen) {
@@ -954,7 +980,8 @@ TEST_F(RenderWidgetHostViewMacTest, ScrollWheelEndEventDelivery) {
   process_host->sink().ClearMessages();
 
   // Send an ACK for the first wheel event, so that the queue will be flushed.
-  InputEventAck ack(blink::WebInputEvent::MouseWheel,
+  InputEventAck ack(InputEventAckSource::COMPOSITOR_THREAD,
+                    blink::WebInputEvent::MouseWheel,
                     INPUT_EVENT_ACK_STATE_CONSUMED);
   std::unique_ptr<IPC::Message> response(
       new InputHostMsg_HandleInputEvent_ACK(0, ack));
@@ -999,7 +1026,8 @@ TEST_F(RenderWidgetHostViewMacTest,
   process_host->sink().ClearMessages();
 
   // Indicate that the wheel event was unhandled.
-  InputEventAck unhandled_ack(blink::WebInputEvent::MouseWheel,
+  InputEventAck unhandled_ack(InputEventAckSource::COMPOSITOR_THREAD,
+                              blink::WebInputEvent::MouseWheel,
                               INPUT_EVENT_ACK_STATE_NOT_CONSUMED);
   std::unique_ptr<IPC::Message> response1(
       new InputHostMsg_HandleInputEvent_ACK(0, unhandled_ack));
@@ -1007,7 +1035,8 @@ TEST_F(RenderWidgetHostViewMacTest,
   ASSERT_EQ(2U, process_host->sink().message_count());
   process_host->sink().ClearMessages();
 
-  InputEventAck unhandled_scroll_ack(blink::WebInputEvent::GestureScrollUpdate,
+  InputEventAck unhandled_scroll_ack(InputEventAckSource::COMPOSITOR_THREAD,
+                                     blink::WebInputEvent::GestureScrollUpdate,
                                      INPUT_EVENT_ACK_STATE_NOT_CONSUMED);
   std::unique_ptr<IPC::Message> scroll_response1(
       new InputHostMsg_HandleInputEvent_ACK(0, unhandled_scroll_ack));
@@ -1168,7 +1197,8 @@ TEST_F(RenderWidgetHostViewMacPinchTest, PinchThresholding) {
   process_host_->sink().ClearMessages();
 
   // We'll use this IPC message to ack events.
-  InputEventAck ack(blink::WebInputEvent::GesturePinchUpdate,
+  InputEventAck ack(InputEventAckSource::COMPOSITOR_THREAD,
+                    blink::WebInputEvent::GesturePinchUpdate,
                     INPUT_EVENT_ACK_STATE_CONSUMED);
   std::unique_ptr<IPC::Message> response(
       new InputHostMsg_HandleInputEvent_ACK(0, ack));

@@ -25,8 +25,13 @@ void UiDevToolsClient::AddAgent(std::unique_ptr<UiDevToolsAgent> agent) {
   agents_.push_back(std::move(agent));
 }
 
+void UiDevToolsClient::Disconnect() {
+  connection_id_ = kNotConnected;
+  DisableAllAgents();
+}
+
 void UiDevToolsClient::Dispatch(const std::string& data) {
-  dispatcher_.dispatch(protocol::parseJSON(data));
+  dispatcher_.dispatch(protocol::StringUtil::parseJSON(data));
 }
 
 bool UiDevToolsClient::connected() const {
@@ -41,14 +46,22 @@ const std::string& UiDevToolsClient::name() const {
   return name_;
 }
 
-void UiDevToolsClient::sendProtocolResponse(int callId, const String& message) {
-  if (connected())
-    server_->SendOverWebSocket(connection_id_, message);
+void UiDevToolsClient::DisableAllAgents() {
+  for (std::unique_ptr<UiDevToolsAgent>& agent : agents_)
+    agent->Disable();
 }
 
-void UiDevToolsClient::sendProtocolNotification(const String& message) {
+void UiDevToolsClient::sendProtocolResponse(
+    int callId,
+    std::unique_ptr<protocol::Serializable> message) {
   if (connected())
-    server_->SendOverWebSocket(connection_id_, message);
+    server_->SendOverWebSocket(connection_id_, message->serialize());
+}
+
+void UiDevToolsClient::sendProtocolNotification(
+    std::unique_ptr<protocol::Serializable> message) {
+  if (connected())
+    server_->SendOverWebSocket(connection_id_, message->serialize());
 }
 
 void UiDevToolsClient::flushProtocolNotifications() {

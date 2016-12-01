@@ -27,6 +27,12 @@ class CORE_EXPORT KeyframeEffectReadOnly : public AnimationEffectReadOnly {
  public:
   enum Priority { DefaultPriority, TransitionPriority };
 
+  static KeyframeEffectReadOnly* create(Element*,
+                                        EffectModel*,
+                                        const Timing&,
+                                        Priority = DefaultPriority,
+                                        EventDelegate* = nullptr);
+  // Web Animations API Bindings constructors.
   static KeyframeEffectReadOnly* create(
       ExecutionContext*,
       Element*,
@@ -56,7 +62,7 @@ class CORE_EXPORT KeyframeEffectReadOnly : public AnimationEffectReadOnly {
   Priority getPriority() const { return m_priority; }
   Element* target() const { return m_target; }
 
-  void notifySampledEffectRemovedFromAnimationStack();
+  void notifySampledEffectRemovedFromEffectStack();
 
   bool isCandidateForAnimationOnCompositor(double animationPlaybackRate) const;
   // Must only be called once.
@@ -111,8 +117,6 @@ class CORE_EXPORT KeyframeEffectReadOnly : public AnimationEffectReadOnly {
   Vector<int> m_compositorAnimationIds;
 };
 
-// TODO(suzyh): Replace calls to toKeyframeEffect with toKeyframeEffectReadOnly
-// where possible
 DEFINE_TYPE_CASTS(KeyframeEffectReadOnly,
                   AnimationEffectReadOnly,
                   animationNode,

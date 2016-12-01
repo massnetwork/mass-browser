@@ -19,11 +19,10 @@ class NavigationManagerDelegate {
  public:
   virtual ~NavigationManagerDelegate() {}
 
-  // Instructs the delegate to begin navigating to the specified offset from the
-  // "current item".
+  // Instructs the delegate to begin navigating to the item with index.
   // TODO(crbug.com/661316): Remove this method once all navigation code is
   // moved to NavigationManagerImpl.
-  virtual void GoToOffset(int offset) = 0;
+  virtual void GoToIndex(int index) = 0;
 
   // Instructs the delegate to load the URL.
   virtual void LoadURLWithParams(const NavigationManager::WebLoadParams&) = 0;

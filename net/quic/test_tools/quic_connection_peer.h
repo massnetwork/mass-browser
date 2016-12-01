@@ -10,6 +10,7 @@
 #include "net/quic/core/quic_connection.h"
 #include "net/quic/core/quic_connection_stats.h"
 #include "net/quic/core/quic_protocol.h"
+#include "net/quic/platform/api/quic_socket_address.h"
 
 namespace net {
 
@@ -24,7 +25,6 @@ class QuicPacketCreator;
 class QuicPacketGenerator;
 class QuicPacketWriter;
 class QuicReceivedPacketManager;
-class QuicSentEntropyManager;
 class QuicSentPacketManager;
 class SendAlgorithmInterface;
 
@@ -62,28 +62,14 @@ class QuicConnectionPeer {
 
   static QuicTime::Delta GetNetworkTimeout(QuicConnection* connection);
 
-  static QuicSentEntropyManager* GetSentEntropyManager(
-      QuicConnection* connection);
-
-  static QuicPacketEntropyHash GetSentEntropyHash(
-      QuicConnection* connection,
-      QuicPacketNumber packet_number);
-
-  static QuicPacketEntropyHash PacketEntropy(QuicConnection* connection,
-                                             QuicPacketNumber packet_number);
-
-  static QuicPacketEntropyHash ReceivedEntropyHash(
-      QuicConnection* connection,
-      QuicPacketNumber packet_number);
-
   static void SetPerspective(QuicConnection* connection,
                              Perspective perspective);
 
   static void SetSelfAddress(QuicConnection* connection,
-                             const IPEndPoint& self_address);
+                             const QuicSocketAddress& self_address);
 
   static void SetPeerAddress(QuicConnection* connection,
-                             const IPEndPoint& peer_address);
+                             const QuicSocketAddress& peer_address);
 
   static bool IsSilentCloseEnabled(QuicConnection* connection);
 

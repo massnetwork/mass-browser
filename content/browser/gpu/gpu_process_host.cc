@@ -54,13 +54,14 @@
 #include "content/public/common/sandbox_type.h"
 #include "content/public/common/sandboxed_process_launcher_delegate.h"
 #include "content/public/common/service_manager_connection.h"
-#include "content/public/common/service_names.h"
+#include "content/public/common/service_names.mojom.h"
 #include "gpu/command_buffer/service/gpu_preferences.h"
 #include "gpu/command_buffer/service/gpu_switches.h"
 #include "gpu/ipc/service/switches.h"
 #include "ipc/ipc_channel_handle.h"
 #include "ipc/message_filter.h"
 #include "media/base/media_switches.h"
+#include "media/media_features.h"
 #include "mojo/edk/embedder/embedder.h"
 #include "services/service_manager/public/cpp/connection.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
@@ -108,6 +109,7 @@ namespace {
 
 // Command-line switches to propagate to the GPU process.
 static const char* const kSwitchNames[] = {
+    switches::kCreateDefaultGLContext,
     switches::kDisableAcceleratedVideoDecode,
     switches::kDisableBreakpad,
     switches::kDisableES3GLContext,
@@ -116,7 +118,7 @@ static const char* const kSwitchNames[] = {
     switches::kDisableGLExtensions,
     switches::kDisableLogging,
     switches::kDisableSeccompFilterSandbox,
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
     switches::kDisableWebRtcHWEncoding,
 #endif
 #if defined(OS_WIN)
@@ -160,8 +162,7 @@ static const char* const kSwitchNames[] = {
     switches::kGpuTestingGLVendor,
     switches::kGpuTestingGLRenderer,
     switches::kGpuTestingGLVersion,
-    switches::kDisableGpuDriverBugWorkarounds
-};
+    switches::kDisableGpuDriverBugWorkarounds};
 
 enum GPUProcessLifetimeEvent {
   LAUNCHED,
@@ -202,13 +203,12 @@ void SendGpuProcessMessageByHostId(int host_id, IPC::Message* message) {
 class GpuSandboxedProcessLauncherDelegate
     : public SandboxedProcessLauncherDelegate {
  public:
-  GpuSandboxedProcessLauncherDelegate(base::CommandLine* cmd_line,
-                                      ChildProcessHost* host)
+  explicit GpuSandboxedProcessLauncherDelegate(base::CommandLine* cmd_line)
 #if defined(OS_WIN)
-      : cmd_line_(cmd_line) {}
-#elif defined(OS_POSIX)
-      : ipc_fd_(host->TakeClientFileDescriptor()) {}
+      : cmd_line_(cmd_line)
 #endif
+  {
+  }
 
   ~GpuSandboxedProcessLauncherDelegate() override {}
 
@@ -289,9 +289,6 @@ class GpuSandboxedProcessLauncherDelegate
 
     return true;
   }
-#elif defined(OS_POSIX)
-
-  base::ScopedFD TakeIpcFd() override { return std::move(ipc_fd_); }
 #endif  // OS_WIN
 
   SandboxType GetSandboxType() override {
@@ -301,8 +298,6 @@ class GpuSandboxedProcessLauncherDelegate
  private:
 #if defined(OS_WIN)
   base::CommandLine* cmd_line_;
-#elif defined(OS_POSIX)
-  base::ScopedFD ipc_fd_;
 #endif  // OS_WIN
 };
 
@@ -325,7 +320,7 @@ class GpuProcessHost::ConnectionFilterImpl : public ConnectionFilter {
   bool OnConnect(const service_manager::Identity& remote_identity,
                  service_manager::InterfaceRegistry* registry,
                  service_manager::Connector* connector) override {
-    if (remote_identity.name() != kGpuServiceName)
+    if (remote_identity.name() != mojom::kGpuServiceName)
       return false;
 
     GetContentClient()->browser()->ExposeInterfacesToGpuProcess(registry,
@@ -487,7 +482,7 @@ GpuProcessHost::GpuProcessHost(int host_id, GpuProcessKind kind)
       base::Bind(base::IgnoreResult(&GpuProcessHostUIShim::Create), host_id));
 
   process_.reset(new BrowserChildProcessHostImpl(
-      PROCESS_TYPE_GPU, this, kGpuServiceName));
+      PROCESS_TYPE_GPU, this, mojom::kGpuServiceName));
 }
 
 GpuProcessHost::~GpuProcessHost() {
@@ -1049,9 +1044,8 @@ bool GpuProcessHost::LaunchGpuProcess(gpu::GpuPreferences* gpu_preferences) {
   if (!gpu_launcher.empty())
     cmd_line->PrependWrapper(gpu_launcher);
 
-  process_->Launch(
-      new GpuSandboxedProcessLauncherDelegate(cmd_line, process_->GetHost()),
-      cmd_line, true);
+  process_->Launch(new GpuSandboxedProcessLauncherDelegate(cmd_line), cmd_line,
+                   true);
   process_launched_ = true;
 
   UMA_HISTOGRAM_ENUMERATION("GPU.GPUProcessLifetimeEvents",

@@ -281,8 +281,10 @@ class CORE_EXPORT LayoutBlock : public LayoutBox {
   LayoutUnit collapsedMarginBeforeForChild(const LayoutBox& child) const;
   LayoutUnit collapsedMarginAfterForChild(const LayoutBox& child) const;
 
-  virtual void scrollbarsChanged(bool /*horizontalScrollbarChanged*/,
-                                 bool /*verticalScrollbarChanged*/);
+  enum ScrollbarChangeContext { StyleChange, Layout };
+  virtual void scrollbarsChanged(bool horizontalScrollbarChanged,
+                                 bool verticalScrollbarChanged,
+                                 ScrollbarChangeContext = Layout);
 
   LayoutUnit availableLogicalWidthForContent() const {
     return (logicalRightOffsetForContent() - logicalLeftOffsetForContent())
@@ -358,8 +360,9 @@ class CORE_EXPORT LayoutBlock : public LayoutBox {
     ForcedLayoutAfterContainingBlockMoved
   };
 
-  void layoutPositionedObjects(bool relayoutChildren,
-                               PositionedLayoutBehavior = DefaultLayout);
+  virtual void layoutPositionedObjects(
+      bool relayoutChildren,
+      PositionedLayoutBehavior = DefaultLayout);
   void markFixedPositionObjectForLayoutIfNeeded(LayoutObject* child,
                                                 SubtreeLayoutScope&);
 
@@ -504,8 +507,8 @@ class CORE_EXPORT LayoutBlock : public LayoutBox {
   bool widthAvailableToChildrenHasChanged();
 
  protected:
-  bool isPageLogicalHeightKnown(LayoutUnit logicalOffset) const {
-    return pageLogicalHeightForOffset(logicalOffset);
+  bool isPageLogicalHeightKnown() const {
+    return pageLogicalHeightForOffset(LayoutUnit());
   }
 
   // Returns the logical offset at the top of the next page, for a given offset.
@@ -559,7 +562,7 @@ class CORE_EXPORT LayoutBlock : public LayoutBox {
 
   // This is necessary for now for interoperability between the old and new
   // layout code. Primarily for calling layoutPositionedObjects at the moment.
-  friend class NGBox;
+  friend class NGBlockNode;
 
  public:
   // TODO(lunalu): Temporary in order to ensure compatibility with existing

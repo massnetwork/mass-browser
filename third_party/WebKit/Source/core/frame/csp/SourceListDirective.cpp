@@ -141,7 +141,8 @@ void SourceListDirective::parse(const UChar* begin, const UChar* end) {
       // list itself.
       if (scheme.isEmpty() && host.isEmpty())
         continue;
-      if (m_policy->isDirectiveName(host))
+      if (ContentSecurityPolicy::getDirectiveType(host) !=
+          ContentSecurityPolicy::DirectiveType::Undefined)
         m_policy->reportDirectiveAsSourceExpression(m_directiveName, host);
       m_list.append(new CSPSource(m_policy, scheme, host, port, path,
                                   hostWildcard, portWildcard));
@@ -558,6 +559,15 @@ void SourceListDirective::addSourceHash(
   m_hashAlgorithmsUsed |= algorithm;
 }
 
+void SourceListDirective::addSourceToMap(HashMap<String, CSPSource*>& hashMap,
+                                         CSPSource* source) {
+  hashMap.add(source->getScheme(), source);
+  if (source->getScheme() == "http")
+    hashMap.add("https", source);
+  else if (source->getScheme() == "ws")
+    hashMap.add("wss", source);
+}
+
 bool SourceListDirective::hasSourceMatchInList(
     const KURL& url,
     ResourceRequest::RedirectStatus redirectStatus) const {
@@ -567,6 +577,87 @@ bool SourceListDirective::hasSourceMatchInList(
   }
 
   return false;
+}
+
+bool SourceListDirective::subsumes(
+    HeapVector<Member<SourceListDirective>> other) {
+  // TODO(amalika): Handle here special keywords.
+  if (!m_list.size() || !other.size())
+    return !m_list.size();
+
+  HeapVector<Member<CSPSource>> normalizedA = other[0]->m_list;
+  for (size_t i = 1; i < other.size(); i++) {
+    normalizedA = other[i]->getIntersectCSPSources(normalizedA);
+  }
+
+  return CSPSource::firstSubsumesSecond(m_list, normalizedA);
+}
+
+HashMap<String, CSPSource*> SourceListDirective::getIntersectSchemesOnly(
+    HeapVector<Member<CSPSource>> other) {
+  HashMap<String, CSPSource*> schemesA;
+  for (const auto& sourceA : m_list) {
+    if (sourceA->isSchemeOnly())
+      addSourceToMap(schemesA, sourceA);
+  }
+  // Add schemes only sources if they are present in both `this` and `other`,
+  // allowing upgrading `http` to `https` and `ws` to `wss`.
+  HashMap<String, CSPSource*> intersect;
+  for (const auto& sourceB : other) {
+    if (sourceB->isSchemeOnly()) {
+      if (schemesA.contains(sourceB->getScheme()))
+        addSourceToMap(intersect, sourceB);
+      else if (sourceB->getScheme() == "http" && schemesA.contains("https"))
+        intersect.add("https", schemesA.get("https"));
+      else if (sourceB->getScheme() == "ws" && schemesA.contains("wss"))
+        intersect.add("wss", schemesA.get("wss"));
+    }
+  }
+
+  return intersect;
+}
+
+HeapVector<Member<CSPSource>> SourceListDirective::getIntersectCSPSources(
+    HeapVector<Member<CSPSource>> other) {
+  HashMap<String, CSPSource*> schemesMap = getIntersectSchemesOnly(other);
+  HeapVector<Member<CSPSource>> normalized;
+  // Add all normalized scheme source expressions.
+  for (auto it = schemesMap.begin(); it != schemesMap.end(); ++it) {
+    // We do not add secure versions if insecure schemes are present.
+    if ((it->key != "https" || !schemesMap.contains("http")) &&
+        (it->key != "wss" || !schemesMap.contains("ws"))) {
+      normalized.append(it->value);
+    }
+  }
+
+  for (const auto& sourceA : m_list) {
+    if (schemesMap.contains(sourceA->getScheme()))
+      continue;
+
+    CSPSource* match(nullptr);
+    for (const auto& sourceB : other) {
+      // No need to add a host source expression if it is subsumed by the
+      // matching scheme source expression.
+      if (schemesMap.contains(sourceB->getScheme()))
+        continue;
+      // If sourceA is scheme only but there was no intersection for it in the
+      // `other` list, we add all the sourceB with that scheme.
+      if (sourceA->isSchemeOnly()) {
+        if (CSPSource* localMatch = sourceB->intersect(sourceA))
+          normalized.append(localMatch);
+        continue;
+      }
+      if (sourceB->subsumes(sourceA)) {
+        match = sourceA;
+        break;
+      }
+      if (CSPSource* localMatch = sourceB->intersect(sourceA))
+        match = localMatch;
+    }
+    if (match)
+      normalized.append(match);
+  }
+  return normalized;
 }
 
 DEFINE_TRACE(SourceListDirective) {

@@ -38,11 +38,8 @@
 #include "../platform/WebString.h"
 #include "../platform/WebURL.h"
 #include "WebDragStatus.h"
-#include "WebWidget.h"
+#include "WebInputMethodController.h"
 #include <v8.h>
-
-struct NPObject;
-struct _NPP;
 
 namespace blink {
 
@@ -188,7 +185,7 @@ class WebPlugin {
   // Confirms an ongoing composition; holds or moves selections accroding to
   // selectionBehavior.
   virtual bool finishComposingText(
-      WebWidget::ConfirmCompositionBehavior selectionBehavior) {
+      WebInputMethodController::ConfirmCompositionBehavior selectionBehavior) {
     return false;
   }
 

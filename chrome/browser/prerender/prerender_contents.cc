@@ -46,11 +46,9 @@
 #include "ui/gfx/geometry/size.h"
 
 using content::BrowserThread;
-using content::DownloadItem;
 using content::OpenURLParams;
 using content::RenderViewHost;
 using content::ResourceRedirectDetails;
-using content::ResourceType;
 using content::SessionStorageNamespace;
 using content::WebContents;
 
@@ -274,12 +272,6 @@ void PrerenderContents::StartPrerendering(
 
   DCHECK(load_start_time_.is_null());
   load_start_time_ = base::TimeTicks::Now();
-
-  // Everything after this point sets up the WebContents object and associated
-  // RenderView for the prerender page. Don't do this for members of the
-  // control group.
-  if (prerender_manager_->IsControlGroup())
-    return;
 
   prerendering_has_started_ = true;
 
@@ -637,7 +629,7 @@ void PrerenderContents::Destroy(FinalStatus final_status) {
   prerender_manager_->AddToHistory(this);
   prerender_manager_->MoveEntryToPendingDelete(this, final_status);
 
-  if (!prerender_manager_->IsControlGroup() && prerendering_has_started())
+  if (prerendering_has_started())
     NotifyPrerenderStop();
 }
 

@@ -30,6 +30,7 @@
 #include "net/base/net_errors.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/webui/web_ui_util.h"
+#include "url/origin.h"
 
 #if defined(OS_WIN)
 #include "base/win/windows_version.h"
@@ -65,6 +66,7 @@ enum NAV_SUGGESTIONS {
   SUGGEST_COMPLETE_SETUP                    = 1 << 11,
   // Reload page suggestion for pages created by a post.
   SUGGEST_REPOST_RELOAD                     = 1 << 12,
+  SUGGEST_NAVIGATE_TO_ORIGIN                = 1 << 13,
 };
 
 enum SHOW_BUTTONS {
@@ -268,6 +270,12 @@ const LocalizedErrorMap net_error_options[] = {
    IDS_ERRORPAGES_SUMMARY_BLOCKED_BY_EXTENSION,
    SUGGEST_DISABLE_EXTENSION,
    SHOW_BUTTON_RELOAD,
+  },
+  {net::ERR_BLOCKED_BY_XSS_AUDITOR,
+   IDS_ERRORPAGES_HEADING_PAGE_NOT_WORKING,
+   IDS_ERRORPAGES_SUMMARY_BLOCKED_BY_XSS_AUDITOR,
+   SUGGEST_NAVIGATE_TO_ORIGIN,
+   SHOW_NO_BUTTONS,
   },
   {net::ERR_NETWORK_CHANGED,
    IDS_ERRORPAGES_HEADING_CONNECTION_INTERRUPTED,
@@ -614,6 +622,23 @@ void GetSuggestionsSummaryList(int error_code,
   }
   DCHECK(!IsSuggested(suggestions, SUGGEST_REPOST_RELOAD));
 
+  if (IsOnlySuggestion(suggestions, SUGGEST_NAVIGATE_TO_ORIGIN)) {
+    DCHECK(suggestions_summary_list->empty());
+    DCHECK(!(suggestions & ~SUGGEST_NAVIGATE_TO_ORIGIN));
+    url::Origin failed_origin(failed_url);
+    if (failed_origin.unique())
+      return;
+
+    auto suggestion = base::MakeUnique<base::DictionaryValue>();
+    suggestion->SetString("summary",
+                          l10n_util::GetStringUTF16(
+                              IDS_ERRORPAGES_SUGGESTION_NAVIGATE_TO_ORIGIN));
+    suggestion->SetString("originURL", failed_origin.Serialize());
+    suggestions_summary_list->Append(std::move(suggestion));
+    return;
+  }
+  DCHECK(!IsSuggested(suggestions, SUGGEST_NAVIGATE_TO_ORIGIN));
+
   if (IsOnlySuggestion(suggestions, SUGGEST_LEARNMORE)) {
     DCHECK(suggestions_summary_list->empty());
     AddLinkedSuggestionToList(error_code, locale, suggestions_summary_list,
@@ -808,7 +833,7 @@ void LocalizedError::GetStrings(
     bool is_post,
     bool stale_copy_in_cache,
     bool can_show_network_diagnostics_dialog,
-    bool has_offline_pages,
+    bool is_incognito,
     const std::string& locale,
     std::unique_ptr<error_page::ErrorPageParams> params,
     base::DictionaryValue* error_strings) {
@@ -996,6 +1021,22 @@ void LocalizedError::GetStrings(
       show_saved_copy_button->SetString("primary", "true");
     error_strings->Set("showSavedCopyButton", show_saved_copy_button);
   }
+
+#if defined(OS_ANDROID)
+  if (!show_saved_copy_visible && !is_incognito &&
+      failed_url.SchemeIsHTTPOrHTTPS() &&
+      offline_pages::IsOfflinePagesAsyncDownloadEnabled()) {
+    std::unique_ptr<base::DictionaryValue> download_button =
+        base::MakeUnique<base::DictionaryValue>();
+    download_button->SetString(
+        "msg",
+        l10n_util::GetStringUTF16(IDS_ERRORPAGES_BUTTON_DOWNLOAD));
+    download_button->SetString(
+        "disabledMsg",
+        l10n_util::GetStringUTF16(IDS_ERRORPAGES_BUTTON_DOWNLOADING));
+    error_strings->Set("downloadButton", std::move(download_button));
+  }
+#endif  // defined(OS_ANDROID)
 }
 
 base::string16 LocalizedError::GetErrorDetails(const std::string& error_domain,

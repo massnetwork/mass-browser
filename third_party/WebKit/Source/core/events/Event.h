@@ -84,9 +84,17 @@ class CORE_EXPORT Event : public GarbageCollectedFinalized<Event>,
   };
 
   enum class PassiveMode {
+    // Not passive, default initialized.
+    NotPassiveDefault,
+    // Not passive, explicitly specified.
     NotPassive,
+    // Passive, explicitly specified.
     Passive,
+    // Passive, not explicitly specified and forced due to document level
+    // listener.
     PassiveForcedDocumentLevel,
+    // Passive, default initialized.
+    PassiveDefault,
   };
 
   static Event* create() { return new Event; }
@@ -151,7 +159,13 @@ class CORE_EXPORT Event : public GarbageCollectedFinalized<Event>,
   double platformTimeStamp() const { return m_platformTimeStamp; }
 
   void stopPropagation() { m_propagationStopped = true; }
+  void setStopPropagation(bool stopPropagation) {
+    m_propagationStopped = stopPropagation;
+  }
   void stopImmediatePropagation() { m_immediatePropagationStopped = true; }
+  void setStopImmediatePropagation(bool stopImmediatePropagation) {
+    m_immediatePropagationStopped = stopImmediatePropagation;
+  }
 
   // IE Extensions
   EventTarget* srcElement() const {
@@ -232,6 +246,11 @@ class CORE_EXPORT Event : public GarbageCollectedFinalized<Event>,
 
   bool isTrusted() const { return m_isTrusted; }
   void setTrusted(bool value) { m_isTrusted = value; }
+
+  void setComposed(bool composed) {
+    DCHECK(!isBeingDispatched());
+    m_composed = composed;
+  }
 
   void setHandlingPassive(PassiveMode);
 

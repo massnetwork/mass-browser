@@ -36,7 +36,7 @@ class ASH_EXPORT BaseDateTimeView : public ActionableView {
   void UpdateText();
 
   // views::View:
-  void GetAccessibleState(ui::AXViewState* state) override;
+  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
 
  protected:
   explicit BaseDateTimeView(SystemTrayItem* owner);
@@ -140,6 +140,7 @@ class ASH_EXPORT TimeView : public BaseDateTimeView {
 
   // views::View:
   bool OnMousePressed(const ui::MouseEvent& event) override;
+  void OnGestureEvent(ui::GestureEvent* event) override;
 
   void SetBorderFromLayout(ClockLayout clock_layout);
   void SetupLabels();

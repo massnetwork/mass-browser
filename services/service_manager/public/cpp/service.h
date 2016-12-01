@@ -5,16 +5,8 @@
 #ifndef SERVICES_SERVICE_MANAGER_PUBLIC_CPP_SERVICE_H_
 #define SERVICES_SERVICE_MANAGER_PUBLIC_CPP_SERVICE_H_
 
-#include <stdint.h>
-#include <string>
-
-#include "base/macros.h"
-#include "services/service_manager/public/cpp/interface_registry.h"
-
 namespace service_manager {
 
-class Connector;
-class Identity;
 class InterfaceRegistry;
 class ServiceContext;
 struct ServiceInfo;
@@ -26,43 +18,71 @@ class Service {
   Service();
   virtual ~Service();
 
-  // Called once a bidirectional connection with the Service Manager has been
-  // established.
-  // |info| contains information about this instance from the Service Manager
-  // and the service manifest.
-  // Called exactly once before any calls to OnConnect().
-  virtual void OnStart(const ServiceInfo& info);
+  // Called exactly once, when a bidirectional connection with the Service
+  // Manager has been established. No calls to OnConnect() will be received
+  // before this.
+  virtual void OnStart();
 
-  // Called when a connection to this service is brokered by the Service
-  // Manager. Implement to expose interfaces to the remote service. Return true
-  // if the connection should succeed. Return false if the connection should
-  // be rejected and the underlying pipe closed. The default implementation
-  // returns false.
+  // Called each time a connection to this service is brokered by the Service
+  // Manager. Implement this to expose interfaces to other services.
+  //
+  // Return true if the connection should succeed or false if the connection
+  // should be rejected.
+  //
+  // The default implementation returns false.
   virtual bool OnConnect(const ServiceInfo& remote_info,
                          InterfaceRegistry* registry);
 
   // Called when the Service Manager has stopped tracking this instance. The
-  // service should use this as a signal to exit, and in fact its process may
-  // be reaped shortly afterward.
-  // Return true from this method to tell the ServiceContext to run its
-  // connection lost closure if it has one, false to prevent it from being run.
+  // service should use this as a signal to shut down, and in fact its process
+  // may be reaped shortly afterward if applicable.
+  //
+  // Return true from this method to tell the ServiceContext to signal its
+  // shutdown extenrally (i.e. to invoke it's "connection lost" closure if set),
+  // or return false to defer the signal. If deferred, the Service should
+  // explicitly call QuitNow() on the ServiceContext when it's ready to be
+  // torn down.
+  //
   // The default implementation returns true.
-  // When used in conjunction with ApplicationRunner, returning true here quits
-  // the message loop created by ApplicationRunner, which results in the service
-  // quitting.
-  // No calls to either OnStart() nor OnConnect() may be received after this is
-  // called. It is however possible for this to be called without OnStart() ever
-  // having been called.
+  //
+  // While it's possible for this to be invoked before either OnStart() or
+  // OnConnect() is invoked, neither will be invoked at any point after this
+  // OnStop().
   virtual bool OnStop();
 
-  Connector* connector();
-  ServiceContext* context();
-  void set_context(std::unique_ptr<ServiceContext> context);
+ protected:
+  // Access the ServiceContext associated with this Service. Note that this is
+  // only valid to call during or after OnStart(), but never before! As such,
+  // it's always safe to call in OnStart() and OnConnect(), but should generally
+  // be avoided in OnStop().
+  ServiceContext* context() const;
 
  private:
-  std::unique_ptr<ServiceContext> context_;
+  friend class ForwardingService;
+  friend class ServiceContext;
 
-  DISALLOW_COPY_AND_ASSIGN(Service);
+  // NOTE: This is guaranteed to be called before OnStart().
+  void set_context(ServiceContext* context) { service_context_ = context; }
+
+  ServiceContext* service_context_ = nullptr;
+};
+
+// TODO(rockot): Remove this. It's here to satisfy a few remaining use cases
+// where a Service impl is owned by something other than its ServiceContext.
+class ForwardingService : public Service {
+ public:
+  // |target| must outlive this object.
+  explicit ForwardingService(Service* target);
+  ~ForwardingService() override;
+
+ private:
+  // Service:
+  void OnStart() override;
+  bool OnConnect(const ServiceInfo& remote_info,
+                 InterfaceRegistry* registry) override;
+  bool OnStop() override;
+
+  Service* const target_ = nullptr;
 };
 
 }  // namespace service_manager

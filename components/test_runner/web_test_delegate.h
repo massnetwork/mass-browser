@@ -12,7 +12,6 @@
 #include "base/callback_forward.h"
 #include "base/memory/ref_counted.h"
 #include "third_party/WebKit/public/platform/WebString.h"
-#include "third_party/WebKit/public/platform/WebTaskRunner.h"
 #include "third_party/WebKit/public/platform/WebURL.h"
 #include "third_party/WebKit/public/platform/WebVector.h"
 #include "third_party/WebKit/public/platform/modules/screen_orientation/WebScreenOrientationType.h"
@@ -26,33 +25,23 @@ class DictionaryValue;
 namespace blink {
 class WebDeviceMotionData;
 class WebDeviceOrientationData;
-class WebLocalFrame;
-class WebGamepad;
-class WebGamepads;
-class WebHistoryItem;
+class WebFrame;
 class WebInputEvent;
-class WebLayer;
 class WebLocalFrame;
 class WebMediaStream;
 class WebPlugin;
 struct WebPluginParams;
-struct WebPoint;
-struct WebRect;
 struct WebSize;
-struct WebURLError;
 class WebURLResponse;
 class WebView;
 }
 
 namespace cc {
-class TextureLayer;
-class TextureLayerClient;
 class SharedBitmapManager;
 }
 
 namespace test_runner {
 
-class DeviceLightData;
 class GamepadController;
 class WebTask;
 class WebWidgetTestProxyBase;
@@ -298,6 +287,10 @@ class WebTestDelegate {
 
   // Run all pending idle tasks, and then run callback.
   virtual void RunIdleTasks(const base::Closure& callback) = 0;
+
+  // Forces a text input state update for the client of WebFrameWidget
+  // associated with |frame|.
+  virtual void ForceTextInputStateUpdate(blink::WebFrame* frame) = 0;
 };
 
 }  // namespace test_runner

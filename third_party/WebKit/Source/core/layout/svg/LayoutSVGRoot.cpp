@@ -153,17 +153,22 @@ void LayoutSVGRoot::layout() {
 
   SVGLayoutSupport::layoutResourcesIfNeeded(this);
 
+  // selfNeedsLayout() will cover changes to one (or more) of viewBox,
+  // current{Scale,Translate} and decorations.
+  const bool viewportMayHaveChanged = selfNeedsLayout() || oldSize != size();
+
+  // The scale of one or more of the SVG elements may have changed, or new
+  // content may have been exposed, so mark the entire subtree as needing paint
+  // invalidation checking. (It is only somewhat by coincidence that this
+  // condition happens to be the same as the one for viewport changes.)
+  if (viewportMayHaveChanged)
+    setMayNeedPaintInvalidationSubtree();
+
   SVGSVGElement* svg = toSVGSVGElement(node());
   ASSERT(svg);
   // When hasRelativeLengths() is false, no descendants have relative lengths
   // (hence no one is interested in viewport size changes).
-  m_isLayoutSizeChanged =
-      svg->hasRelativeLengths() && (selfNeedsLayout() || oldSize != size());
-
-  // The scale of one or more of the SVG elements may have changed, so mark
-  // the entire subtree as needing paint invalidation checking.
-  if (m_isLayoutSizeChanged)
-    setMayNeedPaintInvalidationSubtree();
+  m_isLayoutSizeChanged = viewportMayHaveChanged && svg->hasRelativeLengths();
 
   SVGLayoutSupport::layoutChildren(
       firstChild(), false, m_didScreenScaleFactorChange, m_isLayoutSizeChanged);
@@ -342,17 +347,10 @@ void LayoutSVGRoot::buildLocalToBorderBoxTransform() {
   m_localToBorderBoxTransform.preMultiply(viewToBorderBoxTransform);
 }
 
-const AffineTransform& LayoutSVGRoot::localToSVGParentTransform() const {
-  // Slightly optimized version of m_localToParentTransform =
-  // AffineTransform::translation(x(), y()) * m_localToBorderBoxTransform;
-  m_localToParentTransform = m_localToBorderBoxTransform;
-  if (location().x())
-    m_localToParentTransform.setE(m_localToParentTransform.e() +
-                                  roundToInt(location().x()));
-  if (location().y())
-    m_localToParentTransform.setF(m_localToParentTransform.f() +
-                                  roundToInt(location().y()));
-  return m_localToParentTransform;
+AffineTransform LayoutSVGRoot::localToSVGParentTransform() const {
+  return AffineTransform::translation(roundToInt(location().x()),
+                                      roundToInt(location().y())) *
+         m_localToBorderBoxTransform;
 }
 
 LayoutRect LayoutSVGRoot::localVisualRect() const {

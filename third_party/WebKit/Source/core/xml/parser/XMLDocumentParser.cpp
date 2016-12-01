@@ -46,7 +46,6 @@
 #include "core/fetch/FetchInitiatorTypeNames.h"
 #include "core/fetch/RawResource.h"
 #include "core/fetch/ResourceFetcher.h"
-#include "core/fetch/ScriptResource.h"
 #include "core/frame/LocalFrame.h"
 #include "core/frame/UseCounter.h"
 #include "core/html/HTMLHtmlElement.h"
@@ -308,8 +307,8 @@ void XMLDocumentParser::popCurrentNode() {
   if (!m_currentNode)
     return;
   DCHECK(m_currentNodeStack.size());
-  m_currentNode = m_currentNodeStack.last();
-  m_currentNodeStack.removeLast();
+  m_currentNode = m_currentNodeStack.back();
+  m_currentNodeStack.pop_back();
 }
 
 void XMLDocumentParser::clearCurrentNodeStack() {
@@ -579,8 +578,8 @@ static bool isLibxmlDefaultCatalogFile(const String& urlString) {
     return true;
 
   // On Windows, libxml computes a URL relative to where its DLL resides.
-  if (urlString.startsWith("file:///", TextCaseInsensitive) &&
-      urlString.endsWith("/etc/catalog", TextCaseInsensitive))
+  if (urlString.startsWith("file:///", TextCaseASCIIInsensitive) &&
+      urlString.endsWith("/etc/catalog", TextCaseASCIIInsensitive))
     return true;
   return false;
 }
@@ -595,12 +594,13 @@ static bool shouldAllowExternalLoad(const KURL& url) {
 
   // The most common DTD. There isn't much point in hammering www.w3c.org by
   // requesting this URL for every XHTML document.
-  if (urlString.startsWith("http://www.w3.org/TR/xhtml", TextCaseInsensitive))
+  if (urlString.startsWith("http://www.w3.org/TR/xhtml",
+                           TextCaseASCIIInsensitive))
     return false;
 
   // Similarly, there isn't much point in requesting the SVG DTD.
   if (urlString.startsWith("http://www.w3.org/Graphics/SVG",
-                           TextCaseInsensitive))
+                           TextCaseASCIIInsensitive))
     return false;
 
   // The libxml doesn't give us a lot of context for deciding whether to allow
@@ -817,8 +817,8 @@ XMLDocumentParser::XMLDocumentParser(DocumentFragment* fragment,
   if (elemStack.isEmpty())
     return;
 
-  for (; !elemStack.isEmpty(); elemStack.removeLast()) {
-    Element* element = elemStack.last();
+  for (; !elemStack.isEmpty(); elemStack.pop_back()) {
+    Element* element = elemStack.back();
     AttributeCollection attributes = element->attributes();
     for (auto& attribute : attributes) {
       if (attribute.localName() == xmlnsAtom)
@@ -1065,7 +1065,7 @@ void XMLDocumentParser::endElementNs() {
 
   if (m_parserPaused) {
     m_pendingCallbacks.append(
-        wrapUnique(new PendingEndElementNSCallback(m_scriptStartPosition)));
+        makeUnique<PendingEndElementNSCallback>(m_scriptStartPosition));
     return;
   }
 
@@ -1153,7 +1153,7 @@ void XMLDocumentParser::characters(const xmlChar* chars, int length) {
 
   if (m_parserPaused) {
     m_pendingCallbacks.append(
-        wrapUnique(new PendingCharactersCallback(chars, length)));
+        makeUnique<PendingCharactersCallback>(chars, length));
     return;
   }
 
@@ -1187,7 +1187,7 @@ void XMLDocumentParser::processingInstruction(const String& target,
 
   if (m_parserPaused) {
     m_pendingCallbacks.append(
-        wrapUnique(new PendingProcessingInstructionCallback(target, data)));
+        makeUnique<PendingProcessingInstructionCallback>(target, data));
     return;
   }
 
@@ -1228,7 +1228,7 @@ void XMLDocumentParser::cdataBlock(const String& text) {
     return;
 
   if (m_parserPaused) {
-    m_pendingCallbacks.append(wrapUnique(new PendingCDATABlockCallback(text)));
+    m_pendingCallbacks.append(makeUnique<PendingCDATABlockCallback>(text));
     return;
   }
 
@@ -1244,7 +1244,7 @@ void XMLDocumentParser::comment(const String& text) {
     return;
 
   if (m_parserPaused) {
-    m_pendingCallbacks.append(wrapUnique(new PendingCommentCallback(text)));
+    m_pendingCallbacks.append(makeUnique<PendingCommentCallback>(text));
     return;
   }
 
@@ -1346,7 +1346,7 @@ static void commentHandler(void* closure, const xmlChar* text) {
   getParser(closure)->comment(toString(text));
 }
 
-WTF_ATTRIBUTE_PRINTF(2, 3)
+PRINTF_FORMAT(2, 3)
 static void warningHandler(void* closure, const char* message, ...) {
   va_list args;
   va_start(args, message);
@@ -1354,7 +1354,7 @@ static void warningHandler(void* closure, const char* message, ...) {
   va_end(args);
 }
 
-WTF_ATTRIBUTE_PRINTF(2, 3)
+PRINTF_FORMAT(2, 3)
 static void normalErrorHandler(void* closure, const char* message, ...) {
   va_list args;
   va_start(args, message);
@@ -1550,7 +1550,7 @@ void XMLDocumentParser::doEnd() {
     xmlDocPtr doc =
         xmlDocPtrForString(document(), m_originalSourceForTransform.toString(),
                            document()->url().getString());
-    document()->setTransformSource(wrapUnique(new TransformSource(doc)));
+    document()->setTransformSource(makeUnique<TransformSource>(doc));
     DocumentParser::stopParsing();
   }
 }

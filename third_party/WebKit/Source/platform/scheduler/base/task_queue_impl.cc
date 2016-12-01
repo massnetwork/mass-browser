@@ -4,6 +4,8 @@
 
 #include "platform/scheduler/base/task_queue_impl.h"
 
+#include "base/format_macros.h"
+#include "base/strings/stringprintf.h"
 #include "base/trace_event/blame_context.h"
 #include "platform/scheduler/base/task_queue_manager.h"
 #include "platform/scheduler/base/task_queue_manager_delegate.h"
@@ -44,6 +46,23 @@ const char* TaskQueue::NameForQueueType(TaskQueue::QueueType queue_type) {
   }
   DCHECK(false);
   return nullptr;
+}
+
+// static
+const char* TaskQueue::PriorityToString(QueuePriority priority) {
+  switch (priority) {
+    case CONTROL_PRIORITY:
+      return "control";
+    case HIGH_PRIORITY:
+      return "high";
+    case NORMAL_PRIORITY:
+      return "normal";
+    case BEST_EFFORT_PRIORITY:
+      return "best_effort";
+    default:
+      NOTREACHED();
+      return nullptr;
+  }
 }
 
 namespace internal {
@@ -479,27 +498,14 @@ TaskQueueImpl::QueuePriority TaskQueueImpl::GetQueuePriority() const {
   return static_cast<TaskQueue::QueuePriority>(set_index);
 }
 
-// static
-const char* TaskQueueImpl::PriorityToString(QueuePriority priority) {
-  switch (priority) {
-    case CONTROL_PRIORITY:
-      return "control";
-    case HIGH_PRIORITY:
-      return "high";
-    case NORMAL_PRIORITY:
-      return "normal";
-    case BEST_EFFORT_PRIORITY:
-      return "best_effort";
-    default:
-      NOTREACHED();
-      return nullptr;
-  }
-}
-
 void TaskQueueImpl::AsValueInto(base::trace_event::TracedValue* state) const {
   base::AutoLock lock(any_thread_lock_);
   state->BeginDictionary();
   state->SetString("name", GetName());
+  state->SetString(
+      "task_queue_id",
+      base::StringPrintf("%" PRIx64, static_cast<uint64_t>(
+                                         reinterpret_cast<uintptr_t>(this))));
   state->SetBoolean("enabled", main_thread_only().is_enabled);
   state->SetString("time_domain_name",
                    main_thread_only().time_domain->GetName());
@@ -605,13 +611,15 @@ void TaskQueueImpl::SetBlameContext(
   main_thread_only().blame_context = blame_context;
 }
 
-void TaskQueueImpl::InsertFence() {
+void TaskQueueImpl::InsertFence(TaskQueue::InsertFencePosition position) {
   if (!main_thread_only().task_queue_manager)
     return;
 
   EnqueueOrder previous_fence = main_thread_only().current_fence;
   main_thread_only().current_fence =
-      main_thread_only().task_queue_manager->GetNextSequenceNumber();
+      position == TaskQueue::InsertFencePosition::NOW
+          ? main_thread_only().task_queue_manager->GetNextSequenceNumber()
+          : static_cast<EnqueueOrder>(EnqueueOrderValues::BLOCKING_FENCE);
 
   // Tasks posted after this point will have a strictly higher enqueue order
   // and will be blocked from running.
@@ -620,7 +628,8 @@ void TaskQueueImpl::InsertFence() {
   task_unblocked |= main_thread_only().delayed_work_queue->InsertFence(
       main_thread_only().current_fence);
 
-  if (!task_unblocked && previous_fence) {
+  if (!task_unblocked && previous_fence &&
+      previous_fence < main_thread_only().current_fence) {
     base::AutoLock lock(any_thread_lock_);
     if (!any_thread().immediate_incoming_queue.empty() &&
         any_thread().immediate_incoming_queue.front().enqueue_order() >
@@ -693,6 +702,10 @@ bool TaskQueueImpl::BlockedByFenceLocked() const {
 
   return any_thread().immediate_incoming_queue.front().enqueue_order() >
          main_thread_only().current_fence;
+}
+
+EnqueueOrder TaskQueueImpl::GetFenceForTest() const {
+  return main_thread_only().current_fence;
 }
 
 // static

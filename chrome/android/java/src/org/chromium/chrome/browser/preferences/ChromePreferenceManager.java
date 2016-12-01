@@ -28,6 +28,8 @@ public class ChromePreferenceManager {
     private static final String SHOW_SIGNIN_PROMO = "show_signin_promo";
     private static final String ALLOW_LOW_END_DEVICE_UI = "allow_low_end_device_ui";
     private static final String PREF_WEBSITE_SETTINGS_FILTER = "website_settings_filter";
+    private static final String CARDS_IMPRESSION_AFTER_ANIMATION =
+            "cards_impression_after_animation";
     private static final String CONTEXTUAL_SEARCH_PROMO_OPEN_COUNT =
             "contextual_search_promo_open_count";
     private static final String CONTEXTUAL_SEARCH_TAP_TRIGGERED_PROMO_COUNT =
@@ -43,12 +45,14 @@ public class ChromePreferenceManager {
             "contextual_search_current_week_number";
     private static final String HERB_FLAVOR_KEY = "herb_flavor";
     private static final String INSTANT_APPS_KEY = "applink.app_link_enabled";
+    private static final String WEBAPK_COMMAND_LINE_KEY = "webapk.command_line_enabled";
     private static final String WEBAPK_RUNTIME_KEY = "webapk.runtime_enabled";
     private static final String CHROME_HOME_ENABLED_KEY = "chrome_home_enabled";
 
     private static final String CHROME_DEFAULT_BROWSER = "applink.chrome_default_browser";
 
     private static final String NTP_SIGNIN_PROMO_DISMISSED = "ntp.signin_promo_dismissed";
+    private static final String NTP_ANIMATION_RUN_COUNT = "ntp_recycler_view_animation_run_count";
 
     private static final String SUCCESS_UPLOAD_SUFFIX = "_crash_success_upload";
     private static final String FAILURE_UPLOAD_SUFFIX = "_crash_failure_upload";
@@ -352,6 +356,16 @@ public class ChromePreferenceManager {
         writeBoolean(INSTANT_APPS_KEY, isEnabled);
     }
 
+    /** Checks the cached value for the WebAPK command line flag. */
+    public boolean getCachedWebApkCommandLineEnabled() {
+        return mSharedPreferences.getBoolean(WEBAPK_COMMAND_LINE_KEY, false);
+    }
+
+    /** Sets the cached value for the WebAPK command line flag. */
+    public void setCachedWebApkCommandLineEnabled(boolean isEnabled) {
+        writeBoolean(WEBAPK_COMMAND_LINE_KEY, isEnabled);
+    }
+
     /** Checks the cached value for the webapk feature. */
     public boolean getCachedWebApkRuntimeEnabled() {
         return mSharedPreferences.getBoolean(WEBAPK_RUNTIME_KEY, false);
@@ -378,6 +392,26 @@ public class ChromePreferenceManager {
     /** Set whether the user dismissed the sign in promo from the new tab page. */
     public void setNewTabPageSigninPromoDismissed(boolean isPromoDismissed) {
         writeBoolean(NTP_SIGNIN_PROMO_DISMISSED, isPromoDismissed);
+    }
+
+    /** Gets the number of times the New Tab Page first card animation has been run. */
+    public int getNewTabPageFirstCardAnimationRunCount() {
+        return readInt(NTP_ANIMATION_RUN_COUNT);
+    }
+
+    /** Records the number of times the New Tab Page first card animation has been run. */
+    public void setNewTabPageFirstCardAnimationRunCount(int value) {
+        writeInt(NTP_ANIMATION_RUN_COUNT, value);
+    }
+
+    /** Returns whether the user has triggered a snippet impression after viewing the animation. */
+    public boolean getCardsImpressionAfterAnimation() {
+        return mSharedPreferences.getBoolean(CARDS_IMPRESSION_AFTER_ANIMATION, false);
+    }
+
+    /** Sets whether the user has triggered a snippet impression after viewing the animation. */
+    public void setCardsImpressionAfterAnimation(boolean isScrolled) {
+        writeBoolean(CARDS_IMPRESSION_AFTER_ANIMATION, isScrolled);
     }
 
     /**

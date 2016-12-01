@@ -31,6 +31,7 @@
 #include "services/ui/public/cpp/window.h"
 #include "services/ui/public/cpp/window_property.h"
 #include "services/ui/public/cpp/window_tree_client.h"
+#include "services/ui/public/interfaces/constants.mojom.h"
 #include "services/ui/public/interfaces/mus_constants.mojom.h"
 #include "services/ui/public/interfaces/window_manager.mojom.h"
 #include "ui/base/hit_test.h"
@@ -56,10 +57,13 @@ void WindowManager::Init(
   window_tree_client_ = std::move(window_tree_client);
 
   // |connector_| will be null in some tests.
-  if (connector_)
-    connector_->ConnectToInterface("service:ui", &display_controller_);
+  if (connector_) {
+    connector_->ConnectToInterface(ui::mojom::kServiceName,
+                                   &display_controller_);
+  }
 
   screen_ = base::MakeUnique<display::ScreenBase>();
+  display::Screen::SetScreenInstance(screen_.get());
 
   pointer_watcher_event_router_.reset(
       new views::PointerWatcherEventRouter(window_tree_client_.get()));
@@ -156,10 +160,10 @@ RootWindowController* WindowManager::CreateRootWindowController(
   // notify DisplayObservers. Classic ash does this by making sure
   // WindowTreeHostManager is added as a DisplayObserver early on.
   std::unique_ptr<display::DisplayListObserverLock> display_lock =
-      screen_->display_list()->SuspendObserverUpdates();
-  const bool is_first_display = screen_->display_list()->displays().empty();
+      screen_->display_list().SuspendObserverUpdates();
+  const bool is_first_display = screen_->display_list().displays().empty();
   // TODO(sky): should be passed whether display is primary.
-  screen_->display_list()->AddDisplay(
+  screen_->display_list().AddDisplay(
       display, is_first_display ? display::DisplayList::Type::PRIMARY
                                 : display::DisplayList::Type::NOT_PRIMARY);
 
@@ -175,7 +179,7 @@ RootWindowController* WindowManager::CreateRootWindowController(
   for (auto& observer : observers_)
     observer.OnRootWindowControllerAdded(root_window_controller);
 
-  for (auto& observer : *screen_->display_list()->observers())
+  for (auto& observer : *screen_->display_list().observers())
     observer.OnDisplayAdded(root_window_controller->display());
 
   return root_window_controller;
@@ -236,6 +240,9 @@ void WindowManager::Shutdown() {
 
   window_tree_client_.reset();
   window_manager_client_ = nullptr;
+
+  DCHECK_EQ(screen_.get(), display::Screen::GetScreen());
+  display::Screen::SetScreenInstance(nullptr);
 }
 
 WindowManager::RootWindowControllers::iterator
@@ -310,12 +317,12 @@ bool WindowManager::OnWmSetProperty(
     const std::string& name,
     std::unique_ptr<std::vector<uint8_t>>* new_data) {
   // TODO(sky): constrain this to set of keys we know about, and allowed values.
-  return name == ui::mojom::WindowManager::kShowState_Property ||
+  return name == ui::mojom::WindowManager::kAppIcon_Property ||
+         name == ui::mojom::WindowManager::kShowState_Property ||
          name == ui::mojom::WindowManager::kPreferredSize_Property ||
          name == ui::mojom::WindowManager::kResizeBehavior_Property ||
-         name == ui::mojom::WindowManager::kShelfIconResourceId_Property ||
          name == ui::mojom::WindowManager::kShelfItemType_Property ||
-         name == ui::mojom::WindowManager::kWindowAppIcon_Property ||
+         name == ui::mojom::WindowManager::kWindowIcon_Property ||
          name == ui::mojom::WindowManager::kWindowTitle_Property;
 }
 

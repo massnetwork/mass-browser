@@ -7,6 +7,7 @@
       'target_name': 'add_site_dialog',
       'dependencies': [
         '<(DEPTH)/ui/webui/resources/js/compiled_resources2.gyp:web_ui_listener_behavior',
+        'constants',
         'site_settings_behavior',
       ],
       'includes': ['../../../../../third_party/closure_compiler/compile_js2.gypi'],
@@ -67,6 +68,7 @@
     {
       'target_name': 'protocol_handlers',
       'dependencies': [
+        '<(DEPTH)/ui/webui/resources/cr_elements/cr_action_menu/compiled_resources2.gyp:cr_action_menu',
         '<(DEPTH)/ui/webui/resources/js/compiled_resources2.gyp:web_ui_listener_behavior',
         'site_settings_behavior',
       ],
@@ -75,6 +77,7 @@
     {
       'target_name': 'usb_devices',
       'dependencies': [
+        '<(DEPTH)/ui/webui/resources/cr_elements/cr_action_menu/compiled_resources2.gyp:cr_action_menu',
         '<(DEPTH)/ui/webui/resources/js/compiled_resources2.gyp:web_ui_listener_behavior',
         'site_settings_behavior',
       ],
@@ -83,6 +86,7 @@
     {
       'target_name': 'site_data',
       'dependencies': [
+        '../settings_page/compiled_resources2.gyp:settings_subpage_search',
         'cookie_tree_behavior',
         'cookie_tree_node',
       ],
@@ -92,7 +96,9 @@
       'target_name': 'site_data_details_subpage',
       'dependencies': [
         '<(DEPTH)/ui/webui/resources/js/compiled_resources2.gyp:cr',
-        'cookie_tree_behavior',
+        '<(DEPTH)/ui/webui/resources/js/compiled_resources2.gyp:web_ui_listener_behavior',
+        '../compiled_resources2.gyp:route',
+        'site_settings_prefs_browser_proxy',
       ],
       'includes': ['../../../../../third_party/closure_compiler/compile_js2.gypi'],
     },

@@ -79,6 +79,7 @@ import org.chromium.ui.base.ActivityWindowAndroid;
 import org.chromium.ui.base.PageTransition;
 import org.chromium.ui.base.ViewAndroidDelegate;
 import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.display.DisplayAndroid.DisplayAndroidObserver;
 
 import java.io.File;
 import java.lang.annotation.Annotation;
@@ -99,8 +100,7 @@ import java.util.concurrent.Callable;
  * continuous build &amp; test in the open source SDK-based tree).
  */
 @JNINamespace("android_webview")
-public class AwContents implements SmartClipProvider,
-        PostMessageSender.PostMessageSenderDelegate {
+public class AwContents implements SmartClipProvider, PostMessageSender.PostMessageSenderDelegate {
     private static final String TAG = "AwContents";
     private static final boolean TRACE = false;
     private static final int NO_WARN = 0;
@@ -287,6 +287,7 @@ public class AwContents implements SmartClipProvider,
     private final AwZoomControls mZoomControls;
     private final AwScrollOffsetManager mScrollOffsetManager;
     private OverScrollGlow mOverScrollGlow;
+    private final DisplayAndroidObserver mDisplayObserver;
     // This can be accessed on any thread after construction. See AwContentsIoThreadClient.
     private final AwSettings mSettings;
     private final ScrollAccessibilityHelper mScrollAccessibilityHelper;
@@ -359,7 +360,7 @@ public class AwContents implements SmartClipProvider,
     // Do not use directly, call isDestroyed() instead.
     private boolean mIsDestroyed = false;
 
-    private static String sCurrentLocale = "";
+    private static String sCurrentLocales = "";
 
     private static final class AwContentsDestroyRunnable implements Runnable {
         private final long mNativeAwContents;
@@ -693,8 +694,23 @@ public class AwContents implements SmartClipProvider,
 
         @Override
         public void onConfigurationChanged(Configuration configuration) {
-            setLocale(LocaleUtils.toLanguageTag(configuration.locale));
+            updateDefaultLocale();
             mSettings.updateAcceptLanguages();
+        }
+    };
+
+    //--------------------------------------------------------------------------------------------
+    private class AwDisplayAndroidObserver implements DisplayAndroidObserver {
+        @Override
+        public void onRotationChanged(int rotation) {}
+
+        @Override
+        public void onDIPScaleChanged(float dipScale) {
+            if (TRACE) Log.i(TAG, "%s onDIPScaleChanged dipScale=%f", this, dipScale);
+
+            nativeSetDipScale(mNativeAwContents, dipScale);
+            mLayoutSizer.setDIPScale(dipScale);
+            mSettings.setDIPScale(dipScale);
         }
     };
 
@@ -729,7 +745,7 @@ public class AwContents implements SmartClipProvider,
             InternalAccessDelegate internalAccessAdapter,
             NativeDrawGLFunctorFactory nativeDrawGLFunctorFactory, AwContentsClient contentsClient,
             AwSettings settings, DependencyFactory dependencyFactory) {
-        setLocale(LocaleUtils.getDefaultLocaleString());
+        updateDefaultLocale();
         settings.updateAcceptLanguages();
 
         mBrowserContext = browserContext;
@@ -770,6 +786,7 @@ public class AwContents implements SmartClipProvider,
         mBackgroundThreadClient = new BackgroundThreadClientImpl();
         mIoThreadClient = new IoThreadClientImpl();
         mInterceptNavigationDelegate = new InterceptNavigationDelegateImpl();
+        mDisplayObserver = new AwDisplayAndroidObserver();
         mUpdateVisibilityRunnable = new Runnable() {
             @Override
             public void run() {
@@ -804,13 +821,15 @@ public class AwContents implements SmartClipProvider,
         onContainerViewChanged();
     }
 
-    private static void initializeContentViewCore(ContentViewCore contentViewCore,
+    private void initializeContentViewCore(ContentViewCore contentViewCore,
             Context context, ViewAndroidDelegate viewDelegate,
             InternalAccessDelegate internalDispatcher, WebContents webContents,
             GestureStateListener gestureStateListener, ContentViewClient contentViewClient,
             ContentViewCore.ZoomControlsDelegate zoomControlsDelegate,
             WindowAndroid windowAndroid) {
         contentViewCore.initialize(viewDelegate, internalDispatcher, webContents, windowAndroid);
+        contentViewCore.setActionModeCallback(
+                new AwActionModeCallback(this, contentViewCore.getActionModeCallbackHelper()));
         contentViewCore.addGestureStateListener(gestureStateListener);
         contentViewCore.setContentViewClient(contentViewClient);
         contentViewCore.setZoomControlsDelegate(zoomControlsDelegate);
@@ -1002,11 +1021,18 @@ public class AwContents implements SmartClipProvider,
         return wrapper;
     }
 
+    // Set current locales to native.
     @VisibleForTesting
-    public static void setLocale(String locale) {
-        if (!sCurrentLocale.equals(locale)) {
-            sCurrentLocale = locale;
-            nativeSetLocale(sCurrentLocale);
+    public static void updateDefaultLocale() {
+        String locales = LocaleUtils.getDefaultLocaleListString();
+        if (!sCurrentLocales.equals(locales)) {
+            sCurrentLocales = locales;
+
+            // We cannot use the first language in sCurrentLocales for the UI language even on
+            // Android N. LocaleUtils.getDefaultLocaleString() is capable for UI language but
+            // it is not guaranteed to be listed at the first of sCurrentLocales. Therefore,
+            // both values are passed to native.
+            nativeUpdateDefaultLocale(LocaleUtils.getDefaultLocaleString(), sCurrentLocales);
         }
     }
 
@@ -1054,10 +1080,8 @@ public class AwContents implements SmartClipProvider,
         installWebContentsObserver();
         mSettings.setWebContents(webContents);
 
-        float dipScale = mContentViewCore.getDeviceScaleFactor();
-        nativeSetDipScale(mNativeAwContents, dipScale);
-        mLayoutSizer.setDIPScale(dipScale);
-        mSettings.setDIPScale(dipScale);
+        final float dipScale = mWindowAndroid.getWindowAndroid().getDisplay().getDipScale();
+        mDisplayObserver.onDIPScaleChanged(dipScale);
 
         updateContentViewCoreVisibility();
 
@@ -2375,6 +2399,7 @@ public class AwContents implements SmartClipProvider,
         if (TRACE) Log.i(TAG, "%s onAttachedToWindow", this);
         mTemporarilyDetached = false;
         mAwViewMethods.onAttachedToWindow();
+        mWindowAndroid.getWindowAndroid().getDisplay().addObserver(mDisplayObserver);
     }
 
     /**
@@ -2383,6 +2408,7 @@ public class AwContents implements SmartClipProvider,
     @SuppressLint("MissingSuperCall")
     public void onDetachedFromWindow() {
         if (TRACE) Log.i(TAG, "%s onDetachedFromWindow", this);
+        mWindowAndroid.getWindowAndroid().getDisplay().removeObserver(mDisplayObserver);
         mAwViewMethods.onDetachedFromWindow();
     }
 
@@ -3138,7 +3164,7 @@ public class AwContents implements SmartClipProvider,
             postUpdateContentViewCoreVisibility();
             mCurrentFunctor.onAttachedToWindow();
 
-            setLocale(LocaleUtils.getDefaultLocaleString());
+            updateDefaultLocale();
             mSettings.updateAcceptLanguages();
 
             if (mComponentCallbacks != null) return;
@@ -3290,7 +3316,7 @@ public class AwContents implements SmartClipProvider,
     private static native void nativeSetAwDrawGLFunctionTable(long functionTablePointer);
     private static native int nativeGetNativeInstanceCount();
     private static native void nativeSetShouldDownloadFavicons();
-    private static native void nativeSetLocale(String locale);
+    private static native void nativeUpdateDefaultLocale(String locale, String localeList);
 
     private native void nativeSetJavaPeers(long nativeAwContents, AwContents awContents,
             AwWebContentsDelegate webViewWebContentsDelegate,

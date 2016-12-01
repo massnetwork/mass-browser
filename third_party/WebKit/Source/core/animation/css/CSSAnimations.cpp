@@ -38,6 +38,7 @@
 #include "core/animation/InertEffect.h"
 #include "core/animation/Interpolation.h"
 #include "core/animation/KeyframeEffectModel.h"
+#include "core/animation/KeyframeEffectReadOnly.h"
 #include "core/animation/LegacyStyleInterpolation.h"
 #include "core/animation/css/CSSAnimatableValueFactory.h"
 #include "core/css/CSSKeyframeRule.h"
@@ -169,7 +170,7 @@ static StringKeyframeEffectModel* createKeyframeEffectModel(
   }
   DCHECK_GE(keyframes.size(), 2U);
   DCHECK(!keyframes.first()->offset());
-  DCHECK_EQ(keyframes.last()->offset(), 1);
+  DCHECK_EQ(keyframes.back()->offset(), 1);
 
   // This is used for use counting neutral keyframes running on the compositor.
   PropertySet allProperties;
@@ -250,8 +251,8 @@ static const KeyframeEffectModelBase* getKeyframeEffectModelBase(
   if (!effect)
     return nullptr;
   const EffectModel* model = nullptr;
-  if (effect->isKeyframeEffect())
-    model = toKeyframeEffect(effect)->model();
+  if (effect->isKeyframeEffectReadOnly())
+    model = toKeyframeEffectReadOnly(effect)->model();
   else if (effect->isInertEffect())
     model = toInertEffect(effect)->model();
   if (!model || !model->isKeyframeEffectModel())
@@ -487,7 +488,8 @@ void CSSAnimations::maybeApplyPendingUpdate(Element* element) {
     animation->setCompositorPending(true);
 
   for (const auto& entry : m_pendingUpdate.animationsWithUpdates()) {
-    KeyframeEffect* effect = toKeyframeEffect(entry.animation->effect());
+    KeyframeEffectReadOnly* effect =
+        toKeyframeEffectReadOnly(entry.animation->effect());
 
     effect->setModel(entry.effect->model());
     effect->updateSpecifiedTiming(entry.effect->specifiedTiming());
@@ -527,26 +529,27 @@ void CSSAnimations::maybeApplyPendingUpdate(Element* element) {
   // be when transitions are retargeted. Instead of triggering complete style
   // recalculation, we find these cases by searching for new transitions that
   // have matching cancelled animation property IDs on the compositor.
-  HeapHashMap<CSSPropertyID, std::pair<Member<KeyframeEffect>, double>>
+  HeapHashMap<CSSPropertyID, std::pair<Member<KeyframeEffectReadOnly>, double>>
       retargetedCompositorTransitions;
   for (CSSPropertyID id : m_pendingUpdate.cancelledTransitions()) {
     DCHECK(m_transitions.contains(id));
 
     Animation* animation = m_transitions.take(id).animation;
-    KeyframeEffect* effect = toKeyframeEffect(animation->effect());
+    KeyframeEffectReadOnly* effect =
+        toKeyframeEffectReadOnly(animation->effect());
     if (effect->hasActiveAnimationsOnCompositor(id) &&
         m_pendingUpdate.newTransitions().find(id) !=
             m_pendingUpdate.newTransitions().end() &&
         !animation->limited())
       retargetedCompositorTransitions.add(
-          id, std::pair<KeyframeEffect*, double>(
+          id, std::pair<KeyframeEffectReadOnly*, double>(
                   effect, animation->startTimeInternal()));
     animation->cancel();
     // after cancelation, transitions must be downgraded or they'll fail
     // to be considered when retriggering themselves. This can happen if
     // the transition is captured through getAnimations then played.
-    if (animation->effect() && animation->effect()->isKeyframeEffect())
-      toKeyframeEffect(animation->effect())->downgradeToNormal();
+    if (animation->effect() && animation->effect()->isKeyframeEffectReadOnly())
+      toKeyframeEffectReadOnly(animation->effect())->downgradeToNormal();
     animation->update(TimingUpdateOnDemand);
   }
 
@@ -555,8 +558,9 @@ void CSSAnimations::maybeApplyPendingUpdate(Element* element) {
     if (m_transitions.contains(id)) {
       Animation* animation = m_transitions.take(id).animation;
       // Transition must be downgraded
-      if (animation->effect() && animation->effect()->isKeyframeEffect())
-        toKeyframeEffect(animation->effect())->downgradeToNormal();
+      if (animation->effect() &&
+          animation->effect()->isKeyframeEffectReadOnly())
+        toKeyframeEffectReadOnly(animation->effect())->downgradeToNormal();
     }
   }
 
@@ -579,9 +583,9 @@ void CSSAnimations::maybeApplyPendingUpdate(Element* element) {
     EffectModel* model = inertAnimation->model();
 
     if (retargetedCompositorTransitions.contains(id)) {
-      const std::pair<Member<KeyframeEffect>, double>& oldTransition =
+      const std::pair<Member<KeyframeEffectReadOnly>, double>& oldTransition =
           retargetedCompositorTransitions.get(id);
-      KeyframeEffect* oldAnimation = oldTransition.first;
+      KeyframeEffectReadOnly* oldAnimation = oldTransition.first;
       double oldStartTime = oldTransition.second;
       double inheritedTime =
           isNull(oldStartTime)
@@ -840,6 +844,13 @@ void CSSAnimations::cancel() {
   clearPendingUpdate();
 }
 
+// TODO(alancutter): CSS properties and presentation attributes may have
+// identical effects. By grouping them in the same set we introduce a bug where
+// arbitrary hash iteration will determine the order the apply in and thus which
+// one "wins". We should be more deliberate about the order of application in
+// the case of effect collisions.
+// Example: Both 'color' and 'svg-color' set the color on ComputedStyle but are
+// considered distinct properties in the ActiveInterpolationsMap.
 static bool isStylePropertyHandle(const PropertyHandle& propertyHandle) {
   return propertyHandle.isCSSProperty() ||
          propertyHandle.isPresentationAttribute();
@@ -850,14 +861,14 @@ void CSSAnimations::calculateAnimationActiveInterpolations(
     const Element* animatingElement) {
   ElementAnimations* elementAnimations =
       animatingElement ? animatingElement->elementAnimations() : nullptr;
-  AnimationStack* animationStack =
-      elementAnimations ? &elementAnimations->animationStack() : nullptr;
+  EffectStack* effectStack =
+      elementAnimations ? &elementAnimations->effectStack() : nullptr;
 
   if (update.newAnimations().isEmpty() &&
       update.suppressedAnimations().isEmpty()) {
     ActiveInterpolationsMap activeInterpolationsForAnimations(
-        AnimationStack::activeInterpolations(
-            animationStack, nullptr, nullptr,
+        EffectStack::activeInterpolations(
+            effectStack, nullptr, nullptr,
             KeyframeEffectReadOnly::DefaultPriority, isStylePropertyHandle));
     update.adoptActiveInterpolationsForAnimations(
         activeInterpolationsForAnimations);
@@ -873,8 +884,8 @@ void CSSAnimations::calculateAnimationActiveInterpolations(
     newEffects.append(updatedAnimation.effect);
 
   ActiveInterpolationsMap activeInterpolationsForAnimations(
-      AnimationStack::activeInterpolations(
-          animationStack, &newEffects, &update.suppressedAnimations(),
+      EffectStack::activeInterpolations(
+          effectStack, &newEffects, &update.suppressedAnimations(),
           KeyframeEffectReadOnly::DefaultPriority, isStylePropertyHandle));
   update.adoptActiveInterpolationsForAnimations(
       activeInterpolationsForAnimations);
@@ -885,14 +896,14 @@ void CSSAnimations::calculateTransitionActiveInterpolations(
     const Element* animatingElement) {
   ElementAnimations* elementAnimations =
       animatingElement ? animatingElement->elementAnimations() : nullptr;
-  AnimationStack* animationStack =
-      elementAnimations ? &elementAnimations->animationStack() : nullptr;
+  EffectStack* effectStack =
+      elementAnimations ? &elementAnimations->effectStack() : nullptr;
 
   ActiveInterpolationsMap activeInterpolationsForTransitions;
   if (update.newTransitions().isEmpty() &&
       update.cancelledTransitions().isEmpty()) {
-    activeInterpolationsForTransitions = AnimationStack::activeInterpolations(
-        animationStack, nullptr, nullptr,
+    activeInterpolationsForTransitions = EffectStack::activeInterpolations(
+        effectStack, nullptr, nullptr,
         KeyframeEffectReadOnly::TransitionPriority, isStylePropertyHandle);
   } else {
     HeapVector<Member<const InertEffect>> newTransitions;
@@ -910,8 +921,8 @@ void CSSAnimations::calculateTransitionActiveInterpolations(
       }
     }
 
-    activeInterpolationsForTransitions = AnimationStack::activeInterpolations(
-        animationStack, &newTransitions, &cancelledAnimations,
+    activeInterpolationsForTransitions = EffectStack::activeInterpolations(
+        effectStack, &newTransitions, &cancelledAnimations,
         KeyframeEffectReadOnly::TransitionPriority, isStylePropertyHandle);
   }
 

@@ -15,6 +15,7 @@ import org.chromium.net.MetricsTestUtil.TestRequestFinishedListener;
 import org.chromium.net.TestBidirectionalStreamCallback.FailureType;
 import org.chromium.net.TestBidirectionalStreamCallback.ResponseStep;
 import org.chromium.net.impl.CronetBidirectionalStream;
+import org.chromium.net.impl.UrlResponseInfoImpl;
 
 import java.nio.ByteBuffer;
 import java.util.AbstractMap;
@@ -84,7 +85,7 @@ public class BidirectionalStreamTest extends CronetTestBase {
             headersList.add(new AbstractMap.SimpleImmutableEntry<String, String>(
                     headers[i], headers[i + 1]));
         }
-        UrlResponseInfo urlResponseInfo = new UrlResponseInfo(
+        UrlResponseInfoImpl urlResponseInfo = new UrlResponseInfoImpl(
                 Arrays.asList(urls), statusCode, message, headersList, false, "h2", null);
         urlResponseInfo.setReceivedBytesCount(receivedBytes);
         return urlResponseInfo;
@@ -94,6 +95,8 @@ public class BidirectionalStreamTest extends CronetTestBase {
             throws Exception {
         String url = Http2TestServer.getEchoMethodUrl();
         TestBidirectionalStreamCallback callback = new TestBidirectionalStreamCallback();
+        TestRequestFinishedListener requestFinishedListener = new TestRequestFinishedListener();
+        mTestFramework.mCronetEngine.addRequestFinishedListener(requestFinishedListener);
         // Create stream.
         BidirectionalStream stream =
                 mTestFramework.mCronetEngine
@@ -103,6 +106,7 @@ public class BidirectionalStreamTest extends CronetTestBase {
         stream.start();
         callback.blockForDone();
         assertTrue(stream.isDone());
+        requestFinishedListener.blockUntilDone();
         assertEquals(200, callback.mResponseInfo.getHttpStatusCode());
         // Default method is 'GET'.
         assertEquals("GET", callback.mResponseAsString);
@@ -110,6 +114,8 @@ public class BidirectionalStreamTest extends CronetTestBase {
                 new String[] {url}, "", 200, expectedReceivedBytes, ":status", "200");
         assertResponseEquals(urlResponseInfo, callback.mResponseInfo);
         checkResponseInfo(callback.mResponseInfo, Http2TestServer.getEchoMethodUrl(), 200, "");
+        RequestFinishedInfo finishedInfo = requestFinishedListener.getRequestInfo();
+        assertTrue(finishedInfo.getAnnotations().isEmpty());
     }
 
     @SmallTest
@@ -195,7 +201,7 @@ public class BidirectionalStreamTest extends CronetTestBase {
         stream.start();
         callback.blockForDone();
         assertTrue(stream.isDone());
-        assertEquals("Exception in BidirectionalStream: net::ERR_DISALLOWED_URL_SCHEME",
+        assertContains("Exception in BidirectionalStream: net::ERR_DISALLOWED_URL_SCHEME",
                 callback.mError.getMessage());
         assertEquals(-301, callback.mError.getCronetInternalErrorCode());
     }

@@ -17,8 +17,6 @@
 #include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "base/observer_list.h"
-#include "cc/animation/element_id.h"
-#include "cc/animation/target_property.h"
 #include "cc/base/cc_export.h"
 #include "cc/base/region.h"
 #include "cc/debug/micro_benchmark.h"
@@ -27,21 +25,18 @@
 #include "cc/layers/layer_position_constraint.h"
 #include "cc/layers/paint_properties.h"
 #include "cc/output/filter_operations.h"
+#include "cc/trees/element_id.h"
 #include "cc/trees/layer_tree.h"
 #include "cc/trees/mutator_host_client.h"
 #include "cc/trees/property_tree.h"
+#include "cc/trees/target_property.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkPicture.h"
-#include "third_party/skia/include/core/SkXfermode.h"
 #include "ui/gfx/geometry/point3_f.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/geometry/scroll_offset.h"
 #include "ui/gfx/transform.h"
-
-namespace gfx {
-class BoxF;
-}
 
 namespace base {
 namespace trace_event {
@@ -51,24 +46,18 @@ class ConvertableToTraceFormat;
 
 namespace cc {
 
-class AnimationHost;
 class CopyOutputRequest;
-class LayerAnimationEventObserver;
 class LayerClient;
 class LayerImpl;
 class LayerTreeHost;
 class LayerTreeHostCommon;
 class LayerTreeImpl;
-class LayerTreeSettings;
-class RenderingStatsInstrumentation;
-class ResourceUpdateQueue;
+class MutatorHost;
 class ScrollbarLayerInterface;
-class SimpleEnclosedRegion;
 
 namespace proto {
 class LayerNode;
 class LayerProperties;
-class LayerUpdate;
 }  // namespace proto
 
 // Base class for composited layers. Special layer types are derived from
@@ -140,16 +129,16 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
 
   virtual bool AlwaysUseActiveTreeOpacity() const;
 
-  void SetBlendMode(SkXfermode::Mode blend_mode);
-  SkXfermode::Mode blend_mode() const { return inputs_.blend_mode; }
+  void SetBlendMode(SkBlendMode blend_mode);
+  SkBlendMode blend_mode() const { return inputs_.blend_mode; }
 
-  void set_draw_blend_mode(SkXfermode::Mode blend_mode) {
+  void set_draw_blend_mode(SkBlendMode blend_mode) {
     if (draw_blend_mode_ == blend_mode)
       return;
     draw_blend_mode_ = blend_mode;
     SetNeedsPushProperties();
   }
-  SkXfermode::Mode draw_blend_mode() const { return draw_blend_mode_; }
+  SkBlendMode draw_blend_mode() const { return draw_blend_mode_; }
 
   // A layer is root for an isolated group when it and all its descendants are
   // drawn over a black and fully transparent background, creating an isolated
@@ -358,33 +347,11 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
   // construction of the correct layer on the client.
   virtual void ToLayerNodeProto(proto::LayerNode* proto) const;
 
-  // Recursively iterate over this layer and all children and reset the
-  // properties sent with the hierarchical structure in the LayerNode protos.
-  // This must be done before deserializing the new LayerTree from the Layernode
-  // protos.
-  void ClearLayerTreePropertiesForDeserializationAndAddToMap(
-      LayerIdMap* layer_map);
-
-  // Recursively iterate over the given LayerNode proto and read the structure
-  // into this node and its children. The |layer_map| should be used to look
-  // for previously existing Layers, since they should be re-used between each
-  // hierarchy update.
-  virtual void FromLayerNodeProto(const proto::LayerNode& proto,
-                                  const LayerIdMap& layer_map,
-                                  LayerTreeHost* layer_tree_host);
-
   // This method is similar to PushPropertiesTo, but instead of pushing to
   // a LayerImpl, it pushes the properties to proto::LayerProperties. It is
   // called only on layers that have changed properties. The properties
   // themselves are pushed to proto::LayerProperties.
-  virtual void ToLayerPropertiesProto(proto::LayerUpdate* layer_update,
-                                      bool inputs_only);
-
-  // Read all property values from the given LayerProperties object and update
-  // the current layer. The values for |needs_push_properties_| and
-  // |num_dependents_need_push_properties_| are always updated, but the rest
-  // of |proto| is only read if |needs_push_properties_| is set.
-  void FromLayerPropertiesProto(const proto::LayerProperties& proto);
+  virtual void ToLayerPropertiesProto(proto::LayerProperties* proto);
 
   LayerTreeHost* GetLayerTreeHostForTesting() const { return layer_tree_host_; }
   LayerTree* GetLayerTree() const;
@@ -494,7 +461,7 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
   }
   void ClearPreferredRasterBounds();
 
-  AnimationHost* GetAnimationHost() const;
+  MutatorHost* GetMutatorHost() const;
 
   ElementListType GetElementTypeForAnimation() const;
 
@@ -503,6 +470,8 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
   void SetLayerIdForTesting(int id);
 
   void SetScrollbarsHiddenFromImplSide(bool hidden);
+
+  const gfx::Rect& update_rect() const { return inputs_.update_rect; }
 
  protected:
   friend class LayerImpl;
@@ -544,29 +513,13 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
 
   bool IsPropertyChangeAllowed() const;
 
-  // Serialize all the necessary properties to be able to reconstruct this Layer
-  // into proto::LayerProperties. This method is not marked as const
-  // as some implementations need reset member fields, similarly to
-  // PushPropertiesTo().
-  virtual void LayerSpecificPropertiesToProto(proto::LayerProperties* proto,
-                                              bool inputs_only);
-
-  // Deserialize all the necessary properties from proto::LayerProperties into
-  // this Layer.
-  virtual void FromLayerSpecificPropertiesProto(
-      const proto::LayerProperties& proto);
-
-  gfx::Rect& update_rect() { return inputs_.update_rect; }
-
   // When true, the layer is about to perform an update. Any commit requests
   // will be handled implicitly after the update completes.
   bool ignore_set_needs_commit_;
 
  private:
   friend class base::RefCounted<Layer>;
-  friend class LayerSerializationTest;
   friend class LayerTreeHostCommon;
-  friend class LayerTreeHost;
   friend class LayerTree;
   friend class LayerInternalsForTest;
 
@@ -634,7 +587,7 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
     scoped_refptr<Layer> mask_layer;
 
     float opacity;
-    SkXfermode::Mode blend_mode;
+    SkBlendMode blend_mode;
 
     bool is_root_for_isolated_group : 1;
 
@@ -728,7 +681,7 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
   SkColor safe_opaque_background_color_;
   // draw_blend_mode may be different than blend_mode_,
   // when a RenderSurface re-parents the layer's blend_mode.
-  SkXfermode::Mode draw_blend_mode_;
+  SkBlendMode draw_blend_mode_;
   std::unique_ptr<std::set<Layer*>> scroll_children_;
 
   std::unique_ptr<std::set<Layer*>> clip_children_;

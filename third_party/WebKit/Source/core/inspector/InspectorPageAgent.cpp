@@ -42,7 +42,6 @@
 #include "core/fetch/MemoryCache.h"
 #include "core/fetch/Resource.h"
 #include "core/fetch/ResourceFetcher.h"
-#include "core/fetch/ScriptResource.h"
 #include "core/frame/FrameHost.h"
 #include "core/frame/FrameView.h"
 #include "core/frame/LocalFrame.h"
@@ -62,6 +61,7 @@
 #include "core/inspector/V8InspectorString.h"
 #include "core/loader/DocumentLoader.h"
 #include "core/loader/FrameLoader.h"
+#include "core/loader/resource/ScriptResource.h"
 #include "platform/MIMETypeRegistry.h"
 #include "platform/PlatformResourceLoader.h"
 #include "platform/UserGestureIndicator.h"
@@ -81,8 +81,6 @@ static const char pageAgentScriptsToEvaluateOnLoad[] =
     "pageAgentScriptsToEvaluateOnLoad";
 static const char screencastEnabled[] = "screencastEnabled";
 static const char autoAttachToCreatedPages[] = "autoAttachToCreatedPages";
-static const char blockedEventsWarningThreshold[] =
-    "blockedEventsWarningThreshold";
 static const char overlaySuspended[] = "overlaySuspended";
 static const char overlayMessage[] = "overlayMessage";
 }
@@ -172,6 +170,9 @@ static void maybeEncodeTextContent(const String& textContent,
   } else if (buffer) {
     *result = base64Encode(buffer->data(), buffer->size());
     *base64Encoded = true;
+  } else if (textContent.isNull()) {
+    *result = "";
+    *base64Encoded = false;
   } else {
     DCHECK(!textContent.is8Bit());
     *result = base64Encode(textContent.utf8(WTF::LenientUTF8Conversion));
@@ -371,8 +372,6 @@ InspectorPageAgent::InspectorPageAgent(
 void InspectorPageAgent::restore() {
   if (m_state->booleanProperty(PageAgentState::pageAgentEnabled, false))
     enable();
-  setBlockedEventsWarningThreshold(m_state->doubleProperty(
-      PageAgentState::blockedEventsWarningThreshold, 0.0));
   if (m_client) {
     String overlayMessage;
     m_state->getString(PageAgentState::overlayMessage, &overlayMessage);
@@ -461,6 +460,10 @@ Response InspectorPageAgent::reload(
 
 Response InspectorPageAgent::navigate(const String& url, String* outFrameId) {
   *outFrameId = frameId(m_inspectedFrames->root());
+  return Response::OK();
+}
+
+Response InspectorPageAgent::stopLoading() {
   return Response::OK();
 }
 
@@ -842,16 +845,6 @@ Response InspectorPageAgent::configureOverlay(Maybe<bool> suspended,
   if (m_client)
     m_client->configureOverlay(suspended.fromMaybe(false),
                                message.fromMaybe(String()));
-  return Response::OK();
-}
-
-Response InspectorPageAgent::setBlockedEventsWarningThreshold(
-    double threshold) {
-  m_state->setDouble(PageAgentState::blockedEventsWarningThreshold, threshold);
-  FrameHost* host = m_inspectedFrames->root()->host();
-  if (!host)
-    return Response::Error("Host not found");
-  host->settings().setBlockedMainThreadEventsWarningThreshold(threshold);
   return Response::OK();
 }
 

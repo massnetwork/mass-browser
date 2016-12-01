@@ -5,6 +5,7 @@
 // http://dev.w3.org/fxtf/geometry/#DOMMatrix
 
 [
+    Constructor,
     Constructor(sequence<unrestricted double> numberSequence),
     RaisesException=Constructor,
     // FIXME: Exposed=(Window,Worker)
@@ -42,14 +43,10 @@
     readonly attribute boolean is2D;
     readonly attribute boolean isIdentity;
 
-    // TODO(zino): Should implement rotate() method (See: crbug.com/645878)
-    // TODO(zino): Should implement rotateFromVector() method (See: crbug.com/645882)
-    // TODO(zino): Should implement rotateAxisAngle() method (See: crbug.com/645883)
     // TODO(zino): Should implement transformPoint() method (See: crbug.com/645885)
-    // TODO(zino): Should remove scaleNonUniform() method (See: crbug.com/645887)
     // Immutable transform methods
-    DOMMatrix translate(unrestricted double tx,
-                        unrestricted double ty,
+    DOMMatrix translate(optional unrestricted double tx = 0,
+                        optional unrestricted double ty = 0,
                         optional unrestricted double tz = 0);
     DOMMatrix scale(optional unrestricted double scaleX = 1,
                     optional unrestricted double scaleY,
@@ -57,7 +54,7 @@
                     optional unrestricted double originX = 0,
                     optional unrestricted double originY = 0,
                     optional unrestricted double originZ = 0);
-    DOMMatrix scale3d(unrestricted double scale,
+    DOMMatrix scale3d(optional unrestricted double scale = 1,
                       optional unrestricted double originX = 0,
                       optional unrestricted double originY = 0,
                       optional unrestricted double originZ = 0);
@@ -77,7 +74,10 @@
     DOMMatrix flipY();
     DOMMatrix inverse();
 
+    DOMPoint transformPoint(optional DOMPointInit point);
+
     Float32Array toFloat32Array();
     Float64Array toFloat64Array();
     stringifier;
+    serializer = {attribute};
 };

@@ -274,8 +274,8 @@ TEST_P(PaintPropertyTreeBuilderTest, PositionAndScroll) {
   EXPECT_EQ(FloatRoundedRect(0, 0, 300, 400),
             absPosProperties->overflowClip()->clipRect());
   EXPECT_EQ(frameContentClip(), absPosProperties->overflowClip()->parent());
-    CHECK_EXACT_VISUAL_RECT(LayoutRect(123, 456, 300, 400),
-                            absPos->layoutObject(), frameView->layoutView());
+  CHECK_EXACT_VISUAL_RECT(LayoutRect(123, 456, 300, 400),
+                          absPos->layoutObject(), frameView->layoutView());
 }
 
 TEST_P(PaintPropertyTreeBuilderTest, FrameScrollingTraditional) {
@@ -348,9 +348,9 @@ TEST_P(PaintPropertyTreeBuilderTest, Transform) {
             transformProperties->paintOffsetTranslation()->matrix());
   EXPECT_EQ(frameScrollTranslation(),
             transformProperties->paintOffsetTranslation()->parent());
-    CHECK_EXACT_VISUAL_RECT(LayoutRect(173, 556, 400, 300),
-                            transform->layoutObject(),
-                            document().view()->layoutView());
+  CHECK_EXACT_VISUAL_RECT(LayoutRect(173, 556, 400, 300),
+                          transform->layoutObject(),
+                          document().view()->layoutView());
 }
 
 TEST_P(PaintPropertyTreeBuilderTest, RelativePositionInline) {
@@ -962,12 +962,12 @@ TEST_P(PaintPropertyTreeBuilderTest, TransformNodesAcrossSubframes) {
       "<style>body { margin: 0; }</style>"
       "<div id='divWithTransform' style='transform: translate3d(1px, 2px, "
       "3px);'>"
-      "  <iframe style='border: 7px solid black' id='frame'></iframe>"
+      "  <iframe style='border: 7px solid black'></iframe>"
       "</div>");
-  Document& frameDocument = setupChildIframe(
-      "frame",
+  setChildFrameHTML(
       "<style>body { margin: 0; }</style><div id='transform' style='transform: "
       "translate3d(4px, 5px, 6px); width: 100px; height: 200px'></div>");
+
   FrameView* frameView = document().view();
   frameView->updateAllLifecyclePhases();
 
@@ -977,11 +977,11 @@ TEST_P(PaintPropertyTreeBuilderTest, TransformNodesAcrossSubframes) {
       divWithTransform->paintProperties();
   EXPECT_EQ(TransformationMatrix().translate3d(1, 2, 3),
             divWithTransformProperties->transform()->matrix());
-    CHECK_EXACT_VISUAL_RECT(LayoutRect(1, 2, 800, 164), divWithTransform,
-                            frameView->layoutView());
+  CHECK_EXACT_VISUAL_RECT(LayoutRect(1, 2, 800, 164), divWithTransform,
+                          frameView->layoutView());
 
   LayoutObject* innerDivWithTransform =
-      frameDocument.getElementById("transform")->layoutObject();
+      childDocument().getElementById("transform")->layoutObject();
   const ObjectPaintProperties* innerDivWithTransformProperties =
       innerDivWithTransform->paintProperties();
   auto* innerDivTransform = innerDivWithTransformProperties->transform();
@@ -1013,14 +1013,13 @@ TEST_P(PaintPropertyTreeBuilderTest, TransformNodesInTransformedSubframes) {
       "<style>body { margin: 0; }</style>"
       "<div id='divWithTransform' style='transform: translate3d(1px, 2px, "
       "3px);'>"
-      "  <iframe id='frame' style='transform: translate3d(4px, 5px, 6px); "
+      "  <iframe style='transform: translate3d(4px, 5px, 6px); "
       "border: 42px solid; margin: 7px;'></iframe>"
       "</div>");
-  Document& frameDocument =
-      setupChildIframe("frame",
-                       "<style>body { margin: 31px; }</style><div "
-                       "id='transform' style='transform: translate3d(7px, 8px, "
-                       "9px); width: 100px; height: 200px'></div>");
+  setChildFrameHTML(
+      "<style>body { margin: 31px; }</style><div "
+      "id='transform' style='transform: translate3d(7px, 8px, "
+      "9px); width: 100px; height: 200px'></div>");
   FrameView* frameView = document().view();
   frameView->updateAllLifecyclePhases();
 
@@ -1035,7 +1034,7 @@ TEST_P(PaintPropertyTreeBuilderTest, TransformNodesInTransformedSubframes) {
   //               Transform transform=translation=7.000000,8.000000,9.000000
 
   LayoutObject* innerDivWithTransform =
-      frameDocument.getElementById("transform")->layoutObject();
+      childDocument().getElementById("transform")->layoutObject();
   auto* innerDivTransform =
       innerDivWithTransform->paintProperties()->transform();
   EXPECT_EQ(TransformationMatrix().translate3d(7, 8, 9),
@@ -1067,8 +1066,8 @@ TEST_P(PaintPropertyTreeBuilderTest, TransformNodesInTransformedSubframes) {
       document().getElementById("divWithTransform")->layoutObject();
   EXPECT_EQ(divWithTransformTransform,
             divWithTransform->paintProperties()->transform());
-    CHECK_EXACT_VISUAL_RECT(LayoutRect(1, 2, 800, 248), divWithTransform,
-                            frameView->layoutView());
+  CHECK_EXACT_VISUAL_RECT(LayoutRect(1, 2, 800, 248), divWithTransform,
+                          frameView->layoutView());
 }
 
 TEST_P(PaintPropertyTreeBuilderTest, TreeContextClipByNonStackingContext) {
@@ -1135,8 +1134,8 @@ TEST_P(PaintPropertyTreeBuilderTest,
   EXPECT_EQ(
       scrollerProperties->effect(),
       childProperties->localBorderBoxProperties()->propertyTreeState.effect());
-    CHECK_EXACT_VISUAL_RECT(LayoutRect(0, 0, 800, 10000), &scroller,
-                            document().view()->layoutView());
+  CHECK_EXACT_VISUAL_RECT(LayoutRect(0, 0, 800, 10000), &scroller,
+                          document().view()->layoutView());
   CHECK_EXACT_VISUAL_RECT(LayoutRect(0, 0, 100, 200), &child,
                           document().view()->layoutView());
 }
@@ -1690,7 +1689,7 @@ TEST_P(PaintPropertyTreeBuilderTest, SvgRootAndForeignObjectPixelSnapping) {
   EXPECT_EQ(nullptr, svgProperties->paintOffsetTranslation());
   EXPECT_EQ(LayoutPoint(LayoutUnit(8.6), LayoutUnit(8.3)),
             svgProperties->localBorderBoxProperties()->paintOffset);
-  // Paint offset of SVGRoot be baked into svgLocalToBorderBoxTransform after
+  // Paint offset of SVGRoot is baked into svgLocalToBorderBoxTransform after
   // snapped to pixels.
   EXPECT_EQ(TransformationMatrix().translate(9, 8),
             svgProperties->svgLocalToBorderBoxTransform()->matrix());
@@ -2606,24 +2605,23 @@ TEST_P(PaintPropertyTreeBuilderTest,
       "</div>"
       "<div class='forceScroll'></div>");
   Element* overflowA = document().getElementById("overflowA");
-  EXPECT_FALSE(frameScroll()->hasMainThreadScrollingReasons(
-      MainThreadScrollingReason::kThreadedScrollingDisabled));
+  EXPECT_FALSE(frameScroll()->threadedScrollingDisabled());
   EXPECT_FALSE(overflowA->layoutObject()
                    ->paintProperties()
                    ->scroll()
-                   ->hasMainThreadScrollingReasons(
-                       MainThreadScrollingReason::kThreadedScrollingDisabled));
+                   ->threadedScrollingDisabled());
 
   document().settings()->setThreadedScrollingEnabled(false);
+  // TODO(pdr): The main thread scrolling setting should invalidate properties.
+  document().view()->setNeedsPaintPropertyUpdate();
+  overflowA->layoutObject()->setNeedsPaintPropertyUpdate();
   document().view()->updateAllLifecyclePhases();
 
-  EXPECT_TRUE(frameScroll()->hasMainThreadScrollingReasons(
-      MainThreadScrollingReason::kThreadedScrollingDisabled));
+  EXPECT_TRUE(frameScroll()->threadedScrollingDisabled());
   EXPECT_TRUE(overflowA->layoutObject()
                   ->paintProperties()
                   ->scroll()
-                  ->hasMainThreadScrollingReasons(
-                      MainThreadScrollingReason::kThreadedScrollingDisabled));
+                  ->threadedScrollingDisabled());
 }
 
 TEST_P(PaintPropertyTreeBuilderTest,
@@ -2660,56 +2658,41 @@ TEST_P(PaintPropertyTreeBuilderTest,
   Element* overflowA = document().getElementById("overflowA");
   Element* overflowB = document().getElementById("overflowB");
 
-  EXPECT_TRUE(frameScroll()->hasMainThreadScrollingReasons(
-      MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_TRUE(
-      overflowA->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_FALSE(
-      overflowB->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
+  EXPECT_TRUE(frameScroll()->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_TRUE(overflowA->layoutObject()
+                  ->paintProperties()
+                  ->scroll()
+                  ->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_FALSE(overflowB->layoutObject()
+                   ->paintProperties()
+                   ->scroll()
+                   ->hasBackgroundAttachmentFixedDescendants());
 
   // Removing a main thread scrolling reason should update the entire tree.
   overflowB->removeAttribute("class");
   document().view()->updateAllLifecyclePhases();
-  EXPECT_FALSE(frameScroll()->hasMainThreadScrollingReasons(
-      MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_FALSE(
-      overflowA->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_FALSE(
-      overflowB->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
+  EXPECT_FALSE(frameScroll()->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_FALSE(overflowA->layoutObject()
+                   ->paintProperties()
+                   ->scroll()
+                   ->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_FALSE(overflowB->layoutObject()
+                   ->paintProperties()
+                   ->scroll()
+                   ->hasBackgroundAttachmentFixedDescendants());
 
   // Adding a main thread scrolling reason should update the entire tree.
   overflowB->setAttribute(HTMLNames::classAttr, "backgroundAttachmentFixed");
   document().view()->updateAllLifecyclePhases();
-  EXPECT_TRUE(frameScroll()->hasMainThreadScrollingReasons(
-      MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_TRUE(
-      overflowA->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_FALSE(
-      overflowB->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
+  EXPECT_TRUE(frameScroll()->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_TRUE(overflowA->layoutObject()
+                  ->paintProperties()
+                  ->scroll()
+                  ->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_FALSE(overflowB->layoutObject()
+                   ->paintProperties()
+                   ->scroll()
+                   ->hasBackgroundAttachmentFixedDescendants());
 }
 
 TEST_P(PaintPropertyTreeBuilderTest,
@@ -2746,48 +2729,38 @@ TEST_P(PaintPropertyTreeBuilderTest,
   Element* overflowA = document().getElementById("overflowA");
   Element* overflowB = document().getElementById("overflowB");
 
-  EXPECT_FALSE(
-      overflowA->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_FALSE(
-      overflowB->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_TRUE(
-      overflowB->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->parent()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
+  // This should be false. We are not as strict about main thread scrolling
+  // reasons as we could be.
+  EXPECT_TRUE(overflowA->layoutObject()
+                  ->paintProperties()
+                  ->scroll()
+                  ->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_FALSE(overflowB->layoutObject()
+                   ->paintProperties()
+                   ->scroll()
+                   ->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_TRUE(overflowB->layoutObject()
+                  ->paintProperties()
+                  ->scroll()
+                  ->parent()
+                  ->isRoot());
 
   // Removing a main thread scrolling reason should update the entire tree.
   overflowB->removeAttribute("class");
   document().view()->updateAllLifecyclePhases();
-  EXPECT_FALSE(
-      overflowA->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_FALSE(
-      overflowB->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
-  EXPECT_FALSE(
-      overflowB->layoutObject()
-          ->paintProperties()
-          ->scroll()
-          ->parent()
-          ->hasMainThreadScrollingReasons(
-              MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects));
+  EXPECT_FALSE(overflowA->layoutObject()
+                   ->paintProperties()
+                   ->scroll()
+                   ->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_FALSE(overflowB->layoutObject()
+                   ->paintProperties()
+                   ->scroll()
+                   ->hasBackgroundAttachmentFixedDescendants());
+  EXPECT_FALSE(overflowB->layoutObject()
+                   ->paintProperties()
+                   ->scroll()
+                   ->parent()
+                   ->hasBackgroundAttachmentFixedDescendants());
 }
 
 TEST_P(PaintPropertyTreeBuilderTest, PaintOffsetsUnderMultiColumn) {
@@ -2914,6 +2887,48 @@ TEST_P(PaintPropertyTreeBuilderTest, FilterReparentClips) {
   // This will change once we added clip expansion node.
   EXPECT_EQ(filterProperties->effect()->outputClip(), childPaintState.clip());
   EXPECT_EQ(filterProperties->effect(), childPaintState.effect());
+}
+
+TEST_P(PaintPropertyTreeBuilderTest, DescendantNeedsUpdateAcrossFrames) {
+  setBodyInnerHTML(
+      "<style>body { margin: 0; }</style>"
+      "<div id='divWithTransform' style='transform: translate3d(1px,2px,3px);'>"
+      "  <iframe style='border: 7px solid black'></iframe>"
+      "</div>");
+  setChildFrameHTML(
+      "<style>body { margin: 0; }</style><div id='transform' style='transform: "
+      "translate3d(4px, 5px, 6px); width: 100px; height: 200px'></div>");
+
+  FrameView* frameView = document().view();
+  frameView->updateAllLifecyclePhases();
+
+  LayoutObject* divWithTransform =
+      document().getElementById("divWithTransform")->layoutObject();
+  LayoutObject* childLayoutView = childDocument().layoutView();
+  LayoutObject* innerDivWithTransform =
+      childDocument().getElementById("transform")->layoutObject();
+
+  // Initially, no objects should need a descendant update.
+  EXPECT_FALSE(document().layoutView()->descendantNeedsPaintPropertyUpdate());
+  EXPECT_FALSE(divWithTransform->descendantNeedsPaintPropertyUpdate());
+  EXPECT_FALSE(childLayoutView->descendantNeedsPaintPropertyUpdate());
+  EXPECT_FALSE(innerDivWithTransform->descendantNeedsPaintPropertyUpdate());
+
+  // Marking the child div as needing a paint property update should propagate
+  // up the tree and across frames.
+  innerDivWithTransform->setNeedsPaintPropertyUpdate();
+  EXPECT_TRUE(document().layoutView()->descendantNeedsPaintPropertyUpdate());
+  EXPECT_TRUE(divWithTransform->descendantNeedsPaintPropertyUpdate());
+  EXPECT_TRUE(childLayoutView->descendantNeedsPaintPropertyUpdate());
+  EXPECT_TRUE(innerDivWithTransform->needsPaintPropertyUpdate());
+  EXPECT_FALSE(innerDivWithTransform->descendantNeedsPaintPropertyUpdate());
+
+  // After a lifecycle update, no nodes should need a descendant update.
+  frameView->updateAllLifecyclePhases();
+  EXPECT_FALSE(document().layoutView()->descendantNeedsPaintPropertyUpdate());
+  EXPECT_FALSE(divWithTransform->descendantNeedsPaintPropertyUpdate());
+  EXPECT_FALSE(childLayoutView->descendantNeedsPaintPropertyUpdate());
+  EXPECT_FALSE(innerDivWithTransform->descendantNeedsPaintPropertyUpdate());
 }
 
 }  // namespace blink

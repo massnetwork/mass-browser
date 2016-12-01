@@ -62,6 +62,7 @@ class ShelfModel;
 class ShelfWindowWatcher;
 class ShellDelegate;
 class ShellObserver;
+class ShutdownController;
 class SystemTrayDelegate;
 class SystemTrayController;
 class SystemTrayNotifier;
@@ -92,6 +93,7 @@ class WindowState;
 
 #if defined(OS_CHROMEOS)
 class LogoutConfirmationController;
+class VpnList;
 #endif
 
 // Similar to ash::Shell. Eventually the two will be merged.
@@ -156,6 +158,10 @@ class ASH_EXPORT WmShell {
   ShelfDelegate* shelf_delegate() { return shelf_delegate_.get(); }
 
   ShelfModel* shelf_model();
+
+  ShutdownController* shutdown_controller() {
+    return shutdown_controller_.get();
+  }
 
   SystemTrayController* system_tray_controller() {
     return system_tray_controller_.get();
@@ -286,12 +292,6 @@ class ASH_EXPORT WmShell {
   // this function invocation.
   virtual void SetPinnedWindow(WmWindow* window) = 0;
 
-  // Returns true if |window| can be shown for the current user. This is
-  // intended to check if the current user matches the user associated with
-  // |window|.
-  // TODO(jamescook): Remove this when ShellDelegate has been moved.
-  virtual bool CanShowWindowForUser(WmWindow* window) = 0;
-
   // See aura::client::CursorClient for details on these.
   virtual void LockCursor() = 0;
   virtual void UnlockCursor() = 0;
@@ -404,6 +404,12 @@ class ASH_EXPORT WmShell {
   void AddLockStateObserver(LockStateObserver* observer);
   void RemoveLockStateObserver(LockStateObserver* observer);
 
+  // Displays the shutdown animation and requests a system shutdown or system
+  // restart depending on the the state of the |RebootOnShutdown| device policy.
+  // TODO(mash): Remove this method and call LockStateController directly when
+  // it is available to code in ash/common.
+  virtual void RequestShutdown() = 0;
+
   void SetShelfDelegateForTesting(std::unique_ptr<ShelfDelegate> test_delegate);
   void SetPaletteDelegateForTesting(
       std::unique_ptr<PaletteDelegate> palette_delegate);
@@ -419,6 +425,8 @@ class ASH_EXPORT WmShell {
   LogoutConfirmationController* logout_confirmation_controller() {
     return logout_confirmation_controller_.get();
   }
+
+  VpnList* vpn_list() { return vpn_list_.get(); }
 
   // TODO(jamescook): Remove this when VirtualKeyboardController has been moved.
   virtual void ToggleIgnoreExternalKeyboard() = 0;
@@ -485,6 +493,7 @@ class ASH_EXPORT WmShell {
   std::unique_ptr<ShelfController> shelf_controller_;
   std::unique_ptr<ShelfDelegate> shelf_delegate_;
   std::unique_ptr<ShelfWindowWatcher> shelf_window_watcher_;
+  std::unique_ptr<ShutdownController> shutdown_controller_;
   std::unique_ptr<SystemTrayController> system_tray_controller_;
   std::unique_ptr<SystemTrayNotifier> system_tray_notifier_;
   std::unique_ptr<SystemTrayDelegate> system_tray_delegate_;
@@ -507,6 +516,7 @@ class ASH_EXPORT WmShell {
 
 #if defined(OS_CHROMEOS)
   std::unique_ptr<LogoutConfirmationController> logout_confirmation_controller_;
+  std::unique_ptr<VpnList> vpn_list_;
 #endif
 };
 

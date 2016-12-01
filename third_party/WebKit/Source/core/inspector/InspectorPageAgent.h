@@ -112,6 +112,7 @@ class CORE_EXPORT InspectorPageAgent final
   Response reload(Maybe<bool> bypassCache,
                   Maybe<String> scriptToEvaluateOnLoad) override;
   Response navigate(const String& url, String* frameId) override;
+  Response stopLoading() override;
   Response getResourceTree(
       std::unique_ptr<protocol::Page::FrameResourceTree>* frameTree) override;
   void getResourceContent(const String& frameId,
@@ -133,7 +134,6 @@ class CORE_EXPORT InspectorPageAgent final
   Response stopScreencast() override;
   Response configureOverlay(Maybe<bool> suspended,
                             Maybe<String> message) override;
-  Response setBlockedEventsWarningThreshold(double) override;
   Response getLayoutMetrics(
       std::unique_ptr<protocol::Page::LayoutViewport>*,
       std::unique_ptr<protocol::Page::VisualViewport>*) override;

@@ -18,6 +18,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/threading/thread.h"
+#include "base/time/default_tick_clock.h"
 #include "base/timer/elapsed_timer.h"
 #include "base/timer/timer.h"
 #include "build/build_config.h"
@@ -186,15 +187,17 @@ class MEDIA_BLINK_EXPORT WebMediaPlayerImpl
   // WebMediaPlayerDelegate::Observer implementation.
   void OnHidden() override;
   void OnShown() override;
-  void OnSuspendRequested(bool must_suspend) override;
+  bool OnSuspendRequested(bool must_suspend) override;
   void OnPlay() override;
   void OnPause() override;
   void OnVolumeMultiplierUpdate(double multiplier) override;
 
+  void requestRemotePlaybackDisabled(bool disabled) override;
 #if defined(OS_ANDROID)  // WMPI_CAST
   bool isRemote() const override;
   void requestRemotePlayback() override;
   void requestRemotePlaybackControl() override;
+  void requestRemotePlaybackStop() override;
 
   void SetMediaPlayerManager(
       RendererMediaPlayerManagerInterface* media_player_manager);
@@ -278,7 +281,8 @@ class MEDIA_BLINK_EXPORT WebMediaPlayerImpl
 
   // Called by GpuVideoDecoder on Android to request a surface to render to (if
   // necessary).
-  void OnSurfaceRequested(const SurfaceCreatedCB& surface_created_cb);
+  void OnSurfaceRequested(bool decoder_requires_restart_for_overlay,
+                          const SurfaceCreatedCB& surface_created_cb);
 
   // Creates a Renderer via the |renderer_factory_|.
   std::unique_ptr<Renderer> CreateRenderer();
@@ -293,10 +297,6 @@ class MEDIA_BLINK_EXPORT WebMediaPlayerImpl
 
   // Gets the duration value reported by the pipeline.
   double GetPipelineDuration() const;
-
-  // Called by VideoRendererImpl on its internal thread with the new frame to be
-  // painted.
-  void FrameReady(const scoped_refptr<VideoFrame>& frame);
 
   // Returns the current video frame from |compositor_|. Blocks until the
   // compositor can return the frame.
@@ -336,6 +336,7 @@ class MEDIA_BLINK_EXPORT WebMediaPlayerImpl
 
   // Methods internal to UpdatePlayState().
   PlayState UpdatePlayState_ComputePlayState(bool is_remote,
+                                             bool is_streaming,
                                              bool is_suspended,
                                              bool is_backgrounded);
   void SetDelegateState(DelegateState new_state);
@@ -354,6 +355,9 @@ class MEDIA_BLINK_EXPORT WebMediaPlayerImpl
   void ScheduleIdlePauseTimer();
 
   void CreateWatchTimeReporter();
+
+  // Returns true if the player is hidden.
+  bool IsHidden() const;
 
   blink::WebLocalFrame* frame_;
 
@@ -524,8 +528,10 @@ class MEDIA_BLINK_EXPORT WebMediaPlayerImpl
   int overlay_surface_id_;
 
   // If a surface is requested before it's finished being created, the request
-  // is saved and satisfied once the surface is available.
-  SurfaceCreatedCB pending_surface_request_cb_;
+  // is saved and satisfied once the surface is available. If the decoder does
+  // not require restart to change surfaces, this is callback is kept until
+  // cleared by the decoder.
+  SurfaceCreatedCB set_surface_cb_;
 
   // Force to use SurfaceView instead of SurfaceTexture on Android.
   bool force_video_overlays_;
@@ -563,8 +569,16 @@ class MEDIA_BLINK_EXPORT WebMediaPlayerImpl
   int underflow_count_;
   std::unique_ptr<base::ElapsedTimer> underflow_timer_;
 
+  // The last time didLoadingProgress() returned true.
+  base::TimeTicks last_time_loading_progressed_;
+
+  std::unique_ptr<base::TickClock> tick_clock_;
+
   // Monitors the player events.
   base::WeakPtr<MediaObserver> observer_;
+
+  // Whether the player is currently in autoplay muted state.
+  bool autoplay_muted_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(WebMediaPlayerImpl);
 };

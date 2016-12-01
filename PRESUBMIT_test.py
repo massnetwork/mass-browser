@@ -792,7 +792,6 @@ class TryServerMasterTest(unittest.TestCase):
             'win_chromium_rel',
             'win_chromium_x64_dbg',
             'win_chromium_x64_rel',
-            'win_drmemory',
             'win_nacl_sdk',
             'win_nacl_sdk_build',
             'win_rel_naclmore',
@@ -1113,6 +1112,61 @@ class HardcodedGoogleHostsTest(unittest.TestCase):
     warnings = PRESUBMIT._CheckHardcodedGoogleHostsInLowerLayers(
       input_api, MockOutputApi())
     self.assertEqual(0, len(warnings))
+
+
+class ForwardDeclarationTest(unittest.TestCase):
+  def testCheckHeadersOnly(self):
+    mock_input_api = MockInputApi()
+    mock_input_api.files = [
+      MockAffectedFile('somewhere/file.cc', [
+        'class DummyClass;'
+      ])
+    ]
+    warnings = PRESUBMIT._CheckUselessForwardDeclarations(mock_input_api,
+      MockOutputApi())
+    self.assertEqual(0, len(warnings))
+
+  def testNoNestedDeclaration(self):
+    mock_input_api = MockInputApi()
+    mock_input_api.files = [
+      MockAffectedFile('somewhere/header.h', [
+        'class SomeClass {'
+        ' protected:'
+        '  class NotAMatch;'
+        '};'
+      ])
+    ]
+    warnings = PRESUBMIT._CheckUselessForwardDeclarations(mock_input_api,
+      MockOutputApi())
+    self.assertEqual(0, len(warnings))
+
+  def testSubStrings(self):
+    mock_input_api = MockInputApi()
+    mock_input_api.files = [
+      MockAffectedFile('somewhere/header.h', [
+        'class NotUsefulClass;',
+        'struct SomeStruct;',
+        'UsefulClass *p1;',
+        'SomeStructPtr *p2;'
+      ])
+    ]
+    warnings = PRESUBMIT._CheckUselessForwardDeclarations(mock_input_api,
+      MockOutputApi())
+    self.assertEqual(2, len(warnings))
+
+  def testUselessForwardDeclaration(self):
+    mock_input_api = MockInputApi()
+    mock_input_api.files = [
+      MockAffectedFile('somewhere/header.h', [
+        'class DummyClass;',
+        'struct DummyStruct;',
+        'class UsefulClass;',
+        'std::unique_ptr<UsefulClass> p;'
+      ]),
+    ]
+    warnings = PRESUBMIT._CheckUselessForwardDeclarations(mock_input_api,
+      MockOutputApi())
+    self.assertEqual(2, len(warnings))
 
 
 if __name__ == '__main__':

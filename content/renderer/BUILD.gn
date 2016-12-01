@@ -6,6 +6,7 @@ import("//build/config/features.gni")
 import("//build/config/ui.gni")
 import("//media/media_options.gni")
 import("//ppapi/features/features.gni")
+import("//printing/features/features.gni")
 import("//third_party/webrtc/build/webrtc.gni")
 import("//tools/ipc_fuzzer/ipc_fuzzer.gni")
 
@@ -50,8 +51,6 @@ target(link_target_type, "renderer") {
     "android/synchronous_compositor_proxy.cc",
     "android/synchronous_compositor_proxy.h",
     "android/synchronous_compositor_registry.h",
-    "background_sync/background_sync_client_impl.cc",
-    "background_sync/background_sync_client_impl.h",
     "bluetooth/bluetooth_type_converters.cc",
     "bluetooth/bluetooth_type_converters.h",
     "bluetooth/web_bluetooth_impl.cc",
@@ -301,8 +300,6 @@ target(link_target_type, "renderer") {
     "render_view_win.cc",
     "render_widget.cc",
     "render_widget.h",
-    "render_widget_fullscreen.cc",
-    "render_widget_fullscreen.h",
     "render_widget_mouse_lock_dispatcher.cc",
     "render_widget_mouse_lock_dispatcher.h",
     "render_widget_owner_delegate.h",
@@ -380,8 +377,8 @@ target(link_target_type, "renderer") {
     "webgraphicscontext3d_provider_impl.h",
     "webpublicsuffixlist_impl.cc",
     "webpublicsuffixlist_impl.h",
-    "webscrollbarbehavior_impl_gtkoraura.cc",
-    "webscrollbarbehavior_impl_gtkoraura.h",
+    "webscrollbarbehavior_impl_aura.cc",
+    "webscrollbarbehavior_impl_aura.h",
     "webscrollbarbehavior_impl_mac.h",
     "webscrollbarbehavior_impl_mac.mm",
     "websharedworker_proxy.cc",
@@ -398,6 +395,7 @@ target(link_target_type, "renderer") {
   deps = [
     "//base:i18n",
     "//cc",
+    "//cc/animation",
     "//cc/blink",
     "//cc/ipc",
     "//cc/proto",
@@ -418,7 +416,6 @@ target(link_target_type, "renderer") {
     "//device/battery:mojo_bindings",
     "//device/bluetooth",
     "//device/sensors/public/cpp",
-    "//device/time_zone_monitor/public/interfaces",
     "//device/usb/public/interfaces",
     "//device/vibration:mojo_bindings",
     "//device/vr:mojo_bindings",
@@ -441,12 +438,14 @@ target(link_target_type, "renderer") {
     "//mojo/public/js",
     "//net",
     "//ppapi/features",
+    "//printing/features",
     "//sandbox",
     "//services/service_manager/public/cpp",
     "//services/service_manager/public/interfaces",
     "//skia",
     "//storage/common",
     "//third_party/WebKit/public:blink",
+    "//third_party/WebKit/public:features",
     "//third_party/WebKit/public:mojo_bindings",
     "//third_party/boringssl",
     "//third_party/icu",
@@ -483,8 +482,8 @@ target(link_target_type, "renderer") {
 
   if (is_mac) {
     sources -= [
-      "webscrollbarbehavior_impl_gtkoraura.cc",
-      "webscrollbarbehavior_impl_gtkoraura.h",
+      "webscrollbarbehavior_impl_aura.cc",
+      "webscrollbarbehavior_impl_aura.h",
     ]
   }
 
@@ -543,6 +542,10 @@ target(link_target_type, "renderer") {
       "media/image_capture_frame_grabber.h",
       "media/local_media_stream_audio_source.cc",
       "media/local_media_stream_audio_source.h",
+      "media/media_devices_event_dispatcher.cc",
+      "media/media_devices_event_dispatcher.h",
+      "media/media_devices_listener_impl.cc",
+      "media/media_devices_listener_impl.h",
       "media/media_recorder_handler.cc",
       "media/media_recorder_handler.h",
       "media/media_stream.cc",
@@ -687,8 +690,9 @@ target(link_target_type, "renderer") {
 
     deps += [
       "//crypto",
-      "//third_party/libjingle:libjingle_webrtc",
+      "//third_party/libjingle/webrtc:libjingle_webrtc",
       "//third_party/libvpx",
+      "//third_party/opus",
       "//third_party/webrtc/api:libjingle_peerconnection",
       "//third_party/webrtc/api:rtc_stats_api",
       "//third_party/webrtc/base:rtc_base",

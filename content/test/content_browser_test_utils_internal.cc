@@ -32,9 +32,9 @@
 #include "content/public/common/file_chooser_file_info.h"
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/content_browser_test_utils.h"
+#include "content/public/test/test_frame_navigation_observer.h"
 #include "content/shell/browser/shell.h"
 #include "content/shell/browser/shell_javascript_dialog_manager.h"
-#include "content/test/test_frame_navigation_observer.h"
 #include "net/url_request/url_request.h"
 
 namespace content {
@@ -319,7 +319,7 @@ void SurfaceHitTestReadyNotifier::WaitForSurfaceReady() {
 
 bool SurfaceHitTestReadyNotifier::ContainsSurfaceId(
     cc::SurfaceId container_surface_id) {
-  if (container_surface_id.is_null())
+  if (!container_surface_id.is_valid())
     return false;
   for (cc::SurfaceId id :
        surface_manager_->GetSurfaceForId(container_surface_id)
@@ -379,7 +379,9 @@ UrlCommitObserver::UrlCommitObserver(FrameTreeNode* frame_tree_node,
                                        ->GetAsWebContents()),
       frame_tree_node_id_(frame_tree_node->frame_tree_node_id()),
       url_(url),
-      message_loop_runner_(new MessageLoopRunner) {}
+      message_loop_runner_(
+          new MessageLoopRunner(MessageLoopRunner::QuitMode::IMMEDIATE)) {
+}
 
 UrlCommitObserver::~UrlCommitObserver() {}
 

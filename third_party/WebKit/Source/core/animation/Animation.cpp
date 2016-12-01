@@ -32,7 +32,7 @@
 
 #include "core/animation/AnimationTimeline.h"
 #include "core/animation/CompositorPendingAnimations.h"
-#include "core/animation/KeyframeEffect.h"
+#include "core/animation/KeyframeEffectReadOnly.h"
 #include "core/animation/css/CSSAnimations.h"
 #include "core/dom/Document.h"
 #include "core/dom/ExceptionCode.h"
@@ -388,10 +388,11 @@ void Animation::notifyStartTime(double timelineTime) {
 }
 
 bool Animation::affects(const Element& element, CSSPropertyID property) const {
-  if (!m_content || !m_content->isKeyframeEffect())
+  if (!m_content || !m_content->isKeyframeEffectReadOnly())
     return false;
 
-  const KeyframeEffect* effect = toKeyframeEffect(m_content.get());
+  const KeyframeEffectReadOnly* effect =
+      toKeyframeEffectReadOnly(m_content.get());
   return (effect->target() == &element) &&
          effect->affects(PropertyHandle(property));
 }
@@ -446,7 +447,7 @@ void Animation::setStartTimeInternal(double newStartTime) {
   } else if (!hadStartTime && m_timeline) {
     // Even though this animation is not outdated, time to effect change is
     // infinity until start time is set.
-    m_timeline->wake();
+    forceServiceOnNextFrame();
   }
 }
 
@@ -618,6 +619,7 @@ void Animation::finish(ExceptionState& exceptionState) {
   m_currentTimePending = false;
   m_startTime = calculateStartTime(newCurrentTime);
   m_playState = Finished;
+  forceServiceOnNextFrame();
 }
 
 ScriptPromise Animation::finished(ScriptState* scriptState) {
@@ -712,6 +714,10 @@ void Animation::setOutdated() {
     m_timeline->setOutdatedAnimation(this);
 }
 
+void Animation::forceServiceOnNextFrame() {
+  m_timeline->wake();
+}
+
 bool Animation::canStartAnimationOnCompositor() const {
   if (m_isCompositedAnimationDisabledForTesting || effectSuppressed())
     return false;
@@ -721,14 +727,15 @@ bool Animation::canStartAnimationOnCompositor() const {
       (timeline() && timeline()->playbackRate() != 1))
     return false;
 
-  return m_timeline && m_content && m_content->isKeyframeEffect() && playing();
+  return m_timeline && m_content && m_content->isKeyframeEffectReadOnly() &&
+         playing();
 }
 
 bool Animation::isCandidateForAnimationOnCompositor() const {
   if (!canStartAnimationOnCompositor())
     return false;
 
-  return toKeyframeEffect(m_content.get())
+  return toKeyframeEffectReadOnly(m_content.get())
       ->isCandidateForAnimationOnCompositor(m_playbackRate);
 }
 
@@ -750,7 +757,7 @@ bool Animation::maybeStartAnimationOnCompositor() {
     timeOffset = timeOffset / fabs(m_playbackRate);
   }
   DCHECK_NE(m_compositorGroup, 0);
-  return toKeyframeEffect(m_content.get())
+  return toKeyframeEffectReadOnly(m_content.get())
       ->maybeStartAnimationOnCompositor(m_compositorGroup, startTime,
                                         timeOffset, m_playbackRate);
 }
@@ -777,27 +784,28 @@ void Animation::setCompositorPending(bool effectChanged) {
 
 void Animation::cancelAnimationOnCompositor() {
   if (hasActiveAnimationsOnCompositor())
-    toKeyframeEffect(m_content.get())->cancelAnimationOnCompositor();
+    toKeyframeEffectReadOnly(m_content.get())->cancelAnimationOnCompositor();
 
   destroyCompositorPlayer();
 }
 
 void Animation::restartAnimationOnCompositor() {
   if (hasActiveAnimationsOnCompositor())
-    toKeyframeEffect(m_content.get())->restartAnimationOnCompositor();
+    toKeyframeEffectReadOnly(m_content.get())->restartAnimationOnCompositor();
 }
 
 void Animation::cancelIncompatibleAnimationsOnCompositor() {
-  if (m_content && m_content->isKeyframeEffect())
-    toKeyframeEffect(m_content.get())
+  if (m_content && m_content->isKeyframeEffectReadOnly())
+    toKeyframeEffectReadOnly(m_content.get())
         ->cancelIncompatibleAnimationsOnCompositor();
 }
 
 bool Animation::hasActiveAnimationsOnCompositor() {
-  if (!m_content || !m_content->isKeyframeEffect())
+  if (!m_content || !m_content->isKeyframeEffectReadOnly())
     return false;
 
-  return toKeyframeEffect(m_content.get())->hasActiveAnimationsOnCompositor();
+  return toKeyframeEffectReadOnly(m_content.get())
+      ->hasActiveAnimationsOnCompositor();
 }
 
 bool Animation::update(TimingUpdateReason reason) {
@@ -881,6 +889,7 @@ void Animation::cancel() {
   m_playState = Idle;
   m_startTime = nullValue();
   m_currentTimePending = false;
+  forceServiceOnNextFrame();
 }
 
 void Animation::beginUpdatingState() {
@@ -947,9 +956,9 @@ void Animation::attachCompositedLayers() {
     return;
 
   DCHECK(m_content);
-  DCHECK(m_content->isKeyframeEffect());
+  DCHECK(m_content->isKeyframeEffectReadOnly());
 
-  toKeyframeEffect(m_content.get())->attachCompositedLayers();
+  toKeyframeEffectReadOnly(m_content.get())->attachCompositedLayers();
 }
 
 void Animation::detachCompositedLayers() {
@@ -1077,7 +1086,7 @@ void Animation::pauseForTesting(double pauseTime) {
   RELEASE_ASSERT(!paused());
   setCurrentTimeInternal(pauseTime, TimingUpdateOnDemand);
   if (hasActiveAnimationsOnCompositor())
-    toKeyframeEffect(m_content.get())
+    toKeyframeEffectReadOnly(m_content.get())
         ->pauseAnimationForTestingOnCompositor(currentTimeInternal());
   m_isPausedForTesting = true;
   pause();
@@ -1095,10 +1104,10 @@ void Animation::disableCompositedAnimationForTesting() {
 }
 
 void Animation::invalidateKeyframeEffect(const TreeScope& treeScope) {
-  if (!m_content || !m_content->isKeyframeEffect())
+  if (!m_content || !m_content->isKeyframeEffectReadOnly())
     return;
 
-  Element& target = *toKeyframeEffect(m_content.get())->target();
+  Element& target = *toKeyframeEffectReadOnly(m_content.get())->target();
 
   if (CSSAnimations::isAffectedByKeyframesFromScope(target, treeScope))
     target.setNeedsStyleRecalc(LocalStyleChange,

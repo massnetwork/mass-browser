@@ -13,6 +13,7 @@
 #include "chrome/common/features.h"
 #include "chrome/grit/browser_resources.h"
 #include "extensions/common/constants.h"
+#include "printing/features/features.h"
 
 #if BUILDFLAG(ENABLE_APP_LIST) && defined(OS_CHROMEOS)
 #include "chrome/browser/ui/app_list/google_now_extension.h"
@@ -75,7 +76,7 @@ bool IsComponentExtensionWhitelisted(int manifest_resource_id) {
 #if BUILDFLAG(ENABLE_APP_LIST)
     case IDR_CHROME_APP_MANIFEST:
 #endif
-#if defined(ENABLE_PRINTING)
+#if BUILDFLAG(ENABLE_PRINTING)
     case IDR_CLOUDPRINT_MANIFEST:
 #endif
     case IDR_CRYPTOTOKEN_MANIFEST:
@@ -92,7 +93,7 @@ bool IsComponentExtensionWhitelisted(int manifest_resource_id) {
     case IDR_HOTWORD_MANIFEST:
 #endif
     case IDR_IDENTITY_API_SCOPE_APPROVAL_MANIFEST:
-#if defined(IMAGE_LOADER_EXTENSION)
+#if defined(OS_CHROMEOS)
     case IDR_IMAGE_LOADER_MANIFEST:
 #endif
     case IDR_NETWORK_SPEECH_SYNTHESIS_MANIFEST:

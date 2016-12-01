@@ -28,7 +28,6 @@ class ErrorReporter;
 }
 
 namespace net {
-class SSLInfo;
 class URLRequestContextGetter;
 }  // namespace net
 
@@ -78,6 +77,8 @@ class SafeBrowsingPingManager : public net::URLFetcherDelegate {
                            TestReportThreatDetails);
   FRIEND_TEST_ALL_PREFIXES(SafeBrowsingPingManagerTest,
                            TestReportSafeBrowsingHit);
+  FRIEND_TEST_ALL_PREFIXES(SafeBrowsingPingManagerCertReportingTest,
+                           UMAOnFailure);
 
   typedef std::set<std::unique_ptr<net::URLFetcher>> Reports;
 

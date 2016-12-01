@@ -32,7 +32,7 @@
 #include "base/stl_util.h"
 #include "base/strings/string_util.h"
 #include "base/third_party/dynamic_annotations/dynamic_annotations.h"
-#include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "content/browser/appcache/appcache_interceptor.h"
 #include "content/browser/appcache/chrome_appcache_service.h"
 #include "content/browser/bad_message.h"
@@ -54,8 +54,10 @@
 #include "content/browser/loader/navigation_url_loader_impl_core.h"
 #include "content/browser/loader/power_save_block_resource_throttle.h"
 #include "content/browser/loader/redirect_to_file_resource_handler.h"
+#include "content/browser/loader/resource_loader.h"
 #include "content/browser/loader/resource_message_filter.h"
 #include "content/browser/loader/resource_request_info_impl.h"
+#include "content/browser/loader/resource_scheduler.h"
 #include "content/browser/loader/stream_resource_handler.h"
 #include "content/browser/loader/sync_resource_handler.h"
 #include "content/browser/loader/throttling_resource_handler.h"
@@ -96,10 +98,10 @@
 #include "net/base/mime_util.h"
 #include "net/base/net_errors.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
-#include "net/base/request_priority.h"
 #include "net/base/upload_data_stream.h"
 #include "net/cert/cert_status_flags.h"
 #include "net/cookies/cookie_monster.h"
+#include "net/http/http_request_headers.h"
 #include "net/http/http_response_headers.h"
 #include "net/http/http_response_info.h"
 #include "net/ssl/client_cert_store.h"
@@ -107,12 +109,14 @@
 #include "net/url_request/url_request.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_job_factory.h"
+#include "ppapi/features/features.h"
 #include "storage/browser/blob/blob_data_handle.h"
 #include "storage/browser/blob/blob_storage_context.h"
 #include "storage/browser/blob/blob_url_request_job_factory.h"
 #include "storage/browser/blob/shareable_file_reference.h"
 #include "storage/browser/fileapi/file_permission_policy.h"
 #include "storage/browser/fileapi/file_system_context.h"
+#include "url/third_party/mozilla/url_parse.h"
 #include "url/url_constants.h"
 
 using base::Time;
@@ -227,7 +231,7 @@ void AbortRequestBeforeItStarts(
     ResourceMessageFilter* filter,
     const SyncLoadResultCallback& sync_result_handler,
     int request_id,
-    mojom::URLLoaderClientPtr url_loader_client) {
+    mojom::URLLoaderClientAssociatedPtr url_loader_client) {
   if (sync_result_handler) {
     SyncLoadResult result;
     result.error_code = net::ERR_ABORTED;
@@ -241,6 +245,7 @@ void AbortRequestBeforeItStarts(
     // No security info needed, connection not established.
     request_complete_data.completion_time = base::TimeTicks();
     request_complete_data.encoded_data_length = 0;
+    request_complete_data.encoded_body_length = 0;
     if (url_loader_client) {
       url_loader_client->OnComplete(request_complete_data);
     } else {
@@ -928,7 +933,7 @@ void ResourceDispatcherHostImpl::DidFinishLoading(ResourceLoader* loader) {
     }
 
     if (loader->request()->url().SchemeIsCryptographic()) {
-      if (loader->request()->url().host() == "www.google.com") {
+      if (loader->request()->url().host_piece() == "www.google.com") {
         UMA_HISTOGRAM_SPARSE_SLOWLY("Net.ErrorCodesForHTTPSGoogleMainFrame2",
                                     -loader->request()->status().error());
       }
@@ -1014,7 +1019,6 @@ bool ResourceDispatcherHostImpl::OnMessageReceived(
     IPC_MESSAGE_HANDLER_DELAY_REPLY(ResourceHostMsg_SyncLoad, OnSyncLoad)
     IPC_MESSAGE_HANDLER(ResourceHostMsg_ReleaseDownloadedFile,
                         OnReleaseDownloadedFile)
-    IPC_MESSAGE_HANDLER(ResourceHostMsg_DataDownloaded_ACK, OnDataDownloadedACK)
     IPC_MESSAGE_HANDLER(ResourceHostMsg_CancelRequest, OnCancelRequest)
     IPC_MESSAGE_HANDLER(ResourceHostMsg_DidChangePriority, OnDidChangePriority)
     IPC_MESSAGE_UNHANDLED(handled = false)
@@ -1057,8 +1061,8 @@ void ResourceDispatcherHostImpl::OnRequestResourceInternal(
     int routing_id,
     int request_id,
     const ResourceRequest& request_data,
-    mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-    mojom::URLLoaderClientPtr url_loader_client) {
+    mojom::URLLoaderAssociatedRequest mojo_request,
+    mojom::URLLoaderClientAssociatedPtr url_loader_client) {
   // TODO(pkasting): Remove ScopedTracker below once crbug.com/477117 is fixed.
   tracked_objects::ScopedTracker tracking_profile(
       FROM_HERE_WITH_EXPLICIT_FUNCTION(
@@ -1120,7 +1124,9 @@ void ResourceDispatcherHostImpl::UpdateRequestForTransfer(
     int route_id,
     int request_id,
     const ResourceRequest& request_data,
-    LoaderMap::iterator iter) {
+    LoaderMap::iterator iter,
+    mojom::URLLoaderAssociatedRequest mojo_request,
+    mojom::URLLoaderClientAssociatedPtr url_loader_client) {
   ResourceRequestInfoImpl* info = iter->second->GetRequestInfo();
   GlobalFrameRoutingId old_routing_id(request_data.transferred_request_child_id,
                                       info->GetRenderFrameID());
@@ -1148,7 +1154,8 @@ void ResourceDispatcherHostImpl::UpdateRequestForTransfer(
   // the info object when a transfer occurs.
   info->UpdateForTransfer(child_id, route_id, request_data.render_frame_id,
                           request_data.origin_pid, request_id,
-                          filter_->GetWeakPtr());
+                          filter_->GetWeakPtr(), std::move(mojo_request),
+                          std::move(url_loader_client));
 
   // Update maps that used the old IDs, if necessary.  Some transfers in tests
   // do not actually use a different ID, so not all maps need to be updated.
@@ -1198,7 +1205,9 @@ void ResourceDispatcherHostImpl::UpdateRequestForTransfer(
 void ResourceDispatcherHostImpl::CompleteTransfer(
     int request_id,
     const ResourceRequest& request_data,
-    int route_id) {
+    int route_id,
+    mojom::URLLoaderAssociatedRequest mojo_request,
+    mojom::URLLoaderClientAssociatedPtr url_loader_client) {
   // Caller should ensure that |request_data| is associated with a transfer.
   DCHECK(request_data.transferred_request_child_id != -1 ||
          request_data.transferred_request_request_id != -1);
@@ -1242,17 +1251,18 @@ void ResourceDispatcherHostImpl::CompleteTransfer(
   // If the request is transferring to a new process, we can update our
   // state and let it resume with its existing ResourceHandlers.
   UpdateRequestForTransfer(filter_->child_id(), route_id, request_id,
-                           request_data, it);
+                           request_data, it, std::move(mojo_request),
+                           std::move(url_loader_client));
   pending_loader->CompleteTransfer();
 }
 
 void ResourceDispatcherHostImpl::BeginRequest(
     int request_id,
     const ResourceRequest& request_data,
-    const SyncLoadResultCallback& sync_result_handler, // only valid for sync
+    const SyncLoadResultCallback& sync_result_handler,  // only valid for sync
     int route_id,
-    mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-    mojom::URLLoaderClientPtr url_loader_client) {
+    mojom::URLLoaderAssociatedRequest mojo_request,
+    mojom::URLLoaderClientAssociatedPtr url_loader_client) {
   int process_type = filter_->process_type();
   int child_id = filter_->child_id();
 
@@ -1292,10 +1302,8 @@ void ResourceDispatcherHostImpl::BeginRequest(
   // we want to reuse and resume the old loader rather than start a new one.
   if (request_data.transferred_request_child_id != -1 ||
       request_data.transferred_request_request_id != -1) {
-    // TODO(yhirano): Make mojo work for this case.
-    DCHECK(!url_loader_client);
-
-    CompleteTransfer(request_id, request_data, route_id);
+    CompleteTransfer(request_id, request_data, route_id,
+                     std::move(mojo_request), std::move(url_loader_client));
     return;
   }
 
@@ -1352,11 +1360,11 @@ void ResourceDispatcherHostImpl::BeginRequest(
 void ResourceDispatcherHostImpl::ContinuePendingBeginRequest(
     int request_id,
     const ResourceRequest& request_data,
-    const SyncLoadResultCallback& sync_result_handler, // only valid for sync
+    const SyncLoadResultCallback& sync_result_handler,  // only valid for sync
     int route_id,
     const net::HttpRequestHeaders& headers,
-    mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-    mojom::URLLoaderClientPtr url_loader_client,
+    mojom::URLLoaderAssociatedRequest mojo_request,
+    mojom::URLLoaderClientAssociatedPtr url_loader_client,
     bool continue_request,
     int error_code) {
   if (!continue_request) {
@@ -1408,6 +1416,12 @@ void ResourceDispatcherHostImpl::ContinuePendingBeginRequest(
 
   new_request->set_first_party_for_cookies(
       request_data.first_party_for_cookies);
+
+  // The initiator should normally be present, unless this is a navigation in a
+  // top-level frame. It may be null for some top-level navigations (eg:
+  // browser-initiated ones).
+  DCHECK(request_data.request_initiator.has_value() ||
+         request_data.resource_type == RESOURCE_TYPE_MAIN_FRAME);
   new_request->set_initiator(request_data.request_initiator);
 
   if (request_data.originated_from_service_worker) {
@@ -1588,8 +1602,8 @@ ResourceDispatcherHostImpl::CreateResourceHandler(
     int process_type,
     int child_id,
     ResourceContext* resource_context,
-    mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-    mojom::URLLoaderClientPtr url_loader_client) {
+    mojom::URLLoaderAssociatedRequest mojo_request,
+    mojom::URLLoaderClientAssociatedPtr url_loader_client) {
   // TODO(pkasting): Remove ScopedTracker below once crbug.com/456331 is fixed.
   tracked_objects::ScopedTracker tracking_profile(
       FROM_HERE_WITH_EXPLICIT_FUNCTION(
@@ -1723,7 +1737,7 @@ ResourceDispatcherHostImpl::AddStandardHandlers(
       std::move(handler), request, std::move(post_mime_sniffing_throttles)));
 
   PluginService* plugin_service = nullptr;
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   plugin_service = PluginService::GetInstance();
 #endif
 
@@ -1758,10 +1772,6 @@ void ResourceDispatcherHostImpl::OnDidChangePriority(
 
   scheduler_->ReprioritizeRequest(loader->request(), new_priority,
                                   intra_priority_value);
-}
-
-void ResourceDispatcherHostImpl::OnDataDownloadedACK(int request_id) {
-  // TODO(michaeln): maybe throttle DataDownloaded messages
 }
 
 void ResourceDispatcherHostImpl::RegisterDownloadedTempFile(
@@ -1805,26 +1815,8 @@ bool ResourceDispatcherHostImpl::Send(IPC::Message* message) {
   return false;
 }
 
-// Note that this cancel is subtly different from the other
-// CancelRequest methods in this file, which also tear down the loader.
 void ResourceDispatcherHostImpl::OnCancelRequest(int request_id) {
-  int child_id = filter_->child_id();
-
-  // When the old renderer dies, it sends a message to us to cancel its
-  // requests.
-  if (IsTransferredNavigation(GlobalRequestID(child_id, request_id)))
-    return;
-
-  ResourceLoader* loader = GetLoader(child_id, request_id);
-
-  // It is possible that the request has been completed and removed from the
-  // loader queue but the client has not processed the request completed message
-  // before issuing a cancel. This happens frequently for beacons which are
-  // canceled in the response received handler.
-  if (!loader)
-    return;
-
-  loader->CancelRequest(true);
+  CancelRequestFromRenderer(GlobalRequestID(filter_->child_id(), request_id));
 }
 
 ResourceRequestInfoImpl* ResourceDispatcherHostImpl::CreateRequestInfo(
@@ -2301,8 +2293,8 @@ void ResourceDispatcherHostImpl::OnRequestResourceWithMojo(
     int routing_id,
     int request_id,
     const ResourceRequest& request,
-    mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-    mojom::URLLoaderClientPtr url_loader_client,
+    mojom::URLLoaderAssociatedRequest mojo_request,
+    mojom::URLLoaderClientAssociatedPtr url_loader_client,
     ResourceMessageFilter* filter) {
   filter_ = filter;
   OnRequestResourceInternal(routing_id, request_id, request,
@@ -2329,10 +2321,14 @@ int ResourceDispatcherHostImpl::CalculateApproximateMemoryCost(
   // The following fields should be a minor size contribution (experimentally
   // on the order of 100). However since they are variable length, it could
   // in theory be a sizeable contribution.
-  int strings_cost = request->extra_request_headers().ToString().size() +
-                     request->original_url().spec().size() +
-                     request->referrer().size() +
-                     request->method().size();
+  int strings_cost = 0;
+  for (net::HttpRequestHeaders::Iterator it(request->extra_request_headers());
+       it.GetNext();) {
+    strings_cost += it.name().length() + it.value().length();
+  }
+  strings_cost +=
+      request->original_url().parsed_for_possibly_invalid_spec().Length() +
+      request->referrer().size() + request->method().size();
 
   // Note that this expression will typically be dominated by:
   // |kAvgBytesPerOutstandingRequest|.
@@ -2451,6 +2447,25 @@ void ResourceDispatcherHostImpl::BeginURLRequest(
 int ResourceDispatcherHostImpl::MakeRequestID() {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
   return --request_id_;
+}
+
+void ResourceDispatcherHostImpl::CancelRequestFromRenderer(
+    GlobalRequestID request_id) {
+  // When the old renderer dies, it sends a message to us to cancel its
+  // requests.
+  if (IsTransferredNavigation(request_id))
+    return;
+
+  ResourceLoader* loader = GetLoader(request_id);
+
+  // It is possible that the request has been completed and removed from the
+  // loader queue but the client has not processed the request completed message
+  // before issuing a cancel. This happens frequently for beacons which are
+  // canceled in the response received handler.
+  if (!loader)
+    return;
+
+  loader->CancelRequest(true);
 }
 
 void ResourceDispatcherHostImpl::StartLoading(

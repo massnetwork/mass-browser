@@ -33,8 +33,7 @@ class WindowTreeClientDelegate : public ui::WindowTreeClientDelegate {
 
 class WindowManagerTest : public service_manager::test::ServiceTest {
  public:
-  WindowManagerTest()
-      : service_manager::test::ServiceTest("exe:mash_unittests") {}
+  WindowManagerTest() : service_manager::test::ServiceTest("mash_unittests") {}
   ~WindowManagerTest() override {}
 
  private:
@@ -49,15 +48,10 @@ void OnEmbed(bool success) {
 // (ash::MaterialDesignController::IsShelfMaterial()). See
 // crbug.com/660194 and crbug.com/642879.
 // TODO(rockot): Reenable this test.
-#if defined(USE_OZONE)
-#define MAYBE_OpenWindow OpenWindow
-#else
-#define MAYBE_OpenWindow DISABLED_OpenWindow
-#endif  // defined(USE_OZONE)
-TEST_F(WindowManagerTest, MAYBE_OpenWindow) {
+TEST_F(WindowManagerTest, DISABLED_OpenWindow) {
   WindowTreeClientDelegate window_tree_delegate;
 
-  connector()->Connect("service:ash");
+  connector()->Connect("ash");
 
   // Connect to mus and create a new top level window. The request goes to
   // |ash|, but is async.

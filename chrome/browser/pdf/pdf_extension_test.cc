@@ -30,6 +30,7 @@
 #include "chrome/common/chrome_content_client.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome/common/pref_names.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "components/zoom/page_zoom.h"
 #include "components/zoom/test/zoom_test_utils.h"
@@ -283,7 +284,6 @@ class PDFExtensionTest : public ExtensionApiTest,
 
     point->SetPoint(x, y);
   }
-
 };
 
 IN_PROC_BROWSER_TEST_P(PDFExtensionTest, Load) {
@@ -295,21 +295,14 @@ IN_PROC_BROWSER_TEST_P(PDFExtensionTest, Load) {
   LoadAllPdfsTest("pdf", GetParam());
 }
 
-class DisablePluginHelper : public content::DownloadManager::Observer,
-                            public content::NotificationObserver {
+class DisablePluginHelper : public content::DownloadManager::Observer {
  public:
   DisablePluginHelper() {}
   ~DisablePluginHelper() override {}
 
   void DisablePlugin(Profile* profile) {
-    registrar_.Add(this, chrome::NOTIFICATION_PLUGIN_ENABLE_STATUS_CHANGED,
-                   content::Source<Profile>(profile));
-    scoped_refptr<PluginPrefs> prefs(PluginPrefs::GetForProfile(profile));
-    DCHECK(prefs.get());
-    prefs->EnablePluginGroup(
-        false, base::UTF8ToUTF16(ChromeContentClient::kPDFPluginName));
-    // Wait until the plugin has been disabled.
-    disable_run_loop_.Run();
+    profile->GetPrefs()->SetBoolean(
+        prefs::kPluginsAlwaysOpenPdfExternally, true);
   }
 
   const GURL& GetLastUrl() {
@@ -325,17 +318,8 @@ class DisablePluginHelper : public content::DownloadManager::Observer,
     download_run_loop_.Quit();
   }
 
-  // content::NotificationObserver implementation.
-  void Observe(int type,
-               const content::NotificationSource& source,
-               const content::NotificationDetails& details) override {
-    DCHECK_EQ(chrome::NOTIFICATION_PLUGIN_ENABLE_STATUS_CHANGED, type);
-    disable_run_loop_.Quit();
-  }
-
  private:
   content::NotificationRegistrar registrar_;
-  base::RunLoop disable_run_loop_;
   base::RunLoop download_run_loop_;
   GURL last_url_;
 };
@@ -398,6 +382,10 @@ IN_PROC_BROWSER_TEST_F(PDFExtensionTest, ParamsParser) {
 
 IN_PROC_BROWSER_TEST_F(PDFExtensionTest, ZoomManager) {
   RunTestsInFile("zoom_manager_test.js", "test.pdf");
+}
+
+IN_PROC_BROWSER_TEST_F(PDFExtensionTest, GestureDetector) {
+  RunTestsInFile("gesture_detector_test.js", "test.pdf");
 }
 
 IN_PROC_BROWSER_TEST_F(PDFExtensionTest, Elements) {
@@ -909,4 +897,11 @@ IN_PROC_BROWSER_TEST_F(PDFExtensionTest, LinkShiftLeftClick) {
 
   const GURL& url = active_web_contents->GetURL();
   ASSERT_EQ(std::string("http://www.example.com/"), url.spec());
+}
+
+// Test that if the plugin tries to load a URL that redirects then it will fail
+// to load. This is to avoid the source origin of the document changing during
+// the redirect, which can have security implications. https://crbug.com/653749.
+IN_PROC_BROWSER_TEST_F(PDFExtensionTest, RedirectsFailInPlugin) {
+  RunTestsInFile("redirects_fail_test.js", "test.pdf");
 }

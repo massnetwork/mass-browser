@@ -4,7 +4,7 @@
 
 package org.chromium.chrome.browser.compositor.layouts;
 
-import android.graphics.Point;
+import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Handler;
@@ -78,21 +78,12 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
     private int mFullscreenToken = FullscreenManager.INVALID_TOKEN;
     private boolean mUpdateRequested;
 
-    // Sizing State
-    private final Rect mLastViewportPx = new Rect();
-    private final Rect mLastVisibleViewportPx = new Rect();
-    private final Rect mLastFullscreenViewportPx = new Rect();
-    protected final RectF mLastViewportDp = new RectF();
-    protected final RectF mLastVisibleViewportDp = new RectF();
-    protected final RectF mLastFullscreenViewportDp = new RectF();
+    // Used to store the visible viewport and not create a new Rect object every frame.
+    private final RectF mCachedVisibleViewport = new RectF();
+    private final RectF mCachedWindowViewport = new RectF();
 
-    protected float mLastContentWidthDp;
-    protected float mLastContentHeightDp;
-    protected float mLastHeightMinusBrowserControlsDp;
-
-    private final RectF mCachedRectF = new RectF();
-    private final Rect mCachedRect = new Rect();
-    private final Point mCachedPoint = new Point();
+    private final RectF mCachedRect = new RectF();
+    private final PointF mCachedPoint = new PointF();
 
     /**
      * Creates a {@link LayoutManager} instance.
@@ -102,20 +93,6 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
         mHost = host;
         mPxToDp = 1.f / mHost.getContext().getResources().getDisplayMetrics().density;
         mSceneChangeObservers = new ObserverList<SceneChangeObserver>();
-
-        int hostWidth = host.getWidth();
-        int hostHeight = host.getHeight();
-        mLastViewportPx.set(0, 0, hostWidth, hostHeight);
-        mLastVisibleViewportPx.set(0, 0, hostWidth, hostHeight);
-        mLastFullscreenViewportPx.set(0, 0, hostWidth, hostHeight);
-
-        mLastContentWidthDp = hostWidth * mPxToDp;
-        mLastContentHeightDp = hostHeight * mPxToDp;
-        mLastViewportDp.set(0, 0, mLastContentWidthDp, mLastContentHeightDp);
-        mLastVisibleViewportDp.set(0, 0, mLastContentWidthDp, mLastContentHeightDp);
-        mLastFullscreenViewportDp.set(0, 0, mLastContentWidthDp, mLastContentHeightDp);
-
-        mLastHeightMinusBrowserControlsDp = mLastContentHeightDp;
     }
 
     /**
@@ -141,7 +118,7 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
             mLastTapY = (int) e.getY();
         }
 
-        Point offsets = getMotionOffsets(e);
+        PointF offsets = getMotionOffsets(e);
         mActiveEventFilter =
                 mActiveLayout.findInterceptingEventFilter(e, offsets, isKeyboardShowing);
         if (mActiveEventFilter != null) mActiveLayout.unstallImmediately();
@@ -158,7 +135,7 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
         if (mActiveEventFilter == null) return false;
 
         boolean consumed = mActiveEventFilter.onTouchEvent(e);
-        Point offsets = getMotionOffsets(e);
+        PointF offsets = getMotionOffsets(e);
         if (offsets != null) mActiveEventFilter.setCurrentMotionEventOffsets(offsets.x, offsets.y);
         return consumed;
     }
@@ -179,7 +156,7 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
         return mHost.getWidth();
     }
 
-    private Point getMotionOffsets(MotionEvent e) {
+    private PointF getMotionOffsets(MotionEvent e) {
         int actionMasked = e.getActionMasked();
         if (SPenSupport.isSPenSupported(mHost.getContext())) {
             actionMasked = SPenSupport.convertSPenEventAction(actionMasked);
@@ -273,46 +250,26 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
     }
 
     @Override
-    public SceneLayer getUpdatedActiveSceneLayer(Rect viewport, Rect contentViewport,
-            LayerTitleCache layerTitleCache, TabContentManager tabContentManager,
-            ResourceManager resourceManager, ChromeFullscreenManager fullscreenManager) {
-        return mActiveLayout.getUpdatedSceneLayer(viewport, contentViewport, layerTitleCache,
-                tabContentManager, resourceManager, fullscreenManager);
+    public SceneLayer getUpdatedActiveSceneLayer(LayerTitleCache layerTitleCache,
+            TabContentManager tabContentManager, ResourceManager resourceManager,
+            ChromeFullscreenManager fullscreenManager) {
+        getViewportPixel(mCachedVisibleViewport);
+        mHost.getWindowViewport(mCachedWindowViewport);
+        return mActiveLayout.getUpdatedSceneLayer(mCachedWindowViewport, mCachedVisibleViewport,
+                layerTitleCache, tabContentManager, resourceManager, fullscreenManager);
     }
 
     /**
      * Called when the viewport has been changed.  Override this to be notified when
      * {@link #pushNewViewport(Rect, Rect, int)} calls actually change the current viewport.
-     * @param viewportDp The new viewport in dp.
      */
-    protected void onViewportChanged(RectF viewportDp) {
+    public void onViewportChanged() {
         if (getActiveLayout() != null) {
-            getActiveLayout().sizeChanged(mLastVisibleViewportDp, mLastFullscreenViewportDp,
-                    mLastHeightMinusBrowserControlsDp, getOrientation());
+            mHost.getWindowViewport(mCachedWindowViewport);
+            mHost.getVisibleViewport(mCachedVisibleViewport);
+            getActiveLayout().sizeChanged(mCachedVisibleViewport, mCachedWindowViewport,
+                    mHost.getHeightMinusBrowserControls(), getOrientation());
         }
-    }
-
-    /**
-     * Should be called from an external source when the viewport changes.  {@code viewport} and
-     * {@code visibleViewport} are different, as the browser controls might be covering part of the
-     * viewport but a {@link Layout} might want to consume the whole space (or not).
-     * @param viewport               The new viewport in px.
-     * @param visibleViewport        The new visible viewport in px.
-     * @param heightMinusBrowserControls The height of the viewport minus the browser controls.
-     */
-    public final void pushNewViewport(
-            Rect viewport, Rect visibleViewport, int heightMinusBrowserControls) {
-        mLastViewportPx.set(viewport);
-        mLastVisibleViewportPx.set(visibleViewport);
-
-        mLastViewportDp.set(viewport.left * mPxToDp, viewport.top * mPxToDp,
-                viewport.right * mPxToDp, viewport.bottom * mPxToDp);
-        mLastVisibleViewportDp.set(visibleViewport.left * mPxToDp, visibleViewport.top * mPxToDp,
-                visibleViewport.right * mPxToDp, visibleViewport.bottom * mPxToDp);
-        mLastFullscreenViewportDp.set(0, 0, viewport.right * mPxToDp, viewport.bottom * mPxToDp);
-        mLastHeightMinusBrowserControlsDp = heightMinusBrowserControls * mPxToDp;
-
-        propagateViewportToActiveLayout();
     }
 
     /**
@@ -352,44 +309,18 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
     }
 
     @Override
-    public RectF getViewportDp(RectF rect) {
-        if (rect == null) rect = new RectF();
-
+    public void getViewportPixel(RectF rect) {
         if (getActiveLayout() == null) {
-            rect.set(mLastViewportDp);
-            return rect;
+            mHost.getWindowViewport(rect);
+            return;
         }
 
         final int flags = getActiveLayout().getSizingFlags();
         if ((flags & SizingFlags.REQUIRE_FULLSCREEN_SIZE) != 0) {
-            rect.set(mLastFullscreenViewportDp);
-        } else if ((flags & SizingFlags.ALLOW_TOOLBAR_HIDE) != 0) {
-            rect.set(mLastViewportDp);
+            mHost.getWindowViewport(rect);
         } else {
-            rect.set(mLastVisibleViewportDp);
+            mHost.getVisibleViewport(rect);
         }
-
-        return rect;
-    }
-
-    @Override
-    public Rect getViewportPixel(Rect rect) {
-        if (rect == null) rect = new Rect();
-
-        if (getActiveLayout() == null) {
-            rect.set(mLastViewportPx);
-            return rect;
-        }
-
-        final int flags = getActiveLayout().getSizingFlags();
-        if ((flags & SizingFlags.REQUIRE_FULLSCREEN_SIZE) != 0) {
-            rect.set(mLastFullscreenViewportPx);
-        } else if ((flags & SizingFlags.ALLOW_TOOLBAR_HIDE) != 0) {
-            rect.set(mLastViewportPx);
-        } else {
-            rect.set(mLastVisibleViewportPx);
-        }
-        return rect;
     }
 
     @Override
@@ -455,13 +386,15 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
         ChromeFullscreenManager fullscreenManager = mHost.getFullscreenManager();
         if (fullscreenManager != null) {
             // Release any old fullscreen token we were holding.
-            fullscreenManager.hideControlsPersistent(mFullscreenToken);
+            fullscreenManager.getBrowserVisibilityDelegate().hideControlsPersistent(
+                    mFullscreenToken);
             mFullscreenToken = FullscreenManager.INVALID_TOKEN;
 
             // Grab a new fullscreen token if this layout can't be in fullscreen.
             final int flags = getActiveLayout().getSizingFlags();
             if ((flags & SizingFlags.ALLOW_TOOLBAR_HIDE) == 0) {
-                mFullscreenToken = fullscreenManager.showControlsPersistent();
+                mFullscreenToken =
+                        fullscreenManager.getBrowserVisibilityDelegate().showControlsPersistent();
             }
 
             // Hide the toolbar immediately if the layout wants it gone quickly.
@@ -469,7 +402,7 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
                     flags == SizingFlags.HELPER_HIDE_TOOLBAR_IMMEDIATE);
         }
 
-        propagateViewportToActiveLayout();
+        onViewportChanged();
         getActiveLayout().show(time(), animate);
         mHost.setContentOverlayVisibility(getActiveLayout().shouldDisplayContentOverlay());
         mHost.requestRender();
@@ -512,18 +445,8 @@ public abstract class LayoutManager implements LayoutUpdateHost, LayoutProvider,
      */
     public abstract boolean onBackPressed();
 
-    private void propagateViewportToActiveLayout() {
-        getViewportDp(mCachedRectF);
-
-        float width = mCachedRectF.width();
-        float height = mCachedRectF.height();
-        mLastContentWidthDp = width;
-        mLastContentHeightDp = height;
-        onViewportChanged(mCachedRectF);
-    }
-
     private int getOrientation() {
-        if (mLastContentWidthDp > mLastContentHeightDp) {
+        if (mHost.getWidth() > mHost.getHeight()) {
             return Orientation.LANDSCAPE;
         } else {
             return Orientation.PORTRAIT;

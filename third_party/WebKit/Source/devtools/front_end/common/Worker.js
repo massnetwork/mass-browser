@@ -31,15 +31,13 @@
 /**
  * @unrestricted
  */
-WebInspector.Worker = class {
+Common.Worker = class {
   /**
    * @param {string} appName
    */
   constructor(appName) {
     var url = appName + '.js';
-    var remoteBase = Runtime.queryParam('remoteBase');
-    if (remoteBase)
-      url += '?remoteBase=' + remoteBase;
+    url += Runtime.queryParamsString();
 
     /** @type {!Promise<!Worker>} */
     this._workerPromise = new Promise(fulfill => {
@@ -48,7 +46,7 @@ WebInspector.Worker = class {
 
       /**
        * @param {!Event} event
-       * @this {WebInspector.Worker}
+       * @this {Common.Worker}
        */
       function onMessage(event) {
         console.assert(event.data === 'workerReady');

@@ -18,7 +18,6 @@
 class GURL;
 
 namespace base {
-class MessageLoop;
 class WaitableEvent;
 }
 
@@ -104,6 +103,9 @@ class CONTENT_EXPORT RenderThread : virtual public ChildThread {
 
   // Gets the shutdown event for the process.
   virtual base::WaitableEvent* GetShutdownEvent() = 0;
+
+  // Retrieve the process ID of the browser process.
+  virtual int32_t GetClientId() = 0;
 };
 
 }  // namespace content

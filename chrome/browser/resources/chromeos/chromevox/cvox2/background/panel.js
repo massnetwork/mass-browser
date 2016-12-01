@@ -8,6 +8,7 @@
 
 goog.provide('Panel');
 
+goog.require('BrailleCommandHandler');
 goog.require('ISearchUI');
 goog.require('Msgs');
 goog.require('PanelCommand');
@@ -130,6 +131,12 @@ Panel.init = function() {
 
   document.addEventListener('keydown', Panel.onKeyDown, false);
   document.addEventListener('mouseup', Panel.onMouseUp, false);
+  window.addEventListener('blur', function(evt) {
+    if (evt.target != window || document.activeElement == document.body)
+      return;
+
+    Panel.closeMenusAndRestoreFocus();
+  }, false);
 
   Panel.searchInput_.addEventListener('blur', Panel.onSearchInputBlur, false);
 };
@@ -215,6 +222,9 @@ Panel.exec = function(command) {
     case PanelCommandType.TUTORIAL:
       Panel.onTutorial();
       break;
+    case PanelCommandType.UPDATE_NOTES:
+      Panel.onTutorial('updateNotes');
+      break;
   }
 };
 
@@ -253,7 +263,7 @@ Panel.setMode = function(mode) {
     // host code to make the window fullscreen and give it focus.
     window.location = '#fullscreen';
   } else if (this.mode_ == Panel.Mode.FOCUSED) {
-    // // Change the url fragment to 'focus', which signals the native
+    // Change the url fragment to 'focus', which signals the native
     // host code to give the window focus.
     window.location = '#focus';
   } else {
@@ -353,6 +363,7 @@ Panel.onOpenMenus = function(opt_event, opt_activateMenuTitle) {
       menu.addMenuItem(
           binding.title,
           binding.keySeq,
+          BrailleCommandHandler.getDotShortcut(binding.command, true),
           function() {
             var CommandHandler =
                 chrome.extension.getBackgroundPage()['CommandHandler'];
@@ -370,7 +381,7 @@ Panel.onOpenMenus = function(opt_event, opt_activateMenuTitle) {
           var title = tabs[j].title;
           if (tabs[j].active && windows[i].id == lastFocusedWindow.id)
             title += ' ' + Msgs.getMsg('active_tab');
-          tabsMenu.addMenuItem(title, '', (function(win, tab) {
+          tabsMenu.addMenuItem(title, '', '', (function(win, tab) {
             bkgnd.chrome.windows.update(win.id, {focused: true}, function() {
               bkgnd.chrome.tabs.update(tab.id, {active: true});
             });
@@ -382,7 +393,7 @@ Panel.onOpenMenus = function(opt_event, opt_activateMenuTitle) {
 
   // Add a menu item that disables / closes ChromeVox.
   chromevoxMenu.addMenuItem(
-      Msgs.getMsg('disable_chromevox'), 'Ctrl+Alt+Z', function() {
+      Msgs.getMsg('disable_chromevox'), 'Ctrl+Alt+Z', '', function() {
         Panel.onClose();
       });
 
@@ -784,13 +795,20 @@ Panel.closeMenusAndRestoreFocus = function() {
 
 /**
  * Open the tutorial.
+ * @param {string=} opt_page Show a specific page.
  */
-Panel.onTutorial = function() {
+Panel.onTutorial = function(opt_page) {
   // Change the url fragment to 'fullscreen', which signals the native
   // host code to make the window fullscreen, revealing the menus.
   Panel.setMode(Panel.Mode.FULLSCREEN_TUTORIAL);
 
-  Panel.tutorial_.firstPage();
+  switch (opt_page) {
+    case 'updateNotes':
+      Panel.tutorial_.updateNotes();
+      break;
+    default:
+      Panel.tutorial_.lastViewedPage();
+  }
 };
 
 /**

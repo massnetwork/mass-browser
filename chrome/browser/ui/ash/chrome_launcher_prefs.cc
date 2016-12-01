@@ -13,7 +13,6 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/values.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
-#include "chrome/browser/chromeos/arc/arc_auth_service.h"
 #include "chrome/browser/chromeos/arc/arc_support_host.h"
 #include "chrome/browser/prefs/pref_service_syncable_util.h"
 #include "chrome/browser/ui/app_list/app_list_syncable_service.h"
@@ -29,6 +28,7 @@
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
+#include "ui/display/types/display_constants.h"
 
 namespace ash {
 namespace launcher {
@@ -342,7 +342,7 @@ std::unique_ptr<base::DictionaryValue> CreateAppDict(
 
 ShelfAutoHideBehavior GetShelfAutoHideBehaviorPref(PrefService* prefs,
                                                    int64_t display_id) {
-  DCHECK_NE(display_id, display::Display::kInvalidDisplayID);
+  DCHECK_NE(display_id, display::kInvalidDisplayId);
 
   // Don't show the shelf in app mode.
   if (chrome::IsRunningInAppMode())
@@ -357,7 +357,7 @@ ShelfAutoHideBehavior GetShelfAutoHideBehaviorPref(PrefService* prefs,
 void SetShelfAutoHideBehaviorPref(PrefService* prefs,
                                   int64_t display_id,
                                   ShelfAutoHideBehavior behavior) {
-  DCHECK_NE(display_id, display::Display::kInvalidDisplayID);
+  DCHECK_NE(display_id, display::kInvalidDisplayId);
 
   const char* value = AutoHideBehaviorToPref(behavior);
   if (!value)
@@ -372,7 +372,7 @@ void SetShelfAutoHideBehaviorPref(PrefService* prefs,
 }
 
 ShelfAlignment GetShelfAlignmentPref(PrefService* prefs, int64_t display_id) {
-  DCHECK_NE(display_id, display::Display::kInvalidDisplayID);
+  DCHECK_NE(display_id, display::kInvalidDisplayId);
 
   // See comment in |kShelfAlignment| as to why we consider two prefs.
   return AlignmentFromPref(GetPerDisplayPref(
@@ -382,7 +382,7 @@ ShelfAlignment GetShelfAlignmentPref(PrefService* prefs, int64_t display_id) {
 void SetShelfAlignmentPref(PrefService* prefs,
                            int64_t display_id,
                            ShelfAlignment alignment) {
-  DCHECK_NE(display_id, display::Display::kInvalidDisplayID);
+  DCHECK_NE(display_id, display::kInvalidDisplayId);
 
   const char* value = AlignmentToPref(alignment);
   if (!value)
@@ -598,8 +598,8 @@ std::vector<AppLauncherId> GetPinnedAppsFromPrefs(
     LauncherControllerHelper* helper) {
   app_list::AppListSyncableService* app_service =
       app_list::AppListSyncableServiceFactory::GetForProfile(helper->profile());
-  // Some unit tests may not have it.
-  if (!app_service)
+  // Some unit tests may not have it or service may not be initialized.
+  if (!app_service || !app_service->IsInitialized())
     return std::vector<AppLauncherId>();
 
   std::vector<PinInfo> pin_infos;

@@ -27,6 +27,7 @@
 
 #include "core/HTMLElementFactory.h"
 #include "core/HTMLNames.h"
+#include "core/clipboard/DataObject.h"
 #include "core/dom/Document.h"
 #include "core/dom/ElementTraversal.h"
 #include "core/dom/NodeComputedStyle.h"
@@ -57,6 +58,7 @@
 #include "core/html/HTMLUListElement.h"
 #include "core/layout/LayoutObject.h"
 #include "core/layout/LayoutTableCell.h"
+#include "platform/clipboard/ClipboardMimeTypes.h"
 #include "wtf/Assertions.h"
 #include "wtf/StdLibExtras.h"
 #include "wtf/text/StringBuilder.h"
@@ -270,8 +272,10 @@ int comparePositions(const VisiblePosition& a, const VisiblePosition& b) {
 
 enum EditableLevel { Editable, RichlyEditable };
 static bool hasEditableLevel(const Node& node, EditableLevel editableLevel) {
-  // TODO(yoichio): We should have this check.
-  // DCHECK(!needsLayoutTreeUpdate(node));
+  DCHECK(node.document().isActive());
+  // TODO(editing-dev): We should have this check:
+  // DCHECK_GE(node.document().lifecycle().state(),
+  //           DocumentLifecycle::StyleClean);
   if (node.isPseudoElement())
     return false;
 
@@ -299,10 +303,24 @@ static bool hasEditableLevel(const Node& node, EditableLevel editableLevel) {
 }
 
 bool hasEditableStyle(const Node& node) {
+  // TODO(editing-dev): We shouldn't check editable style in inactive documents.
+  // We should hoist this check in the call stack, replace it by a DCHECK of
+  // active document and ultimately cleanup the code paths with inactive
+  // documents.  See crbug.com/667681
+  if (!node.document().isActive())
+    return false;
+
   return hasEditableLevel(node, Editable);
 }
 
 bool hasRichlyEditableStyle(const Node& node) {
+  // TODO(editing-dev): We shouldn't check editable style in inactive documents.
+  // We should hoist this check in the call stack, replace it by a DCHECK of
+  // active document and ultimately cleanup the code paths with inactive
+  // documents.  See crbug.com/667681
+  if (!node.document().isActive())
+    return false;
+
   return hasEditableLevel(node, RichlyEditable);
 }
 
@@ -918,7 +936,7 @@ bool nodeIsUserSelectAll(const Node* node) {
 }
 
 EUserSelect usedValueOfUserSelect(const Node& node) {
-  if (node.isHTMLElement() && toHTMLElement(node).isTextFormControl())
+  if (node.isHTMLElement() && toHTMLElement(node).isTextControl())
     return SELECT_TEXT;
   if (!node.layoutObject())
     return SELECT_NONE;
@@ -1501,8 +1519,7 @@ bool isEmptyTableCell(const Node* node) {
 
   // Check that the table cell contains no child layoutObjects except for
   // perhaps a single <br>.
-  LayoutObject* childLayoutObject =
-      toLayoutTableCell(layoutObject)->firstChild();
+  LayoutObject* childLayoutObject = layoutObject->slowFirstChild();
   if (!childLayoutObject)
     return true;
   if (!childLayoutObject->isBR())
@@ -1698,7 +1715,7 @@ PositionWithAffinity positionRespectingEditingBoundary(
 
     FloatPoint absolutePoint = targetNode->layoutObject()->localToAbsolute(
         FloatPoint(selectionEndPoint));
-    selectionEndPoint = roundedLayoutPoint(
+    selectionEndPoint = LayoutPoint(
         editableElement->layoutObject()->absoluteToLocal(absolutePoint));
     targetNode = editableElement;
   }
@@ -2036,7 +2053,7 @@ DispatchEventResult dispatchBeforeInputInsertText(EventTarget* target,
     return DispatchEventResult::NotCanceled;
   if (!target)
     return DispatchEventResult::NotCanceled;
-  // TODO(chongz): Pass appreciate |ranges| after it's defined on spec.
+  // TODO(chongz): Pass appropriate |ranges| after it's defined on spec.
   // http://w3c.github.io/editing/input-events.html#dom-inputevent-inputtype
   InputEvent* beforeInputEvent = InputEvent::createBeforeInput(
       InputEvent::InputType::InsertText, data,
@@ -2054,7 +2071,7 @@ DispatchEventResult dispatchBeforeInputFromComposition(
     return DispatchEventResult::NotCanceled;
   if (!target)
     return DispatchEventResult::NotCanceled;
-  // TODO(chongz): Pass appreciate |ranges| after it's defined on spec.
+  // TODO(chongz): Pass appropriate |ranges| after it's defined on spec.
   // http://w3c.github.io/editing/input-events.html#dom-inputevent-inputtype
   InputEvent* beforeInputEvent = InputEvent::createBeforeInput(
       inputType, data, cancelable, InputEvent::EventIsComposing::IsComposing,
@@ -2085,9 +2102,27 @@ DispatchEventResult dispatchBeforeInputDataTransfer(
     return DispatchEventResult::NotCanceled;
   if (!target)
     return DispatchEventResult::NotCanceled;
-  InputEvent* beforeInputEvent = InputEvent::createBeforeInput(
-      inputType, dataTransfer, InputEvent::EventCancelable::IsCancelable,
-      InputEvent::EventIsComposing::NotComposing, ranges);
+
+  DCHECK(inputType == InputEvent::InputType::InsertFromPaste ||
+         inputType == InputEvent::InputType::InsertReplacementText ||
+         inputType == InputEvent::InputType::InsertFromDrop ||
+         inputType == InputEvent::InputType::DeleteByCut)
+      << "Unsupported inputType: " << (int)inputType;
+
+  InputEvent* beforeInputEvent;
+
+  if (hasRichlyEditableStyle(*(target->toNode())) || !dataTransfer) {
+    beforeInputEvent = InputEvent::createBeforeInput(
+        inputType, dataTransfer, InputEvent::EventCancelable::IsCancelable,
+        InputEvent::EventIsComposing::NotComposing, ranges);
+  } else {
+    const String& data = dataTransfer->getData(mimeTypeTextPlain);
+    // TODO(chongz): Pass appropriate |ranges| after it's defined on spec.
+    // http://w3c.github.io/editing/input-events.html#dom-inputevent-inputtype
+    beforeInputEvent = InputEvent::createBeforeInput(
+        inputType, data, InputEvent::EventCancelable::IsCancelable,
+        InputEvent::EventIsComposing::NotComposing, nullptr);
+  }
   return target->dispatchEvent(beforeInputEvent);
 }
 

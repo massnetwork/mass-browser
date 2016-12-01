@@ -28,6 +28,10 @@ class AuraTestHelper;
 }
 }
 
+namespace display {
+class Screen;
+}
+
 namespace ui {
 class ScopedOleInitializer;
 }
@@ -41,7 +45,6 @@ class MockRenderProcessHost;
 class MockRenderProcessHostFactory;
 class NavigationController;
 class RenderProcessHostFactory;
-class RenderViewHostDelegate;
 class TestRenderFrameHostFactory;
 class TestRenderViewHostFactory;
 class WebContents;
@@ -279,6 +282,7 @@ class RenderViewHostTestHarness : public testing::Test {
 #endif
 #if defined(OS_ANDROID)
   std::unique_ptr<MockGpuChannelEstablishFactory> gpu_channel_factory_;
+  std::unique_ptr<display::Screen> screen_;
 #endif
   RenderViewHostTestEnabler rvh_test_enabler_;
 

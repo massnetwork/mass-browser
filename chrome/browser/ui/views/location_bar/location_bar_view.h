@@ -21,7 +21,7 @@
 #include "chrome/browser/ui/views/omnibox/omnibox_view_views.h"
 #include "components/prefs/pref_member.h"
 #include "components/search_engines/template_url_service_observer.h"
-#include "components/security_state/security_state_model.h"
+#include "components/security_state/core/security_state.h"
 #include "components/zoom/zoom_event_manager_observer.h"
 #include "ui/gfx/animation/animation_delegate.h"
 #include "ui/gfx/animation/slide_animation.h"
@@ -29,13 +29,11 @@
 #include "ui/gfx/geometry/rect.h"
 #include "ui/views/drag_controller.h"
 
-class ActionBoxButtonView;
 class CommandUpdater;
 class ContentSettingBubbleModelDelegate;
 class ContentSettingImageView;
 class ExtensionAction;
 class GURL;
-class InstantController;
 class KeywordHintView;
 class LocationIconView;
 class OpenPDFInReaderView;
@@ -55,7 +53,6 @@ class SaveCardIconView;
 
 namespace views {
 class Label;
-class Widget;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -97,8 +94,7 @@ class LocationBarView : public LocationBar,
     virtual void ShowWebsiteSettings(
         content::WebContents* web_contents,
         const GURL& virtual_url,
-        const security_state::SecurityStateModel::SecurityInfo&
-            security_info) = 0;
+        const security_state::SecurityInfo& security_info) = 0;
 
    protected:
     virtual ~Delegate() {}
@@ -144,7 +140,7 @@ class LocationBarView : public LocationBar,
   // Returns the color to be used for security text in the context of
   // |security_level|.
   SkColor GetSecureTextColor(
-      security_state::SecurityStateModel::SecurityLevel security_level) const;
+      security_state::SecurityLevel security_level) const;
 
   // Returns the delegate.
   Delegate* delegate() const { return delegate_; }
@@ -194,12 +190,6 @@ class LocationBarView : public LocationBar,
   // comments on |ime_inline_autocomplete_view_|.
   void SetImeInlineAutocompletion(const base::string16& text);
 
-  // Invoked from OmniboxViewWin to show gray text autocompletion.
-  void SetGrayTextAutocompletion(const base::string16& text);
-
-  // Returns the current gray text autocompletion.
-  base::string16 GetGrayTextAutocompletion() const;
-
   // Set if we should show a focus rect while the location entry field is
   // focused. Used when the toolbar is in full keyboard accessibility mode.
   // Repaints if necessary.
@@ -243,7 +233,7 @@ class LocationBarView : public LocationBar,
 
   // views::View:
   bool HasFocus() const override;
-  void GetAccessibleState(ui::AXViewState* state) override;
+  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
   gfx::Size GetPreferredSize() const override;
   void Layout() override;
   void OnNativeThemeChanged(const ui::NativeTheme* theme) override;
@@ -313,9 +303,6 @@ class LocationBarView : public LocationBar,
 
   // Helper to show the first run info bubble.
   void ShowFirstRunBubbleInternal();
-
-  // Returns true if the suggest text is valid.
-  bool HasValidSuggestText() const;
 
   // Returns text describing the URL's security level, to be placed in the
   // security chip.
@@ -425,10 +412,6 @@ class LocationBarView : public LocationBar,
 
   // Shown if the user has selected a keyword.
   SelectedKeywordView* selected_keyword_view_;
-
-  // View responsible for showing suggested text. This is NULL when there is no
-  // suggested text.
-  views::Label* suggested_text_view_;
 
   // Shown if the selected url has a corresponding keyword.
   KeywordHintView* keyword_hint_view_;

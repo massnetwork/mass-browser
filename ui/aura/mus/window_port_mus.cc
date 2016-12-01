@@ -11,6 +11,7 @@
 #include "ui/aura/mus/window_tree_client.h"
 #include "ui/aura/mus/window_tree_client_delegate.h"
 #include "ui/aura/window.h"
+#include "ui/aura/window_delegate.h"
 #include "ui/aura/window_observer.h"
 #include "ui/aura/window_property.h"
 
@@ -33,7 +34,13 @@ WindowPortMus::~WindowPortMus() {
   if (surface_info_)
     SetSurfaceIdFromServer(nullptr);
 
-  window_tree_client_->OnWindowMusDestroyed(this);
+  // DESTROY is only scheduled from DestroyFromServer(), meaning if DESTROY is
+  // present then the server originated the change.
+  const WindowTreeClient::Origin origin =
+      RemoveChangeByTypeAndData(ServerChangeType::DESTROY, ServerChangeData())
+          ? WindowTreeClient::Origin::SERVER
+          : WindowTreeClient::Origin::CLIENT;
+  window_tree_client_->OnWindowMusDestroyed(this, origin);
 }
 
 // static
@@ -53,6 +60,32 @@ void WindowPortMus::SetImeVisibility(bool visible,
 void WindowPortMus::SetPredefinedCursor(ui::mojom::Cursor cursor_id) {
   window_tree_client_->SetPredefinedCursor(this, predefined_cursor_, cursor_id);
   predefined_cursor_ = cursor_id;
+}
+
+std::unique_ptr<WindowCompositorFrameSink>
+WindowPortMus::RequestCompositorFrameSink(
+    ui::mojom::CompositorFrameSinkType type,
+    scoped_refptr<cc::ContextProvider> context_provider,
+    gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager) {
+  std::unique_ptr<WindowCompositorFrameSinkBinding>
+      compositor_frame_sink_binding;
+  std::unique_ptr<WindowCompositorFrameSink> compositor_frame_sink =
+      WindowCompositorFrameSink::Create(std::move(context_provider),
+                                        gpu_memory_buffer_manager,
+                                        &compositor_frame_sink_binding);
+  AttachCompositorFrameSink(type, std::move(compositor_frame_sink_binding));
+  return compositor_frame_sink;
+}
+
+void WindowPortMus::AttachCompositorFrameSink(
+    ui::mojom::CompositorFrameSinkType type,
+    std::unique_ptr<WindowCompositorFrameSinkBinding>
+        compositor_frame_sink_binding) {
+  window_tree_client_->AttachCompositorFrameSink(
+      server_id(), type,
+      std::move(compositor_frame_sink_binding->compositor_frame_sink_request_),
+      mojo::MakeProxy(std::move(
+          compositor_frame_sink_binding->compositor_frame_sink_client_)));
 }
 
 WindowPortMus::ServerChangeIdType WindowPortMus::ScheduleChange(
@@ -78,8 +111,18 @@ void WindowPortMus::RemoveChangeById(ServerChangeIdType change_id) {
 
 bool WindowPortMus::RemoveChangeByTypeAndData(const ServerChangeType type,
                                               const ServerChangeData& data) {
-  for (auto iter = server_changes_.begin(); iter != server_changes_.end();
-       ++iter) {
+  auto iter = FindChangeByTypeAndData(type, data);
+  if (iter == server_changes_.end())
+    return false;
+  server_changes_.erase(iter);
+  return true;
+}
+
+WindowPortMus::ServerChanges::iterator WindowPortMus::FindChangeByTypeAndData(
+    const ServerChangeType type,
+    const ServerChangeData& data) {
+  auto iter = server_changes_.begin();
+  for (; iter != server_changes_.end(); ++iter) {
     if (iter->type != type)
       continue;
 
@@ -89,26 +132,28 @@ bool WindowPortMus::RemoveChangeByTypeAndData(const ServerChangeType type,
       case ServerChangeType::REMOVE:
       case ServerChangeType::REMOVE_TRANSIENT:
       case ServerChangeType::REORDER:
+      case ServerChangeType::TRANSIENT_REORDER:
         if (iter->data.child_id == data.child_id)
-          break;
-        continue;
+          return iter;
+        break;
       case ServerChangeType::BOUNDS:
         if (iter->data.bounds == data.bounds)
-          break;
-        continue;
+          return iter;
+        break;
+      case ServerChangeType::DESTROY:
+        // No extra data for delete.
+        return iter;
       case ServerChangeType::PROPERTY:
         if (iter->data.property_name == data.property_name)
-          break;
-        continue;
+          return iter;
+        break;
       case ServerChangeType::VISIBLE:
         if (iter->data.visible == data.visible)
-          break;
-        continue;
+          return iter;
+        break;
     }
-    server_changes_.erase(iter);
-    return true;
   }
-  return false;
+  return iter;
 }
 
 PropertyConverter* WindowPortMus::GetPropertyConverter() {
@@ -194,11 +239,9 @@ void WindowPortMus::SetSurfaceIdFromServer(
     const cc::SurfaceId& existing_surface_id = surface_info_->surface_id;
     cc::SurfaceId new_surface_id =
         surface_info ? surface_info->surface_id : cc::SurfaceId();
-    if (!existing_surface_id.is_null() &&
+    if (existing_surface_id.is_valid() &&
         existing_surface_id != new_surface_id) {
-      // Return the existing surface sequence.
-      window_tree_client_->OnWindowMusSurfaceDetached(
-          this, surface_info_->surface_sequence);
+      // TODO(kylechar): Start return reference here?
     }
   }
   WindowPortMus* parent = Get(window_->parent());
@@ -207,6 +250,22 @@ void WindowPortMus::SetSurfaceIdFromServer(
                                                              &surface_info);
   }
   surface_info_ = std::move(surface_info);
+}
+
+void WindowPortMus::DestroyFromServer() {
+  std::unique_ptr<ScopedServerChange> remove_from_parent_change;
+  if (window_->parent()) {
+    ServerChangeData data;
+    data.child_id = server_id();
+    WindowPortMus* parent = Get(window_->parent());
+    remove_from_parent_change = base::MakeUnique<ScopedServerChange>(
+        parent, ServerChangeType::REMOVE, data);
+  }
+  // NOTE: this can't use ScopedServerChange as |this| is destroyed before the
+  // function returns (ScopedServerChange would attempt to access |this| after
+  // destruction).
+  ScheduleChange(ServerChangeType::DESTROY, ServerChangeData());
+  delete window_;
 }
 
 void WindowPortMus::AddTransientChildFromServer(WindowMus* child) {
@@ -270,6 +329,20 @@ WindowPortMus::PrepareForServerVisibilityChange(bool value) {
   return std::move(data);
 }
 
+void WindowPortMus::PrepareForTransientRestack(WindowMus* window) {
+  ServerChangeData change_data;
+  change_data.child_id = window->server_id();
+  ScheduleChange(ServerChangeType::TRANSIENT_REORDER, change_data);
+}
+
+void WindowPortMus::OnTransientRestackDone(WindowMus* window) {
+  ServerChangeData change_data;
+  change_data.child_id = window->server_id();
+  const bool removed = RemoveChangeByTypeAndData(
+      ServerChangeType::TRANSIENT_REORDER, change_data);
+  DCHECK(removed);
+}
+
 void WindowPortMus::NotifyEmbeddedAppDisconnected() {
   for (WindowObserver& observer : *GetObservers(window_))
     observer.OnEmbeddedAppDisconnected(window_);
@@ -280,7 +353,10 @@ void WindowPortMus::OnPreInit(Window* window) {
   window_tree_client_->OnWindowMusCreated(this);
 }
 
-void WindowPortMus::OnDeviceScaleFactorChanged(float device_scale_factor) {}
+void WindowPortMus::OnDeviceScaleFactorChanged(float device_scale_factor) {
+  if (window_->delegate())
+    window_->delegate()->OnDeviceScaleFactorChanged(device_scale_factor);
+}
 
 void WindowPortMus::OnWillAddChild(Window* child) {
   ServerChangeData change_data;
@@ -299,8 +375,13 @@ void WindowPortMus::OnWillRemoveChild(Window* child) {
 void WindowPortMus::OnWillMoveChild(size_t current_index, size_t dest_index) {
   ServerChangeData change_data;
   change_data.child_id = Get(window_->children()[current_index])->server_id();
-  if (!RemoveChangeByTypeAndData(ServerChangeType::REORDER, change_data))
+  // See description of TRANSIENT_REORDER for details on why it isn't removed
+  // here.
+  if (!RemoveChangeByTypeAndData(ServerChangeType::REORDER, change_data) &&
+      FindChangeByTypeAndData(ServerChangeType::TRANSIENT_REORDER,
+                              change_data) == server_changes_.end()) {
     window_tree_client_->OnWindowMusMoveChild(this, current_index, dest_index);
+  }
 }
 
 void WindowPortMus::OnVisibilityChanged(bool visible) {

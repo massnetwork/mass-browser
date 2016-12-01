@@ -58,7 +58,7 @@ class CORE_EXPORT HTMLSlotElement final : public HTMLElement {
   Node* lastDistributedNode() const {
     DCHECK(supportsDistribution());
     return m_distributedNodes.isEmpty() ? nullptr
-                                        : m_distributedNodes.last().get();
+                                        : m_distributedNodes.back().get();
   }
 
   Node* distributedNodeNextTo(const Node&) const;
@@ -82,7 +82,7 @@ class CORE_EXPORT HTMLSlotElement final : public HTMLElement {
                         const AtomicString& newValue,
                         AttributeModificationReason = ModifiedDirectly) final;
 
-  short tabIndex() const override;
+  int tabIndex() const override;
   AtomicString name() const;
 
   // This method can be slow because this has to traverse the children of a

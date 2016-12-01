@@ -31,24 +31,24 @@
 /**
  * @unrestricted
  */
-WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
+SDK.ServiceWorkerManager = class extends SDK.SDKObject {
   /**
-   * @param {!WebInspector.Target} target
-   * @param {!WebInspector.SubTargetsManager} subTargetsManager
+   * @param {!SDK.Target} target
+   * @param {!SDK.SubTargetsManager} subTargetsManager
    */
   constructor(target, subTargetsManager) {
     super(target);
-    target.registerServiceWorkerDispatcher(new WebInspector.ServiceWorkerDispatcher(this));
+    target.registerServiceWorkerDispatcher(new SDK.ServiceWorkerDispatcher(this));
     this._lastAnonymousTargetId = 0;
     this._agent = target.serviceWorkerAgent();
-    /** @type {!Map.<string, !WebInspector.ServiceWorkerRegistration>} */
+    /** @type {!Map.<string, !SDK.ServiceWorkerRegistration>} */
     this._registrations = new Map();
     this.enable();
-    this._forceUpdateSetting = WebInspector.settings.createSetting('serviceWorkerUpdateOnReload', false);
+    this._forceUpdateSetting = Common.settings.createSetting('serviceWorkerUpdateOnReload', false);
     if (this._forceUpdateSetting.get())
       this._forceUpdateSettingChanged();
     this._forceUpdateSetting.addChangeListener(this._forceUpdateSettingChanged, this);
-    new WebInspector.ServiceWorkerContextNamer(target, this, subTargetsManager);
+    new SDK.ServiceWorkerContextNamer(target, this, subTargetsManager);
   }
 
   enable() {
@@ -67,7 +67,7 @@ WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {!Map.<string, !WebInspector.ServiceWorkerRegistration>}
+   * @return {!Map.<string, !SDK.ServiceWorkerRegistration>}
    */
   registrations() {
     return this._registrations;
@@ -75,7 +75,7 @@ WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
 
   /**
    * @param {string} versionId
-   * @return {?WebInspector.ServiceWorkerVersion}
+   * @return {?SDK.ServiceWorkerVersion}
    */
   findVersion(versionId) {
     for (var registration of this.registrations().values()) {
@@ -95,7 +95,7 @@ WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
       return;
     if (registration._isRedundant()) {
       this._registrations.delete(registrationId);
-      this.dispatchEventToListeners(WebInspector.ServiceWorkerManager.Events.RegistrationDeleted, registration);
+      this.dispatchEventToListeners(SDK.ServiceWorkerManager.Events.RegistrationDeleted, registration);
       return;
     }
     registration._deleting = true;
@@ -122,7 +122,7 @@ WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
     var registration = this._registrations.get(registrationId);
     if (!registration)
       return;
-    var origin = WebInspector.ParsedURL.extractOrigin(registration.scopeURL);
+    var origin = Common.ParsedURL.extractOrigin(registration.scopeURL);
     this._agent.deliverPushMessage(origin, registrationId, data);
   }
 
@@ -135,7 +135,7 @@ WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
     var registration = this._registrations.get(registrationId);
     if (!registration)
       return;
-    var origin = WebInspector.ParsedURL.extractOrigin(registration.scopeURL);
+    var origin = Common.ParsedURL.extractOrigin(registration.scopeURL);
     this._agent.dispatchSyncEvent(origin, registrationId, tag, lastChance);
   }
 
@@ -175,33 +175,33 @@ WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {!Array.<!ServiceWorkerAgent.ServiceWorkerRegistration>} registrations
+   * @param {!Array.<!Protocol.ServiceWorker.ServiceWorkerRegistration>} registrations
    */
   _workerRegistrationUpdated(registrations) {
     for (var payload of registrations) {
       var registration = this._registrations.get(payload.registrationId);
       if (!registration) {
-        registration = new WebInspector.ServiceWorkerRegistration(payload);
+        registration = new SDK.ServiceWorkerRegistration(payload);
         this._registrations.set(payload.registrationId, registration);
-        this.dispatchEventToListeners(WebInspector.ServiceWorkerManager.Events.RegistrationUpdated, registration);
+        this.dispatchEventToListeners(SDK.ServiceWorkerManager.Events.RegistrationUpdated, registration);
         continue;
       }
       registration._update(payload);
 
       if (registration._shouldBeRemoved()) {
         this._registrations.delete(registration.id);
-        this.dispatchEventToListeners(WebInspector.ServiceWorkerManager.Events.RegistrationDeleted, registration);
+        this.dispatchEventToListeners(SDK.ServiceWorkerManager.Events.RegistrationDeleted, registration);
       } else {
-        this.dispatchEventToListeners(WebInspector.ServiceWorkerManager.Events.RegistrationUpdated, registration);
+        this.dispatchEventToListeners(SDK.ServiceWorkerManager.Events.RegistrationUpdated, registration);
       }
     }
   }
 
   /**
-   * @param {!Array.<!ServiceWorkerAgent.ServiceWorkerVersion>} versions
+   * @param {!Array.<!Protocol.ServiceWorker.ServiceWorkerVersion>} versions
    */
   _workerVersionUpdated(versions) {
-    /** @type {!Set.<!WebInspector.ServiceWorkerRegistration>} */
+    /** @type {!Set.<!SDK.ServiceWorkerRegistration>} */
     var registrations = new Set();
     for (var payload of versions) {
       var registration = this._registrations.get(payload.registrationId);
@@ -213,15 +213,15 @@ WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
     for (var registration of registrations) {
       if (registration._shouldBeRemoved()) {
         this._registrations.delete(registration.id);
-        this.dispatchEventToListeners(WebInspector.ServiceWorkerManager.Events.RegistrationDeleted, registration);
+        this.dispatchEventToListeners(SDK.ServiceWorkerManager.Events.RegistrationDeleted, registration);
       } else {
-        this.dispatchEventToListeners(WebInspector.ServiceWorkerManager.Events.RegistrationUpdated, registration);
+        this.dispatchEventToListeners(SDK.ServiceWorkerManager.Events.RegistrationUpdated, registration);
       }
     }
   }
 
   /**
-   * @param {!ServiceWorkerAgent.ServiceWorkerErrorMessage} payload
+   * @param {!Protocol.ServiceWorker.ServiceWorkerErrorMessage} payload
    */
   _workerErrorReported(payload) {
     var registration = this._registrations.get(payload.registrationId);
@@ -229,11 +229,11 @@ WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
       return;
     registration.errors.push(payload);
     this.dispatchEventToListeners(
-        WebInspector.ServiceWorkerManager.Events.RegistrationErrorAdded, {registration: registration, error: payload});
+        SDK.ServiceWorkerManager.Events.RegistrationErrorAdded, {registration: registration, error: payload});
   }
 
   /**
-   * @return {!WebInspector.Setting}
+   * @return {!Common.Setting}
    */
   forceUpdateOnReloadSetting() {
     return this._forceUpdateSetting;
@@ -245,19 +245,19 @@ WebInspector.ServiceWorkerManager = class extends WebInspector.SDKObject {
 };
 
 /** @enum {symbol} */
-WebInspector.ServiceWorkerManager.Events = {
+SDK.ServiceWorkerManager.Events = {
   RegistrationUpdated: Symbol('RegistrationUpdated'),
   RegistrationErrorAdded: Symbol('RegistrationErrorAdded'),
   RegistrationDeleted: Symbol('RegistrationDeleted')
 };
 
 /**
- * @implements {ServiceWorkerAgent.Dispatcher}
+ * @implements {Protocol.ServiceWorkerDispatcher}
  * @unrestricted
  */
-WebInspector.ServiceWorkerDispatcher = class {
+SDK.ServiceWorkerDispatcher = class {
   /**
-   * @param {!WebInspector.ServiceWorkerManager} manager
+   * @param {!SDK.ServiceWorkerManager} manager
    */
   constructor(manager) {
     this._manager = manager;
@@ -265,7 +265,7 @@ WebInspector.ServiceWorkerDispatcher = class {
 
   /**
    * @override
-   * @param {!Array.<!ServiceWorkerAgent.ServiceWorkerRegistration>} registrations
+   * @param {!Array.<!Protocol.ServiceWorker.ServiceWorkerRegistration>} registrations
    */
   workerRegistrationUpdated(registrations) {
     this._manager._workerRegistrationUpdated(registrations);
@@ -273,7 +273,7 @@ WebInspector.ServiceWorkerDispatcher = class {
 
   /**
    * @override
-   * @param {!Array.<!ServiceWorkerAgent.ServiceWorkerVersion>} versions
+   * @param {!Array.<!Protocol.ServiceWorker.ServiceWorkerVersion>} versions
    */
   workerVersionUpdated(versions) {
     this._manager._workerVersionUpdated(versions);
@@ -281,7 +281,7 @@ WebInspector.ServiceWorkerDispatcher = class {
 
   /**
    * @override
-   * @param {!ServiceWorkerAgent.ServiceWorkerErrorMessage} errorMessage
+   * @param {!Protocol.ServiceWorker.ServiceWorkerErrorMessage} errorMessage
    */
   workerErrorReported(errorMessage) {
     this._manager._workerErrorReported(errorMessage);
@@ -291,10 +291,10 @@ WebInspector.ServiceWorkerDispatcher = class {
 /**
  * @unrestricted
  */
-WebInspector.ServiceWorkerVersion = class {
+SDK.ServiceWorkerVersion = class {
   /**
-   * @param {!WebInspector.ServiceWorkerRegistration} registration
-   * @param {!ServiceWorkerAgent.ServiceWorkerVersion} payload
+   * @param {!SDK.ServiceWorkerRegistration} registration
+   * @param {!Protocol.ServiceWorker.ServiceWorkerVersion} payload
    */
   constructor(registration, payload) {
     this.registration = registration;
@@ -302,12 +302,12 @@ WebInspector.ServiceWorkerVersion = class {
   }
 
   /**
-   * @param {!ServiceWorkerAgent.ServiceWorkerVersion} payload
+   * @param {!Protocol.ServiceWorker.ServiceWorkerVersion} payload
    */
   _update(payload) {
     this.id = payload.versionId;
     this.scriptURL = payload.scriptURL;
-    var parsedURL = new WebInspector.ParsedURL(payload.scriptURL);
+    var parsedURL = new Common.ParsedURL(payload.scriptURL);
     this.securityOrigin = parsedURL.securityOrigin();
     this.runningStatus = payload.runningStatus;
     this.status = payload.status;
@@ -330,78 +330,78 @@ WebInspector.ServiceWorkerVersion = class {
    * @return {boolean}
    */
   isStoppedAndRedundant() {
-    return this.runningStatus === ServiceWorkerAgent.ServiceWorkerVersionRunningStatus.Stopped &&
-        this.status === ServiceWorkerAgent.ServiceWorkerVersionStatus.Redundant;
+    return this.runningStatus === Protocol.ServiceWorker.ServiceWorkerVersionRunningStatus.Stopped &&
+        this.status === Protocol.ServiceWorker.ServiceWorkerVersionStatus.Redundant;
   }
 
   /**
    * @return {boolean}
    */
   isStopped() {
-    return this.runningStatus === ServiceWorkerAgent.ServiceWorkerVersionRunningStatus.Stopped;
+    return this.runningStatus === Protocol.ServiceWorker.ServiceWorkerVersionRunningStatus.Stopped;
   }
 
   /**
    * @return {boolean}
    */
   isStarting() {
-    return this.runningStatus === ServiceWorkerAgent.ServiceWorkerVersionRunningStatus.Starting;
+    return this.runningStatus === Protocol.ServiceWorker.ServiceWorkerVersionRunningStatus.Starting;
   }
 
   /**
    * @return {boolean}
    */
   isRunning() {
-    return this.runningStatus === ServiceWorkerAgent.ServiceWorkerVersionRunningStatus.Running;
+    return this.runningStatus === Protocol.ServiceWorker.ServiceWorkerVersionRunningStatus.Running;
   }
 
   /**
    * @return {boolean}
    */
   isStopping() {
-    return this.runningStatus === ServiceWorkerAgent.ServiceWorkerVersionRunningStatus.Stopping;
+    return this.runningStatus === Protocol.ServiceWorker.ServiceWorkerVersionRunningStatus.Stopping;
   }
 
   /**
    * @return {boolean}
    */
   isNew() {
-    return this.status === ServiceWorkerAgent.ServiceWorkerVersionStatus.New;
+    return this.status === Protocol.ServiceWorker.ServiceWorkerVersionStatus.New;
   }
 
   /**
    * @return {boolean}
    */
   isInstalling() {
-    return this.status === ServiceWorkerAgent.ServiceWorkerVersionStatus.Installing;
+    return this.status === Protocol.ServiceWorker.ServiceWorkerVersionStatus.Installing;
   }
 
   /**
    * @return {boolean}
    */
   isInstalled() {
-    return this.status === ServiceWorkerAgent.ServiceWorkerVersionStatus.Installed;
+    return this.status === Protocol.ServiceWorker.ServiceWorkerVersionStatus.Installed;
   }
 
   /**
    * @return {boolean}
    */
   isActivating() {
-    return this.status === ServiceWorkerAgent.ServiceWorkerVersionStatus.Activating;
+    return this.status === Protocol.ServiceWorker.ServiceWorkerVersionStatus.Activating;
   }
 
   /**
    * @return {boolean}
    */
   isActivated() {
-    return this.status === ServiceWorkerAgent.ServiceWorkerVersionStatus.Activated;
+    return this.status === Protocol.ServiceWorker.ServiceWorkerVersionStatus.Activated;
   }
 
   /**
    * @return {boolean}
    */
   isRedundant() {
-    return this.status === ServiceWorkerAgent.ServiceWorkerVersionStatus.Redundant;
+    return this.status === Protocol.ServiceWorker.ServiceWorkerVersionStatus.Redundant;
   }
 
   /**
@@ -409,19 +409,19 @@ WebInspector.ServiceWorkerVersion = class {
    */
   mode() {
     if (this.isNew() || this.isInstalling())
-      return WebInspector.ServiceWorkerVersion.Modes.Installing;
+      return SDK.ServiceWorkerVersion.Modes.Installing;
     else if (this.isInstalled())
-      return WebInspector.ServiceWorkerVersion.Modes.Waiting;
+      return SDK.ServiceWorkerVersion.Modes.Waiting;
     else if (this.isActivating() || this.isActivated())
-      return WebInspector.ServiceWorkerVersion.Modes.Active;
-    return WebInspector.ServiceWorkerVersion.Modes.Redundant;
+      return SDK.ServiceWorkerVersion.Modes.Active;
+    return SDK.ServiceWorkerVersion.Modes.Redundant;
   }
 };
 
 /**
  * @enum {string}
  */
-WebInspector.ServiceWorkerVersion.Modes = {
+SDK.ServiceWorkerVersion.Modes = {
   Installing: 'installing',
   Waiting: 'waiting',
   Active: 'active',
@@ -431,27 +431,27 @@ WebInspector.ServiceWorkerVersion.Modes = {
 /**
  * @unrestricted
  */
-WebInspector.ServiceWorkerRegistration = class {
+SDK.ServiceWorkerRegistration = class {
   /**
-   * @param {!ServiceWorkerAgent.ServiceWorkerRegistration} payload
+   * @param {!Protocol.ServiceWorker.ServiceWorkerRegistration} payload
    */
   constructor(payload) {
     this._update(payload);
-    /** @type {!Map.<string, !WebInspector.ServiceWorkerVersion>} */
+    /** @type {!Map.<string, !SDK.ServiceWorkerVersion>} */
     this.versions = new Map();
     this._deleting = false;
-    /** @type {!Array<!ServiceWorkerAgent.ServiceWorkerErrorMessage>} */
+    /** @type {!Array<!Protocol.ServiceWorker.ServiceWorkerErrorMessage>} */
     this.errors = [];
   }
 
   /**
-   * @param {!ServiceWorkerAgent.ServiceWorkerRegistration} payload
+   * @param {!Protocol.ServiceWorker.ServiceWorkerRegistration} payload
    */
   _update(payload) {
     this._fingerprint = Symbol('fingerprint');
     this.id = payload.registrationId;
     this.scopeURL = payload.scopeURL;
-    var parsedURL = new WebInspector.ParsedURL(payload.scopeURL);
+    var parsedURL = new Common.ParsedURL(payload.scopeURL);
     this.securityOrigin = parsedURL.securityOrigin();
     this.isDeleted = payload.isDeleted;
     this.forceUpdateOnPageLoad = payload.forceUpdateOnPageLoad;
@@ -465,10 +465,10 @@ WebInspector.ServiceWorkerRegistration = class {
   }
 
   /**
-   * @return {!Map<string, !WebInspector.ServiceWorkerVersion>}
+   * @return {!Map<string, !SDK.ServiceWorkerVersion>}
    */
   versionsByMode() {
-    /** @type {!Map<string, !WebInspector.ServiceWorkerVersion>} */
+    /** @type {!Map<string, !SDK.ServiceWorkerVersion>} */
     var result = new Map();
     for (var version of this.versions.values())
       result.set(version.mode(), version);
@@ -476,14 +476,14 @@ WebInspector.ServiceWorkerRegistration = class {
   }
 
   /**
-   * @param {!ServiceWorkerAgent.ServiceWorkerVersion} payload
-   * @return {!WebInspector.ServiceWorkerVersion}
+   * @param {!Protocol.ServiceWorker.ServiceWorkerVersion} payload
+   * @return {!SDK.ServiceWorkerVersion}
    */
   _updateVersion(payload) {
     this._fingerprint = Symbol('fingerprint');
     var version = this.versions.get(payload.versionId);
     if (!version) {
-      version = new WebInspector.ServiceWorkerVersion(this, payload);
+      version = new SDK.ServiceWorkerVersion(this, payload);
       this.versions.set(payload.versionId, version);
       return version;
     }
@@ -518,29 +518,28 @@ WebInspector.ServiceWorkerRegistration = class {
 /**
  * @unrestricted
  */
-WebInspector.ServiceWorkerContextNamer = class {
+SDK.ServiceWorkerContextNamer = class {
   /**
-   * @param {!WebInspector.Target} target
-   * @param {!WebInspector.ServiceWorkerManager} serviceWorkerManager
-   * @param {!WebInspector.SubTargetsManager} subTargetsManager
+   * @param {!SDK.Target} target
+   * @param {!SDK.ServiceWorkerManager} serviceWorkerManager
+   * @param {!SDK.SubTargetsManager} subTargetsManager
    */
   constructor(target, serviceWorkerManager, subTargetsManager) {
     this._target = target;
     this._serviceWorkerManager = serviceWorkerManager;
     this._subTargetsManager = subTargetsManager;
-    /** @type {!Map<string, !WebInspector.ServiceWorkerVersion>} */
+    /** @type {!Map<string, !SDK.ServiceWorkerVersion>} */
     this._versionByTargetId = new Map();
     serviceWorkerManager.addEventListener(
-        WebInspector.ServiceWorkerManager.Events.RegistrationUpdated, this._registrationsUpdated, this);
+        SDK.ServiceWorkerManager.Events.RegistrationUpdated, this._registrationsUpdated, this);
     serviceWorkerManager.addEventListener(
-        WebInspector.ServiceWorkerManager.Events.RegistrationDeleted, this._registrationsUpdated, this);
-    WebInspector.targetManager.addModelListener(
-        WebInspector.RuntimeModel, WebInspector.RuntimeModel.Events.ExecutionContextCreated,
-        this._executionContextCreated, this);
+        SDK.ServiceWorkerManager.Events.RegistrationDeleted, this._registrationsUpdated, this);
+    SDK.targetManager.addModelListener(
+        SDK.RuntimeModel, SDK.RuntimeModel.Events.ExecutionContextCreated, this._executionContextCreated, this);
   }
 
   /**
-   * @param {!WebInspector.Event} event
+   * @param {!Common.Event} event
    */
   _registrationsUpdated(event) {
     this._versionByTargetId.clear();
@@ -556,10 +555,10 @@ WebInspector.ServiceWorkerContextNamer = class {
   }
 
   /**
-   * @param {!WebInspector.Event} event
+   * @param {!Common.Event} event
    */
   _executionContextCreated(event) {
-    var executionContext = /** @type {!WebInspector.ExecutionContext} */ (event.data);
+    var executionContext = /** @type {!SDK.ExecutionContext} */ (event.data);
     var serviceWorkerTargetId = this._serviceWorkerTargetIdForWorker(executionContext.target());
     if (!serviceWorkerTargetId)
       return;
@@ -567,7 +566,7 @@ WebInspector.ServiceWorkerContextNamer = class {
   }
 
   /**
-   * @param {!WebInspector.Target} target
+   * @param {!SDK.Target} target
    * @return {?string}
    */
   _serviceWorkerTargetIdForWorker(target) {
@@ -581,7 +580,7 @@ WebInspector.ServiceWorkerContextNamer = class {
   }
 
   _updateAllContextLabels() {
-    for (var target of WebInspector.targetManager.targets()) {
+    for (var target of SDK.targetManager.targets()) {
       var serviceWorkerTargetId = this._serviceWorkerTargetIdForWorker(target);
       if (!serviceWorkerTargetId)
         continue;
@@ -592,8 +591,8 @@ WebInspector.ServiceWorkerContextNamer = class {
   }
 
   /**
-   * @param {!WebInspector.ExecutionContext} context
-   * @param {?WebInspector.ServiceWorkerVersion} version
+   * @param {!SDK.ExecutionContext} context
+   * @param {?SDK.ServiceWorkerVersion} version
    */
   _updateContextLabel(context, version) {
     var parsedUrl = context.origin.asParsedURL();

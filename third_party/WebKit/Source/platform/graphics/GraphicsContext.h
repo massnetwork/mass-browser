@@ -261,7 +261,7 @@ class PLATFORM_EXPORT GraphicsContext {
                             int from = 0,
                             int to = -1);
 
-  void drawLineForText(const FloatPoint&, float width, bool printing);
+  void drawLineForText(const FloatPoint&, float width);
   enum DocumentMarkerLineStyle {
     DocumentMarkerSpellingLineStyle,
     DocumentMarkerGrammarLineStyle
@@ -299,10 +299,7 @@ class PLATFORM_EXPORT GraphicsContext {
                      DrawLooperBuilder::ShadowRespectsAlpha,
                  ShadowMode = DrawShadowAndForeground);
 
-  // It is assumed that this draw looper is used only for shadows
-  // (i.e. a draw looper is set if and only if there is a shadow).
-  // The builder passed into this method will be destroyed.
-  void setDrawLooper(std::unique_ptr<DrawLooperBuilder>);
+  void setDrawLooper(sk_sp<SkDrawLooper>);
 
   void drawFocusRing(const Vector<IntRect>&,
                      float width,
@@ -452,7 +449,7 @@ class PLATFORM_EXPORT GraphicsContext {
   SkMetaData m_metaData;
 
 #if DCHECK_IS_ON()
-  unsigned m_layerCount;
+  int m_layerCount;
   bool m_disableDestructionChecks;
   bool m_inDrawingRecorder;
 #endif

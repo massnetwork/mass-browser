@@ -24,7 +24,6 @@ class WindowEventDispatcher;
 class WindowTreeHost;
 namespace client {
 class DragDropClient;
-class FocusClient;
 class ScreenPositionClient;
 class WindowParentingClient;
 }
@@ -68,6 +67,11 @@ class VIEWS_EXPORT DesktopNativeWidgetAura
   // window.
   static DesktopNativeWidgetAura* ForWindow(aura::Window* window);
 
+  // Used to explicitly set a DesktopWindowTreeHost. Must be called before
+  // InitNativeWidget().
+  void SetDesktopWindowTreeHost(
+      std::unique_ptr<DesktopWindowTreeHost> desktop_window_tree_host);
+
   // Called by our DesktopWindowTreeHost after it has deleted native resources;
   // this is the signal that we should start our shutdown.
   virtual void OnHostClosed();
@@ -84,6 +88,8 @@ class VIEWS_EXPORT DesktopNativeWidgetAura
   aura::WindowTreeHost* host() {
     return host_.get();
   }
+
+  aura::Window* content_window() { return content_window_; }
 
   // Ensures that the correct window is activated/deactivated based on whether
   // we are being activated/deactivated.
@@ -172,7 +178,6 @@ class VIEWS_EXPORT DesktopNativeWidgetAura
   void SetVisibilityAnimationTransition(
       Widget::VisibilityTransition transition) override;
   ui::NativeTheme* GetNativeTheme() const override;
-  void OnRootViewLayout() override;
   bool IsTranslucentWindowOpacitySupported() const override;
   void OnSizeConstraintsChanged() override;
   void RepostNativeEvent(gfx::NativeEvent native_event) override;
@@ -280,6 +285,8 @@ class VIEWS_EXPORT DesktopNativeWidgetAura
 
   std::unique_ptr<wm::WindowModalityController> window_modality_controller_;
 
+  bool restore_focus_on_activate_;
+
   gfx::NativeCursor cursor_;
   // We must manually reference count the number of users of |cursor_manager_|
   // because the cursors created by |cursor_manager_| are shared among the
@@ -289,7 +296,7 @@ class VIEWS_EXPORT DesktopNativeWidgetAura
   // crash.
   static int cursor_reference_count_;
   static wm::CursorManager* cursor_manager_;
-  static views::DesktopNativeCursorManager* native_cursor_manager_;
+  static DesktopNativeCursorManager* native_cursor_manager_;
 
   std::unique_ptr<wm::ShadowController> shadow_controller_;
 

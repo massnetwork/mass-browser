@@ -106,19 +106,19 @@ class CompositingRequirementsUpdater::OverlapMap {
   }
 
   bool overlapsLayers(const IntRect& bounds, bool isClipped) const {
-    bool clippedOverlap = m_overlapStack.last().clipped.overlapsLayers(bounds);
+    bool clippedOverlap = m_overlapStack.back().clipped.overlapsLayers(bounds);
     if (isClipped)
       return clippedOverlap;
     // Unclipped is allowed to overlap clipped, but not vice-versa.
     return clippedOverlap ||
-           m_overlapStack.last().unclipped.overlapsLayers(bounds);
+           m_overlapStack.back().unclipped.overlapsLayers(bounds);
   }
 
   void beginNewOverlapTestingContext() {
     // This effectively creates a new "clean slate" for overlap state.
     // This is used when we know that a subtree or remaining set of
     // siblings does not need to check overlap with things behind it.
-    m_overlapStack.append(OverlapMapContainers());
+    m_overlapStack.grow(m_overlapStack.size() + 1);
   }
 
   void finishCurrentOverlapTestingContext() {
@@ -130,10 +130,10 @@ class CompositingRequirementsUpdater::OverlapMap {
     // FIXME: we may be able to avoid this deep copy by rearranging how
     //        overlapMap state is managed.
     m_overlapStack[m_overlapStack.size() - 2].clipped.unite(
-        m_overlapStack.last().clipped);
+        m_overlapStack.back().clipped);
     m_overlapStack[m_overlapStack.size() - 2].unclipped.unite(
-        m_overlapStack.last().unclipped);
-    m_overlapStack.removeLast();
+        m_overlapStack.back().unclipped);
+    m_overlapStack.pop_back();
   }
 
  private:

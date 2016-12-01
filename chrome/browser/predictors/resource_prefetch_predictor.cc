@@ -14,7 +14,6 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/sparse_histogram.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/stringprintf.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "chrome/browser/history/history_service_factory.h"
@@ -392,6 +391,38 @@ ResourcePrefetchPredictor::ResourcePrefetchPredictor(
 
 ResourcePrefetchPredictor::~ResourcePrefetchPredictor() {}
 
+void ResourcePrefetchPredictor::StartInitialization() {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  TRACE_EVENT0("browser", "ResourcePrefetchPredictor::StartInitialization");
+
+  if (initialization_state_ != NOT_INITIALIZED)
+    return;
+  initialization_state_ = INITIALIZING;
+
+  // Create local caches using the database as loaded.
+  auto url_data_map = base::MakeUnique<PrefetchDataMap>();
+  auto host_data_map = base::MakeUnique<PrefetchDataMap>();
+  auto url_redirect_data_map = base::MakeUnique<RedirectDataMap>();
+  auto host_redirect_data_map = base::MakeUnique<RedirectDataMap>();
+
+  // Get raw pointers to pass to the first task. Ownership of the unique_ptrs
+  // will be passed to the reply task.
+  auto url_data_map_ptr = url_data_map.get();
+  auto host_data_map_ptr = host_data_map.get();
+  auto url_redirect_data_map_ptr = url_redirect_data_map.get();
+  auto host_redirect_data_map_ptr = host_redirect_data_map.get();
+
+  BrowserThread::PostTaskAndReply(
+      BrowserThread::DB, FROM_HERE,
+      base::Bind(&ResourcePrefetchPredictorTables::GetAllData, tables_,
+                 url_data_map_ptr, host_data_map_ptr, url_redirect_data_map_ptr,
+                 host_redirect_data_map_ptr),
+      base::Bind(&ResourcePrefetchPredictor::CreateCaches, AsWeakPtr(),
+                 base::Passed(&url_data_map), base::Passed(&host_data_map),
+                 base::Passed(&url_redirect_data_map),
+                 base::Passed(&host_redirect_data_map)));
+}
+
 void ResourcePrefetchPredictor::RecordURLRequest(
     const URLRequestSummary& request) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
@@ -644,36 +675,6 @@ bool ResourcePrefetchPredictor::PopulatePrefetcherRequest(
   return urls->size() > initial_size;
 }
 
-void ResourcePrefetchPredictor::StartInitialization() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-
-  DCHECK_EQ(NOT_INITIALIZED, initialization_state_);
-  initialization_state_ = INITIALIZING;
-
-  // Create local caches using the database as loaded.
-  auto url_data_map = base::MakeUnique<PrefetchDataMap>();
-  auto host_data_map = base::MakeUnique<PrefetchDataMap>();
-  auto url_redirect_data_map = base::MakeUnique<RedirectDataMap>();
-  auto host_redirect_data_map = base::MakeUnique<RedirectDataMap>();
-
-  // Get raw pointers to pass to the first task. Ownership of the unique_ptrs
-  // will be passed to the reply task.
-  auto url_data_map_ptr = url_data_map.get();
-  auto host_data_map_ptr = host_data_map.get();
-  auto url_redirect_data_map_ptr = url_redirect_data_map.get();
-  auto host_redirect_data_map_ptr = host_redirect_data_map.get();
-
-  BrowserThread::PostTaskAndReply(
-      BrowserThread::DB, FROM_HERE,
-      base::Bind(&ResourcePrefetchPredictorTables::GetAllData, tables_,
-                 url_data_map_ptr, host_data_map_ptr, url_redirect_data_map_ptr,
-                 host_redirect_data_map_ptr),
-      base::Bind(&ResourcePrefetchPredictor::CreateCaches, AsWeakPtr(),
-                 base::Passed(&url_data_map), base::Passed(&host_data_map),
-                 base::Passed(&url_redirect_data_map),
-                 base::Passed(&host_redirect_data_map)));
-}
-
 void ResourcePrefetchPredictor::CreateCaches(
     std::unique_ptr<PrefetchDataMap> url_data_map,
     std::unique_ptr<PrefetchDataMap> host_data_map,
@@ -711,6 +712,9 @@ void ResourcePrefetchPredictor::OnHistoryAndCacheLoaded() {
         this, config_, profile_->GetRequestContext());
   }
   initialization_state_ = INITIALIZED;
+
+  if (observer_)
+    observer_->OnPredictorInitialized();
 }
 
 void ResourcePrefetchPredictor::CleanupAbandonedNavigations(

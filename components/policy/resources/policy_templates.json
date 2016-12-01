@@ -139,7 +139,7 @@
 #   persistent IDs for all fields (but not for groups!) are needed. These are
 #   specified by the 'id' keys of each policy. NEVER CHANGE EXISTING IDs,
 #   because doing so would break the deployed wire format!
-#   For your editing convenience: highest ID currently used: 349
+#   For your editing convenience: highest ID currently used: 353
 #
 # Placeholders:
 #   The following placeholder strings are automatically substituted:
@@ -5042,11 +5042,11 @@
       'id': 349,
       'caption': '''Report information about status of Android''',
       'tags': ['admin-sharing'],
-      'desc': '''Report information about the status of Android is send back to
-      the server.
+      'desc': '''Information about the status of Android is sent back to the
+      server.
 
-      If the policy is set to false, the information will not be reported.
-      If set to true or left unset, the information will be reported.
+      If the policy is set to false, no status information is reported.
+      If set to true or left unset, status information is reported.
 
       This policy only applies if Android apps are enabled.''',
     },
@@ -5410,7 +5410,9 @@
       'tags': ['system-security'],
       'desc': '''Disables automatic updates when set to True.
 
-      <ph name="PRODUCT_OS_NAME">$2<ex>Google Chrome OS</ex></ph> devices automatically check for updates when this setting is not configured or set to False.''',
+      <ph name="PRODUCT_OS_NAME">$2<ex>Google Chrome OS</ex></ph> devices automatically check for updates when this setting is not configured or set to False.
+
+      Warning: It is recommended to keep auto-updates enabled so that users receive software updates and critical security fixes. Turning off auto-updates might leave users at risk.''',
     },
     {
       'name': 'DeviceAutoUpdateP2PEnabled',
@@ -5447,7 +5449,9 @@
       "" (or not configured): update to latest version available.
       "1412.": update to any minor version of 1412 (e.g. 1412.24.34 or 1412.60.2)
       "1412.2.": update to any minor version of 1412.2 (e.g. 1412.2.34 or 1412.2.2)
-      "1412.24.34": update to this specific version only''',
+      "1412.24.34": update to this specific version only
+
+      Warning: It is not recommended to configure version restrictions as they may prevent users from receiving software updates and critical security fixes. Restricting updates to a specific version prefix might leave users at risk.''',
     },
     {
       'name': 'DeviceUpdateScatterFactor',
@@ -5761,7 +5765,7 @@
       'id': 299,
       'caption': '''Allow users to opt in to Safe Browsing extended reporting''',
       'tags': [],
-      'desc': '''Setting this policy to false stops users from choosing to send information about security errors they encounter to Google servers. If this setting is true or not configured, then users will be allowed to send information when they encounter an SSL error or Safe Browsing warning.''',
+      'desc': '''Setting this policy to false stops users from choosing to send some system information and page content to Google servers. If this setting is true or not configured, then users will be allowed to send some system information and page content to Safe Browsing to help detect dangerous apps and sites.''',
     },
     {
       'name': 'SpellCheckServiceEnabled',
@@ -5796,9 +5800,7 @@
       'id': 152,
       'caption': '''Disable mounting of external storage''',
       'tags': [],
-      'desc': '''Disable mounting of external storage.
-
-      When this policy is set to true, external storage will not be available in the file browser.
+      'desc': '''When this policy is set to true, external storage will not be available in the file browser.
 
       This policy affects all types of storage media. For example: USB flash drives, external hard drives, SD and other memory cards, optical storage etc. Internal storage is not affected, therefore files saved in the Download folder can still be accessed. Google Drive is also not affected by this policy.
 
@@ -5812,9 +5814,15 @@
       'tags': [],
       'supported_on': ['chrome_os:54-'],
       'caption': '''Treat external storage devices as read-only.''',
-      'desc': '''When this policy is set to true, users cannot write anything to external storage devices.''',
+      'desc': '''When this policy is set to true, users cannot write anything to external storage devices.
+
+      If this setting is set to false or not configured, then users can create and modify files of external storage devices which are physically writable.
+
+      The ExternalStorageDisabled policy takes precedence over this policy - if ExternalStorageDisabled is set to true, then all access to external storage is disabled and this policy is consequently ignored.
+
+      Dynamic refresh of this policy is supported in M56 and later.''',
       'features': {
-        'dynamic_refresh': False,
+        'dynamic_refresh': True,
         'per_profile': True,
       },
       'example_value': True
@@ -8066,7 +8074,7 @@
       'id': 346,
       'caption': '''Enables force sign in for <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>.''',
       'tags': [],
-      'desc': '''If this policy is set to true, user has to sign in to <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> with his or her profile before using the browser. And the default value of BrowserGuestModeEnabled will be set to false.
+      'desc': '''If this policy is set to true, user has to sign in to <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> with their profile before using the browser. And the default value of BrowserGuestModeEnabled will be set to false.
 
       If this policy is set to false or not configured, user can use the browser without sign in to <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>.''',
     },
@@ -8574,14 +8582,16 @@
       'example_value': True,
       'id': 319,
       'caption': '''Allow the auto launched with zero delay kiosk app to control <ph name="PRODUCT_OS_NAME">$2<ex>Google Chrome OS</ex></ph> version''',
-      'tags': [],
+      'tags': ['system-security'],
       'desc': '''Whether to allow the auto launched with zero delay kiosk app to control <ph name="PRODUCT_OS_NAME">$2<ex>Google Chrome OS</ex></ph> version.
 
       This policy controls whether to allow the auto launched with zero delay kiosk app to control <ph name="PRODUCT_OS_NAME">$2<ex>Google Chrome OS</ex></ph> version by declaring a required_platform_version in its manifest and use it as the auto update target version prefix.
 
       If the policy is set to true, the value of required_platform_version manifest key of the auto launched with zero delay kiosk app is used as auto update target version prefix.
 
-      If the policy is not configured or set to false, the required_platform_version manifest key is ignored and auto update proceeds as normal.''',
+      If the policy is not configured or set to false, the required_platform_version manifest key is ignored and auto update proceeds as normal.
+
+      Warning: It is not recommended to delegate control of the <ph name="PRODUCT_OS_NAME">$2<ex>Google Chrome OS</ex></ph> version to a kiosk app as it may prevent the device from receiving software updates and critical security fixes. Delegating control of the <ph name="PRODUCT_OS_NAME">$2<ex>Google Chrome OS</ex></ph> version might leave users at risk.''',
       'arc_support': 'If the kiosk app is an Android app, it will have no control over the <ph name="PRODUCT_OS_NAME">$2<ex>Google Chrome OS</ex></ph> version, even if this policy is set to <ph name="TRUE">True</ph>.',
     },
     {
@@ -8786,6 +8796,44 @@
       'example_value': True,
       'tags': [],
       'id': 327,
+    },
+    {
+      'name': 'NetworkThrottlingEnabled',
+      'device_only': True,
+      'caption': '''Enables throttling network bandwidth''',
+      'desc': '''Allows choosing whether network throttling is enabled or not.
+      This applies to all users, and to all interfaces on the device. Once set,
+      the throttling persists until the policy is changed to disable it.
+
+      If set to false, there is no throttling.
+      If set to true, the system is throttled to achieve the provided upload and download rates (in kbits/s).''',
+      'type': 'dict',
+      'schema': {
+        'type': 'object',
+        'properties': {
+          'enabled': {
+            'description': 'A boolean flag indicating if throttling is enabled.',
+            'type': 'boolean'
+          },
+          'upload_rate_kbits': {
+            'description': 'Desired upload rate in kbits/s.',
+            'type': 'integer'
+          },
+          'download_rate_kbits': {
+            'description': 'Desired download rate in kbits/s.',
+            'type': 'integer'
+          }
+        },
+        'required': ['enabled', 'upload_rate_kbits', 'download_rate_kbits']
+      },
+      'supported_on': ['chrome_os:56-'],
+      'features': {
+        'dynamic_refresh': True,
+        'per_profile': False,
+      },
+      'example_value': [{'enabled': 'true', 'upload_rate_kbits': '5600', 'download_rate_kbits': '5600'}],
+      'tags': [],
+      'id': 351,
     },
     {
       'name': 'LoginVideoCaptureAllowedUrls',
@@ -9151,7 +9199,81 @@
       This policy has no effect on whether users can configure printers on
       individual devices.  It is intended to be supplementary to the
       configuration of printers by individual users.''',
-    }
+    },
+    {
+      'name': 'QuickUnlockModeWhitelist',
+      'type': 'list',
+      'schema': {
+        'type': 'array',
+        'items': {
+          'type': 'string',
+          'enum': [
+            'all',
+            'PIN'
+          ],
+        },
+        'id': 'QuickUnlockModeWhitelist',
+      },
+      'supported_on': ['chrome_os:56-'],
+      'features': {
+        'dynamic_refresh': True,
+        'per_profile': True,
+      },
+      'example_value': ['PIN'],
+      'id': 352,
+      'caption': '''Configure allowed quick unlock modes.''',
+      'tags': [],
+      'desc': '''Controls which quick unlock modes are allowed to be set up and used.
+      This setting white-lists the allowed quick unlock modes that can be set up and used to unlock the lock screen. The value is a list of strings, each of which should be one of the following: "all", "PIN". If "all" is selected, then all supported quick modes will be available, otherwise the modes in the list will be the ones available.
+
+      If this setting is configured, quick unlock modes which have a type that is not on this list can not be set up or used.
+
+      If this setting is left not configured, "PIN" mode will be enabled, and all other modes will be disabled.''',
+    },
+    {
+      'name': 'QuickUnlockTimeout',
+      'type': 'int-enum',
+      'schema': {
+        'type': 'integer',
+        'enum': [ 0, 1, 2, 3 ],
+      },
+      'items': [
+        {
+          'name': 'SixHours',
+          'value': 0,
+          'caption': '''Password entry is required every six hours.''',
+        },
+        {
+          'name': 'TweleveHours',
+          'value': 1,
+          'caption': '''Password entry is required every twelve hours.''',
+        },
+        {
+          'name': 'Day',
+          'value': 2,
+          'caption': '''Password entry is required every day (24 hours).''',
+        },
+        {
+          'name': 'Week',
+          'value': 3,
+          'caption': '''Password entry is required every week (168 hours).''',
+        },
+      ],
+      'supported_on': ['chrome_os:56-'],
+      'features': {
+        'dynamic_refresh': True,
+        'per_profile': True,
+      },
+      'example_value': 2,
+      'id': 353,
+      'caption': '''Sets how often user has to enter password to use quick unlock.''',
+      'tags': [],
+      'desc': '''This setting controls how often the lock screen will request the password to be entered in order to continue using quick unlock. Each time the lock screen is entered, if the last password entry was more than this setting, the quick unlock will not be available on entering the lock screen. Should the user stay on the lock screen past this period of time, a password will be requested next time the user enters the wrong code, or re-enters the lock screen, whichever comes first.
+
+      If this setting is configured, users using quick unlock will be requested to enter their passwords on the lock screen depending on this setting.
+
+      If this setting is not configured, users using quick unlock will be requested to enter their password on the lock screen every day.''',
+    },
   ],
   'messages': {
     # Messages that are not associated to any policies.

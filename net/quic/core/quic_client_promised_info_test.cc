@@ -8,6 +8,7 @@
 
 #include "base/macros.h"
 #include "net/quic/core/spdy_utils.h"
+#include "net/quic/platform/api/quic_socket_address.h"
 #include "net/quic/test_tools/crypto_test_utils.h"
 #include "net/quic/test_tools/quic_client_promised_info_peer.h"
 #include "net/test/gtest_util.h"
@@ -83,34 +84,6 @@ class QuicClientPromisedInfoTest : public ::testing::Test {
     void OnClose(QuicSpdyStream* stream) override {
       DVLOG(1) << "stream " << stream->id();
     }
-  };
-
-  class PushPromiseDelegate : public QuicClientPushPromiseIndex::Delegate {
-   public:
-    explicit PushPromiseDelegate(bool match)
-        : match_(match),
-          rendezvous_fired_(false),
-          rendezvous_stream_(nullptr) {}
-
-    bool CheckVary(const SpdyHeaderBlock& client_request,
-                   const SpdyHeaderBlock& promise_request,
-                   const SpdyHeaderBlock& promise_response) override {
-      DVLOG(1) << "match " << match_;
-      return match_;
-    }
-
-    void OnRendezvousResult(QuicSpdyStream* stream) override {
-      rendezvous_fired_ = true;
-      rendezvous_stream_ = stream;
-    }
-
-    QuicSpdyStream* rendezvous_stream() { return rendezvous_stream_; }
-    bool rendezvous_fired() { return rendezvous_fired_; }
-
-   private:
-    bool match_;
-    bool rendezvous_fired_;
-    QuicSpdyStream* rendezvous_stream_;
   };
 
   void ReceivePromise(QuicStreamId id) {
@@ -217,7 +190,7 @@ TEST_F(QuicClientPromisedInfoTest, PushPromiseMismatch) {
   promise_stream->OnStreamHeaderList(false, headers.uncompressed_header_bytes(),
                                      headers);
 
-  PushPromiseDelegate delegate(/*match=*/false);
+  TestPushPromiseDelegate delegate(/*match=*/false);
   EXPECT_CALL(*connection_,
               SendRstStream(promise_id_, QUIC_PROMISE_VARY_MISMATCH, 0));
   EXPECT_CALL(session_, CloseStream(promise_id_));
@@ -229,11 +202,13 @@ TEST_F(QuicClientPromisedInfoTest, PushPromiseVaryWaits) {
   ReceivePromise(promise_id_);
 
   QuicClientPromisedInfo* promised = session_.GetPromisedById(promise_id_);
+  EXPECT_FALSE(promised->is_validating());
   ASSERT_NE(promised, nullptr);
 
   // Now initiate rendezvous.
-  PushPromiseDelegate delegate(/*match=*/true);
+  TestPushPromiseDelegate delegate(/*match=*/true);
   promised->HandleClientRequest(client_request_, &delegate);
+  EXPECT_TRUE(promised->is_validating());
 
   // Promise is still there, waiting for response.
   EXPECT_NE(session_.GetPromisedById(promise_id_), nullptr);
@@ -266,7 +241,7 @@ TEST_F(QuicClientPromisedInfoTest, PushPromiseVaryNoWait) {
                                      headers);
 
   // Now initiate rendezvous.
-  PushPromiseDelegate delegate(/*match=*/true);
+  TestPushPromiseDelegate delegate(/*match=*/true);
   promised->HandleClientRequest(client_request_, &delegate);
 
   // Promise is gone
@@ -284,7 +259,7 @@ TEST_F(QuicClientPromisedInfoTest, PushPromiseWaitCancels) {
   ASSERT_NE(promised, nullptr);
 
   // Now initiate rendezvous.
-  PushPromiseDelegate delegate(/*match=*/true);
+  TestPushPromiseDelegate delegate(/*match=*/true);
   promised->HandleClientRequest(client_request_, &delegate);
 
   // Promise is still there, waiting for response.
@@ -324,7 +299,7 @@ TEST_F(QuicClientPromisedInfoTest, PushPromiseDataClosed) {
   session_.SendRstStream(promise_id_, QUIC_STREAM_PEER_GOING_AWAY, 0);
 
   // Now initiate rendezvous.
-  PushPromiseDelegate delegate(/*match=*/true);
+  TestPushPromiseDelegate delegate(/*match=*/true);
   EXPECT_EQ(promised->HandleClientRequest(client_request_, &delegate),
             QUIC_FAILURE);
 

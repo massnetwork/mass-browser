@@ -78,7 +78,8 @@ class InterstitialPageImpl::InterstitialPageRVHDelegateView
                      WebDragOperationsMask operations_allowed,
                      const gfx::ImageSkia& image,
                      const gfx::Vector2d& image_offset,
-                     const DragEventSourceInfo& event_info) override;
+                     const DragEventSourceInfo& event_info,
+                     RenderWidgetHostImpl* source_rwh) override;
   void UpdateDragCursor(WebDragOperation operation) override;
   void GotFocus() override;
   void TakeFocus(bool reverse) override;
@@ -576,7 +577,7 @@ RenderViewHostImpl* InterstitialPageImpl::CreateRenderViewHost() {
   int32_t widget_routing_id = site_instance->GetProcess()->GetNextRoutingID();
   frame_tree_.root()->render_manager()->Init(
       site_instance.get(), widget_routing_id, MSG_ROUTING_NONE,
-      widget_routing_id);
+      widget_routing_id, false);
   return frame_tree_.root()->current_frame_host()->render_view_host();
 }
 
@@ -883,8 +884,10 @@ void InterstitialPageImpl::InterstitialPageRVHDelegateView::StartDragging(
     WebDragOperationsMask allowed_operations,
     const gfx::ImageSkia& image,
     const gfx::Vector2d& image_offset,
-    const DragEventSourceInfo& event_info) {
-  interstitial_page_->render_view_host_->DragSourceSystemDragEnded();
+    const DragEventSourceInfo& event_info,
+    RenderWidgetHostImpl* source_rwh) {
+  interstitial_page_->render_view_host_->GetWidget()->
+      DragSourceSystemDragEnded();
   DVLOG(1) << "InterstitialPage does not support dragging yet.";
 }
 

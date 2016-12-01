@@ -5,6 +5,9 @@
 import("//build/config/features.gni")
 import("//build/config/ui.gni")
 import("//media/media_options.gni")
+import("//ppapi/features/features.gni")
+import("//printing/features/features.gni")
+import("//third_party/WebKit/public/public_features.gni")
 import("//tools/ipc_fuzzer/ipc_fuzzer.gni")
 
 source_set("browser") {
@@ -33,6 +36,7 @@ source_set("browser") {
     "//base:base_static",
     "//base/third_party/dynamic_annotations",
     "//cc",
+    "//cc/animation",
     "//cc/surfaces",
     "//components/discardable_memory/common",
     "//components/discardable_memory/service",
@@ -41,17 +45,21 @@ source_set("browser") {
     "//components/leveldb:lib",
     "//components/link_header_util",
     "//components/mime_util",
+    "//components/payments:payment_app",
     "//components/tracing",
     "//components/tracing:startup_tracing",
     "//components/url_formatter",
+    "//components/variations",
     "//content:resources",
     "//content/app/resources",
     "//content/app/strings",
     "//content/browser/background_sync:background_sync_proto",
     "//content/browser/cache_storage:cache_storage_proto",
     "//content/browser/devtools:gen_devtools_protocol_handler",
+    "//content/browser/devtools:protocol_sources",
     "//content/browser/devtools:resources",
     "//content/browser/notifications:notification_proto",
+    "//content/browser/payments:payment_app_proto",
     "//content/browser/service_worker:service_worker_proto",
     "//content/browser/speech/proto",
     "//content/common",
@@ -65,9 +73,11 @@ source_set("browser") {
     "//device/geolocation",
     "//device/geolocation/public/interfaces",
     "//device/nfc:mojo_bindings",
+    "//device/power_monitor",
     "//device/power_save_blocker",
     "//device/sensors/public/cpp",
     "//device/time_zone_monitor",
+    "//device/time_zone_monitor/public/interfaces",
     "//device/vibration",
     "//device/wake_lock",
     "//gin",
@@ -92,10 +102,11 @@ source_set("browser") {
     "//net:extras",
     "//net:http_server",
     "//ppapi/features",
+    "//printing/features",
+    "//services/catalog/public/interfaces:constants",
     "//services/device:lib",
     "//services/device/public/cpp",
     "//services/file:lib",
-    "//services/file/public/cpp",
     "//services/file/public/interfaces",
     "//services/service_manager",
     "//services/service_manager/public/cpp",
@@ -107,6 +118,7 @@ source_set("browser") {
     "//storage/browser",
     "//storage/common",
     "//third_party/WebKit/public:blink_headers",
+    "//third_party/WebKit/public:features",
     "//third_party/WebKit/public:image_resources",
     "//third_party/WebKit/public:mojo_bindings",
     "//third_party/WebKit/public:offscreen_canvas_mojo_bindings",
@@ -139,6 +151,7 @@ source_set("browser") {
   ]
 
   public_deps = [
+    "//media/mojo/interfaces:remoting",
     "//third_party/leveldatabase",
   ]
 
@@ -147,6 +160,19 @@ source_set("browser") {
     # //content/browser/devtools:gen_devtools_protocol_handler.
     "$root_gen_dir/content/browser/devtools/protocol/devtools_protocol_dispatcher.cc",
     "$root_gen_dir/content/browser/devtools/protocol/devtools_protocol_dispatcher.h",
+    "$target_gen_dir/devtools/protocol/forward.h",
+    "$target_gen_dir/devtools/protocol/io.cc",
+    "$target_gen_dir/devtools/protocol/io.h",
+    "$target_gen_dir/devtools/protocol/memory.cc",
+    "$target_gen_dir/devtools/protocol/memory.h",
+    "$target_gen_dir/devtools/protocol/protocol.cc",
+    "$target_gen_dir/devtools/protocol/protocol.h",
+    "$target_gen_dir/devtools/protocol/system_info.cc",
+    "$target_gen_dir/devtools/protocol/system_info.h",
+    "$target_gen_dir/devtools/protocol/tethering.cc",
+    "$target_gen_dir/devtools/protocol/tethering.h",
+    "$target_gen_dir/devtools/protocol/tracing.cc",
+    "$target_gen_dir/devtools/protocol/tracing.h",
     "../common/service_manager/child_connection.cc",
     "../common/service_manager/child_connection.h",
     "../zygote/zygote_linux.cc",
@@ -290,8 +316,8 @@ source_set("browser") {
     "blob_storage/chrome_blob_storage_context.h",
     "bluetooth/bluetooth_allowed_devices_map.cc",
     "bluetooth/bluetooth_allowed_devices_map.h",
-    "bluetooth/bluetooth_blacklist.cc",
-    "bluetooth/bluetooth_blacklist.h",
+    "bluetooth/bluetooth_blocklist.cc",
+    "bluetooth/bluetooth_blocklist.h",
     "bluetooth/bluetooth_device_chooser_controller.cc",
     "bluetooth/bluetooth_device_chooser_controller.h",
     "bluetooth/bluetooth_metrics.cc",
@@ -407,6 +433,8 @@ source_set("browser") {
     "devtools/devtools_manager.h",
     "devtools/devtools_protocol_handler.cc",
     "devtools/devtools_protocol_handler.h",
+    "devtools/devtools_session.cc",
+    "devtools/devtools_session.h",
     "devtools/forwarding_agent_host.cc",
     "devtools/forwarding_agent_host.h",
     "devtools/page_navigation_throttle.cc",
@@ -448,6 +476,8 @@ source_set("browser") {
     "devtools/protocol/tethering_handler.h",
     "devtools/protocol/tracing_handler.cc",
     "devtools/protocol/tracing_handler.h",
+    "devtools/protocol_string.cc",
+    "devtools/protocol_string.h",
     "devtools/render_frame_devtools_agent_host.cc",
     "devtools/render_frame_devtools_agent_host.h",
     "devtools/service_worker_devtools_agent_host.cc",
@@ -647,6 +677,10 @@ source_set("browser") {
     "host_zoom_map_impl.h",
     "host_zoom_map_observer.cc",
     "host_zoom_map_observer.h",
+    "indexed_db/cursor_impl.cc",
+    "indexed_db/cursor_impl.h",
+    "indexed_db/database_impl.cc",
+    "indexed_db/database_impl.h",
     "indexed_db/indexed_db.h",
     "indexed_db/indexed_db_active_blob_registry.cc",
     "indexed_db/indexed_db_active_blob_registry.h",
@@ -804,10 +838,6 @@ source_set("browser") {
     "media/android/media_throttler.h",
     "media/android/media_web_contents_observer_android.cc",
     "media/android/media_web_contents_observer_android.h",
-    "media/android/provision_fetcher_impl.cc",
-    "media/android/provision_fetcher_impl.h",
-    "media/android/url_provision_fetcher.cc",
-    "media/android/url_provision_fetcher.h",
     "media/audible_metrics.cc",
     "media/audible_metrics.h",
     "media/audio_stream_monitor.cc",
@@ -874,6 +904,8 @@ source_set("browser") {
     "media/session/media_session_service_impl.h",
     "media/session/media_session_uma_helper.cc",
     "media/session/media_session_uma_helper.h",
+    "media/url_provision_fetcher.cc",
+    "media/url_provision_fetcher.h",
     "memory/memory_coordinator.cc",
     "memory/memory_coordinator.h",
     "memory/memory_coordinator_impl.cc",
@@ -925,14 +957,14 @@ source_set("browser") {
     "notifications/platform_notification_context_impl.h",
     "notifications/type_converters.cc",
     "notifications/type_converters.h",
+    "payments/payment_app_context.cc",
+    "payments/payment_app_context.h",
+    "payments/payment_app_manager.cc",
+    "payments/payment_app_manager.h",
     "permissions/permission_service_context.cc",
     "permissions/permission_service_context.h",
     "permissions/permission_service_impl.cc",
     "permissions/permission_service_impl.h",
-    "power_monitor_message_broadcaster.cc",
-    "power_monitor_message_broadcaster.h",
-    "power_usage_monitor_impl.cc",
-    "power_usage_monitor_impl.h",
     "presentation/presentation_service_impl.cc",
     "presentation/presentation_service_impl.h",
     "presentation/presentation_type_converters.cc",
@@ -1053,6 +1085,8 @@ source_set("browser") {
     "renderer_host/media/audio_input_renderer_host.h",
     "renderer_host/media/audio_input_sync_writer.cc",
     "renderer_host/media/audio_input_sync_writer.h",
+    "renderer_host/media/audio_output_authorization_handler.cc",
+    "renderer_host/media/audio_output_authorization_handler.h",
     "renderer_host/media/audio_renderer_host.cc",
     "renderer_host/media/audio_renderer_host.h",
     "renderer_host/media/audio_sync_reader.cc",
@@ -1073,12 +1107,6 @@ source_set("browser") {
     "renderer_host/media/media_stream_track_metrics_host.h",
     "renderer_host/media/media_stream_ui_proxy.cc",
     "renderer_host/media/media_stream_ui_proxy.h",
-    "renderer_host/media/shared_memory_buffer_handle.cc",
-    "renderer_host/media/shared_memory_buffer_handle.h",
-    "renderer_host/media/shared_memory_buffer_tracker.cc",
-    "renderer_host/media/shared_memory_buffer_tracker.h",
-    "renderer_host/media/video_capture_buffer_tracker_factory_impl.cc",
-    "renderer_host/media/video_capture_buffer_tracker_factory_impl.h",
     "renderer_host/media/video_capture_controller.cc",
     "renderer_host/media/video_capture_controller.h",
     "renderer_host/media/video_capture_controller_event_handler.h",
@@ -1096,6 +1124,8 @@ source_set("browser") {
     "renderer_host/offscreen_canvas_compositor_frame_sink_provider_impl.h",
     "renderer_host/offscreen_canvas_surface_impl.cc",
     "renderer_host/offscreen_canvas_surface_impl.h",
+    "renderer_host/offscreen_canvas_surface_manager.cc",
+    "renderer_host/offscreen_canvas_surface_manager.h",
     "renderer_host/overscroll_configuration.cc",
     "renderer_host/overscroll_controller.cc",
     "renderer_host/overscroll_controller.h",
@@ -1152,10 +1182,10 @@ source_set("browser") {
     "resolve_proxy_msg_helper.h",
     "resource_context_impl.cc",
     "resource_context_impl.h",
+    "screen_orientation/screen_orientation.cc",
+    "screen_orientation/screen_orientation.h",
     "screen_orientation/screen_orientation_delegate_win.cc",
     "screen_orientation/screen_orientation_delegate_win.h",
-    "screen_orientation/screen_orientation_dispatcher_host_impl.cc",
-    "screen_orientation/screen_orientation_dispatcher_host_impl.h",
     "service_manager/merge_dictionary.cc",
     "service_manager/merge_dictionary.h",
     "service_manager/service_manager_context.cc",
@@ -1459,7 +1489,7 @@ source_set("browser") {
 
     deps += [
       "//jingle:jingle_glue",
-      "//third_party/libjingle:libjingle_webrtc",
+      "//third_party/libjingle/webrtc:libjingle_webrtc",
       "//third_party/webrtc/base:rtc_base",
       "//third_party/webrtc/media:rtc_media",
       "//third_party/webrtc/modules/desktop_capture:primitives",
@@ -1728,8 +1758,6 @@ source_set("browser") {
       "media/session/audio_focus_delegate_default.cc",
       "media/session/audio_focus_manager.cc",
       "media/session/audio_focus_manager.h",
-      "power_usage_monitor_impl.cc",
-      "power_usage_monitor_impl.h",
       "tracing/tracing_ui.cc",
       "tracing/tracing_ui.h",
 
@@ -1757,7 +1785,6 @@ source_set("browser") {
       "//media",
       "//media/capture/content/android",
       "//media/capture/video/android",
-      "//media/mojo/interfaces",
       "//mojo/android:libsystem_java",
       "//ui/android",
     ]
@@ -1787,6 +1814,10 @@ source_set("browser") {
       "//chromeos",
       "//chromeos:power_manager_proto",
     ]
+  }
+
+  if (enable_mojo_media) {
+    deps += [ "//media/mojo/interfaces" ]
   }
 
   if (use_aura) {
@@ -1935,7 +1966,6 @@ source_set("browser") {
       "hyphenation/hyphenation_impl.cc",
       "hyphenation/hyphenation_impl.h",
     ]
-    defines += [ "USE_MINIKIN_HYPHENATION=1" ]
   }
 }
 

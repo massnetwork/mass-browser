@@ -144,7 +144,7 @@ PendingInvalidations& StyleInvalidator::ensurePendingInvalidations(
   PendingInvalidationMap::AddResult addResult =
       m_pendingInvalidationMap.add(&node, nullptr);
   if (addResult.isNewEntry)
-    addResult.storedValue->value = wrapUnique(new PendingInvalidations());
+    addResult.storedValue->value = makeUnique<PendingInvalidations>();
   return *addResult.storedValue->value;
 }
 
@@ -227,8 +227,8 @@ bool StyleInvalidator::SiblingData::matchCurrentInvalidationSets(
     if (m_elementIndex > m_invalidationEntries[index].m_invalidationLimit) {
       // m_invalidationEntries[index] only applies to earlier siblings. Remove
       // it.
-      m_invalidationEntries[index] = m_invalidationEntries.last();
-      m_invalidationEntries.removeLast();
+      m_invalidationEntries[index] = m_invalidationEntries.back();
+      m_invalidationEntries.pop_back();
       continue;
     }
 
@@ -265,19 +265,15 @@ void StyleInvalidator::pushInvalidationSetsForContainerNode(
       m_pendingInvalidationMap.get(&node);
   DCHECK(pendingInvalidations);
 
-  for (const auto& invalidationSet : pendingInvalidations->siblings()) {
-    RELEASE_ASSERT(invalidationSet->isAlive());
+  for (const auto& invalidationSet : pendingInvalidations->siblings())
     siblingData.pushInvalidationSet(toSiblingInvalidationSet(*invalidationSet));
-  }
 
   if (node.getStyleChangeType() >= SubtreeStyleChange)
     return;
 
   if (!pendingInvalidations->descendants().isEmpty()) {
-    for (const auto& invalidationSet : pendingInvalidations->descendants()) {
-      RELEASE_ASSERT(invalidationSet->isAlive());
+    for (const auto& invalidationSet : pendingInvalidations->descendants())
       recursionData.pushInvalidationSet(*invalidationSet);
-    }
     if (UNLIKELY(*s_tracingEnabled)) {
       TRACE_EVENT_INSTANT1(
           TRACE_DISABLED_BY_DEFAULT("devtools.timeline.invalidationTracking"),

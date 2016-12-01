@@ -25,6 +25,10 @@
 
 namespace syncer {
 
+namespace syncable {
+class Directory;
+}
+
 // Mock ServerConnectionManager class for use in client unit tests.
 class MockConnectionManager : public ServerConnectionManager {
  public:
@@ -216,7 +220,9 @@ class MockConnectionManager : public ServerConnectionManager {
     store_birthday_ = new_birthday;
   }
 
-  void set_partial_throttling(bool value) { partialThrottling_ = value; }
+  void set_throttling(bool value) { throttling_ = value; }
+
+  void set_partial_failure(bool value) { partial_failure_ = value; }
 
   // Retrieve the number of GetUpdates requests that the mock server has
   // seen since the last time this function was called.  Can be used to
@@ -234,8 +240,10 @@ class MockConnectionManager : public ServerConnectionManager {
     expected_filter_ = expected_filter;
   }
 
-  // Set throttled date types.
-  void SetThrottledTypes(ModelTypeSet types) { throttled_type_ = types; }
+  // Set partial failure date types.
+  void SetPartialFailureTypes(ModelTypeSet types) {
+    partial_failure_type_ = types;
+  }
 
   void SetServerReachable();
 
@@ -375,10 +383,10 @@ class MockConnectionManager : public ServerConnectionManager {
   // Protected by |response_code_override_lock_|.
   bool throttling_;
 
-  // Whether we are faking a server mandating clients to partial throttle
+  // Whether we are faking a server mandating clients to partial failure
   // requests.
   // Protected by |response_code_override_lock_|.
-  bool partialThrottling_;
+  bool partial_failure_;
 
   base::Lock response_code_override_lock_;
 
@@ -398,7 +406,7 @@ class MockConnectionManager : public ServerConnectionManager {
 
   ModelTypeSet expected_filter_;
 
-  ModelTypeSet throttled_type_;
+  ModelTypeSet partial_failure_type_;
 
   int num_get_updates_requests_;
 

@@ -19,8 +19,10 @@
 #include "content/public/common/connection_filter.h"
 #include "mojo/public/cpp/bindings/binding_set.h"
 #include "mojo/public/cpp/system/message_pipe.h"
+#include "services/service_manager/public/cpp/interface_registry.h"
 #include "services/service_manager/public/cpp/service.h"
 #include "services/service_manager/public/cpp/service_context.h"
+#include "services/service_manager/public/interfaces/constants.mojom.h"
 #include "services/service_manager/public/interfaces/service_factory.mojom.h"
 #include "services/service_manager/runner/common/client_util.h"
 
@@ -168,7 +170,8 @@ class ServiceManagerConnectionImpl::IOThreadContext
     // Should bind |io_thread_checker_| to the context's thread.
     DCHECK(io_thread_checker_.CalledOnValidThread());
     service_context_.reset(new service_manager::ServiceContext(
-        this, std::move(pending_service_request_),
+        base::MakeUnique<service_manager::ForwardingService>(this),
+        std::move(pending_service_request_),
         std::move(io_thread_connector_),
         std::move(pending_connector_request_)));
 
@@ -221,10 +224,10 @@ class ServiceManagerConnectionImpl::IOThreadContext
   /////////////////////////////////////////////////////////////////////////////
   // service_manager::Service implementation
 
-  void OnStart(const service_manager::ServiceInfo& info) override {
+  void OnStart() override {
     DCHECK(io_thread_checker_.CalledOnValidThread());
     DCHECK(!initialize_handler_.is_null());
-    local_info_ = info;
+    local_info_ = context()->local_info();
 
     InitializeCallback handler = base::ResetAndReturn(&initialize_handler_);
     callback_task_runner_->PostTask(FROM_HERE,
@@ -239,7 +242,7 @@ class ServiceManagerConnectionImpl::IOThreadContext
         FROM_HERE, base::Bind(on_connect_callback_, local_info_, remote_info));
 
     std::string remote_service = remote_info.identity.name();
-    if (remote_service == "service:service_manager") {
+    if (remote_service == service_manager::mojom::kServiceName) {
       // Only expose the ServiceFactory interface to the Service Manager.
       registry->AddInterface<service_manager::mojom::ServiceFactory>(this);
       return true;
@@ -254,11 +257,11 @@ class ServiceManagerConnectionImpl::IOThreadContext
       }
     }
 
-    if (remote_service == "service:content_browser" &&
+    if (remote_service == "content_browser" &&
         !has_browser_connection_) {
       has_browser_connection_ = true;
       registry->set_default_binder(default_browser_binder_);
-      registry->SetConnectionLostClosure(
+      registry->AddConnectionLostClosure(
           base::Bind(&IOThreadContext::OnBrowserConnectionLost, this));
       return true;
     }

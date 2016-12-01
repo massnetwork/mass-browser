@@ -14,9 +14,9 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/browser_window.h"
-#import "chrome/browser/ui/chrome_style.h"
 #import "chrome/browser/ui/cocoa/browser_window_controller.h"
 #import "chrome/browser/ui/cocoa/browser_window_utils.h"
+#import "chrome/browser/ui/cocoa/chrome_style.h"
 #import "chrome/browser/ui/cocoa/constrained_window/constrained_window_button.h"
 #import "chrome/browser/ui/cocoa/hover_close_button.h"
 #import "chrome/browser/ui/cocoa/info_bubble_view.h"
@@ -227,6 +227,9 @@ const NSInteger kFullscreenLeftOffset = 40;
 // Sets the offset of |viewA| so that its vertical center is aligned with the
 // vertical center of |viewB|.
 + (void)alignCenterOf:(NSView*)viewA verticallyToCenterOf:(NSView*)viewB;
+
+// BaseBubbleController override.
+- (IBAction)cancel:(id)sender;
 
 @end
 
@@ -662,6 +665,13 @@ const NSInteger kFullscreenLeftOffset = 40;
   frameA.origin.y =
       NSMinY(frameB) + std::floor((NSHeight(frameB) - NSHeight(frameA)) / 2);
   [viewA setFrameOrigin:frameA.origin];
+}
+
+- (IBAction)cancel:(id)sender {
+  // This is triggered by ESC when the bubble has focus.
+  DCHECK(delegate_);
+  delegate_->Closing();
+  [super cancel:sender];
 }
 
 @end  // implementation PermissionBubbleController

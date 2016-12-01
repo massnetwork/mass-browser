@@ -41,10 +41,10 @@
 #include "core/css/StylePropertySet.h"
 #include "core/css/resolver/StyleResolver.h"
 #include "core/css/resolver/StyleResolverStats.h"
+#include "core/css/resolver/StyleRuleUsageTracker.h"
 #include "core/dom/StyleEngine.h"
 #include "core/dom/shadow/ShadowRoot.h"
 #include "core/style/StyleInheritedData.h"
-#include <algorithm>
 
 namespace blink {
 
@@ -196,6 +196,11 @@ void ElementRuleCollector::collectMatchingRules(
     collectMatchingRulesForList(
         matchRequest.ruleSet->shadowPseudoElementRules(pseudoId), cascadeOrder,
         matchRequest);
+    if (pseudoId == "-webkit-input-placeholder") {
+      collectMatchingRulesForList(
+          matchRequest.ruleSet->placeholderPseudoRules(), cascadeOrder,
+          matchRequest);
+    }
   }
 
   if (element.isVTTElement())
@@ -369,6 +374,12 @@ bool ElementRuleCollector::hasAnyMatchingRules(RuleSet* ruleSet) {
   collectMatchingShadowHostRules(matchRequest);
 
   return !m_matchedRules.isEmpty();
+}
+
+void ElementRuleCollector::addMatchedRulesToTracker(
+    StyleRuleUsageTracker* tracker) const {
+  for (auto matchedRule : m_matchedRules)
+    tracker->track(matchedRule.ruleData()->rule());
 }
 
 }  // namespace blink

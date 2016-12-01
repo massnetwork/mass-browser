@@ -10,18 +10,17 @@
 #include "build/build_config.h"
 #include "chrome/utility/utility_message_handler.h"
 #include "ipc/ipc_platform_file.h"
+#include "printing/features/features.h"
 #include "printing/pdf_render_settings.h"
 
-#if !defined(ENABLE_PRINT_PREVIEW) && \
-    !(defined(ENABLE_BASIC_PRINTING) && defined(OS_WIN))
+#if !BUILDFLAG(ENABLE_PRINT_PREVIEW) && \
+    !(BUILDFLAG(ENABLE_BASIC_PRINTING) && defined(OS_WIN))
 #error "Windows basic printing or print preview must be enabled"
 #endif
 
 namespace printing {
 
-class PdfRenderSettings;
 struct PwgRasterSettings;
-struct PageRange;
 
 // Dispatches IPCs for printing.
 class PrintingHandler : public UtilityMessageHandler {
@@ -35,7 +34,7 @@ class PrintingHandler : public UtilityMessageHandler {
  private:
   // IPC message handlers.
 #if defined(OS_WIN)
-  void OnRenderPDFPagesToMetafile(IPC::PlatformFileForTransit pdf_transit,
+  void OnRenderPDFPagesToMetafileStart(IPC::PlatformFileForTransit pdf_transit,
                                   const PdfRenderSettings& settings,
                                   bool print_text_with_gdi);
   void OnRenderPDFPagesToMetafileGetPage(
@@ -43,7 +42,7 @@ class PrintingHandler : public UtilityMessageHandler {
       IPC::PlatformFileForTransit output_file);
   void OnRenderPDFPagesToMetafileStop();
 #endif  // OS_WIN
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   void OnRenderPDFPagesToPWGRaster(IPC::PlatformFileForTransit pdf_transit,
                                    const PdfRenderSettings& settings,
                                    const PwgRasterSettings& bitmap_settings,
@@ -56,7 +55,7 @@ class PrintingHandler : public UtilityMessageHandler {
                                base::File output_file,
                                float* scale_factor);
 #endif  // OS_WIN
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   bool RenderPDFPagesToPWGRaster(base::File pdf_file,
                                  const PdfRenderSettings& settings,
                                  const PwgRasterSettings& bitmap_settings,
@@ -69,6 +68,7 @@ class PrintingHandler : public UtilityMessageHandler {
 #if defined(OS_WIN)
   std::vector<char> pdf_data_;
   PdfRenderSettings pdf_rendering_settings_;
+  void* pdf_handle_ = nullptr;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(PrintingHandler);

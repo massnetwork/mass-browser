@@ -15,9 +15,12 @@
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/strong_binding.h"
 #include "services/catalog/public/cpp/resource_loader.h"
+#include "services/catalog/public/interfaces/constants.mojom.h"
 #include "services/service_manager/public/c/main.h"
 #include "services/service_manager/public/cpp/connection.h"
 #include "services/service_manager/public/cpp/connector.h"
+#include "services/service_manager/public/cpp/interface_registry.h"
+#include "services/service_manager/public/cpp/service_context.h"
 #include "services/tracing/public/cpp/provider.h"
 #include "services/ui/clipboard/clipboard_impl.h"
 #include "services/ui/common/switches.h"
@@ -46,6 +49,7 @@
 
 #if defined(USE_X11)
 #include <X11/Xlib.h>
+#include "ui/base/x/x11_util.h"  // nogncheck
 #include "ui/platform_window/x11/x11_window.h"
 #elif defined(USE_OZONE)
 #include "ui/events/ozone/layout/keyboard_layout_engine.h"
@@ -104,7 +108,7 @@ void Service::InitializeResources(service_manager::Connector* connector) {
 
   catalog::ResourceLoader loader;
   filesystem::mojom::DirectoryPtr directory;
-  connector->ConnectToInterface("service:catalog", &directory);
+  connector->ConnectToInterface(catalog::mojom::kServiceName, &directory);
   CHECK(loader.OpenFiles(std::move(directory), resource_paths));
 
   ui::RegisterPathProvider();
@@ -135,9 +139,9 @@ void Service::AddUserIfNecessary(
   window_server_->user_id_tracker()->AddUserId(remote_identity.user_id());
 }
 
-void Service::OnStart(const service_manager::ServiceInfo& info) {
+void Service::OnStart() {
   base::PlatformThread::SetName("mus");
-  tracing_.Initialize(connector(), info.identity.name());
+  tracing_.Initialize(context()->connector(), context()->identity().name());
   TRACE_EVENT0("mus", "Service::Initialize started");
 
   test_config_ = base::CommandLine::ForCurrentProcess()->HasSwitch(
@@ -146,9 +150,10 @@ void Service::OnStart(const service_manager::ServiceInfo& info) {
   XInitThreads();
   if (test_config_)
     ui::test::SetUseOverrideRedirectWindowByDefault(true);
+  ui::SetDefaultX11ErrorHandlers();
 #endif
 
-  InitializeResources(connector());
+  InitializeResources(context()->connector());
 
 #if defined(USE_OZONE)
   // The ozone platform can provide its own event source. So initialize the
@@ -156,7 +161,7 @@ void Service::OnStart(const service_manager::ServiceInfo& info) {
   // Because GL libraries need to be initialized before entering the sandbox,
   // in MUS, |InitializeForUI| will load the GL libraries.
   ui::OzonePlatform::InitParams params;
-  params.connector = connector();
+  params.connector = context()->connector();
   params.single_process = false;
   ui::OzonePlatform::InitializeForUI(params);
 
@@ -191,7 +196,7 @@ void Service::OnStart(const service_manager::ServiceInfo& info) {
     touch_controller_.reset(
         new ws::TouchController(window_server_->display_manager()));
 
-  ime_server_.Init(connector());
+  ime_server_.Init(context()->connector(), test_config_);
 }
 
 bool Service::OnConnect(const service_manager::ServiceInfo& remote_info,
@@ -224,6 +229,10 @@ bool Service::OnConnect(const service_manager::ServiceInfo& remote_info,
   return true;
 }
 
+void Service::StartDisplayInit() {
+  platform_screen_->Init(window_server_->display_manager());
+}
+
 void Service::OnFirstDisplayReady() {
   PendingRequests requests;
   requests.swap(pending_requests_);
@@ -250,12 +259,6 @@ bool Service::IsTestConfig() const {
 void Service::UpdateTouchTransforms() {
   if (touch_controller_)
     touch_controller_->UpdateTouchTransforms();
-}
-
-void Service::CreateDefaultDisplays() {
-  // The display manager will create Displays once hardware or virtual displays
-  // are ready.
-  platform_screen_->Init(window_server_->display_manager());
 }
 
 void Service::Create(const service_manager::Identity& remote_identity,

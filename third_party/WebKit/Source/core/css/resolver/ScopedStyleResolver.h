@@ -57,7 +57,7 @@ class ScopedStyleResolver final : public GarbageCollected<ScopedStyleResolver> {
   StyleRuleKeyframes* keyframeStylesForAnimation(
       const StringImpl* animationName);
 
-  void appendCSSStyleSheet(CSSStyleSheet&, const MediaQueryEvaluator&);
+  void appendCSSStyleSheet(CSSStyleSheet&);
   void appendActiveStyleSheets(unsigned index, const ActiveStyleSheetVector&);
   void collectMatchingAuthorRules(ElementRuleCollector&,
                                   CascadeOrder = ignoreCascadeOrder);
@@ -73,6 +73,8 @@ class ScopedStyleResolver final : public GarbageCollected<ScopedStyleResolver> {
   void resetAuthorStyle();
   bool hasDeepOrShadowSelector() const { return m_hasDeepOrShadowSelector; }
   void setHasUnresolvedKeyframesRule() { m_hasUnresolvedKeyframesRule = true; }
+  bool needsAppendAllSheets() const { return m_needsAppendAllSheets; }
+  void setNeedsAppendAllSheets() { m_needsAppendAllSheets = true; }
   static void keyframesRulesAdded(const TreeScope&);
   static ContainerNode& invalidationRootForTreeScope(const TreeScope&);
 
@@ -91,6 +93,8 @@ class ScopedStyleResolver final : public GarbageCollected<ScopedStyleResolver> {
   Member<TreeScope> m_scope;
 
   HeapVector<Member<CSSStyleSheet>> m_authorStyleSheets;
+  MediaQueryResultList m_viewportDependentMediaQueryResults;
+  MediaQueryResultList m_deviceDependentMediaQueryResults;
 
   using KeyframesRuleMap =
       HeapHashMap<const StringImpl*, Member<StyleRuleKeyframes>>;
@@ -119,6 +123,7 @@ class ScopedStyleResolver final : public GarbageCollected<ScopedStyleResolver> {
   Member<CSSStyleSheetRuleSubSet> m_treeBoundaryCrossingRuleSet;
   bool m_hasDeepOrShadowSelector = false;
   bool m_hasUnresolvedKeyframesRule = false;
+  bool m_needsAppendAllSheets = false;
 };
 
 }  // namespace blink

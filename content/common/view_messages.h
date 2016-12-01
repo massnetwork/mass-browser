@@ -42,6 +42,7 @@
 #include "media/base/media_log_event.h"
 #include "media/capture/ipc/capture_param_traits.h"
 #include "net/base/network_change_notifier.h"
+#include "ppapi/features/features.h"
 #include "third_party/WebKit/public/platform/WebDisplayMode.h"
 #include "third_party/WebKit/public/platform/WebFloatPoint.h"
 #include "third_party/WebKit/public/platform/WebFloatRect.h"
@@ -286,7 +287,6 @@ IPC_STRUCT_TRAITS_BEGIN(content::TextInputState)
   IPC_STRUCT_TRAITS_MEMBER(can_compose_inline)
   IPC_STRUCT_TRAITS_MEMBER(show_ime_if_needed)
   IPC_STRUCT_TRAITS_MEMBER(is_non_ime_change)
-  IPC_STRUCT_TRAITS_MEMBER(batch_edit)
 IPC_STRUCT_TRAITS_END()
 
 IPC_STRUCT_BEGIN(ViewHostMsg_CreateWorker_Params)
@@ -554,7 +554,7 @@ IPC_MESSAGE_ROUTED0(ViewMsg_WorkerConnected)
 // for tests.
 IPC_MESSAGE_ROUTED1(ViewMsg_WaitForNextFrameForTests, int /* routing_id */)
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // Reply to ViewHostMsg_OpenChannelToPpapiBroker
 // Tells the renderer that the channel to the broker has been created.
 IPC_MESSAGE_ROUTED2(ViewMsg_PpapiBrokerChannelCreated,
@@ -584,8 +584,6 @@ IPC_MESSAGE_ROUTED3(ViewMsg_UpdateBrowserControlsState,
                     bool /* enable_showing */,
                     bool /* animate */)
 
-IPC_MESSAGE_ROUTED0(ViewMsg_ShowImeIfNeeded)
-
 // Extracts the data at the given rect, returning it through the
 // ViewHostMsg_SmartClipDataExtracted IPC.
 IPC_MESSAGE_ROUTED1(ViewMsg_ExtractSmartClipData,
@@ -599,10 +597,6 @@ IPC_MESSAGE_ROUTED3(ViewMsg_ReclaimCompositorResources,
                     uint32_t /* compositor_frame_sink_id */,
                     bool /* is_swap_ack */,
                     cc::ReturnedResourceArray /* resources */)
-
-// Sent by browser to give renderer compositor a new namespace ID for any
-// SurfaceSequences it has to create.
-IPC_MESSAGE_ROUTED1(ViewMsg_SetFrameSinkId, cc::FrameSinkId /* frame_sink_id */)
 
 IPC_MESSAGE_ROUTED0(ViewMsg_SelectWordAroundCaret)
 
@@ -631,12 +625,6 @@ IPC_MESSAGE_ROUTED1(ViewMsg_HandleCompositorProto,
 // to be be delivered until the notification is disabled.
 IPC_MESSAGE_ROUTED1(ViewHostMsg_SetNeedsBeginFrames,
                     bool /* enabled */)
-
-// Similar to ViewHostMsg_CreateWidget except the widget is a full screen
-// window.
-IPC_SYNC_MESSAGE_CONTROL1_1(ViewHostMsg_CreateFullscreenWidget,
-                            int /* opener_id */,
-                            int /* route_id */)
 
 // These three messages are sent to the parent RenderViewHost to display the
 // page/widget that was created by
@@ -773,7 +761,7 @@ IPC_MESSAGE_ROUTED3(ViewHostMsg_WebUISend,
                     std::string  /* message */,
                     base::ListValue /* args */)
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // A renderer sends this to the browser process when it wants to access a PPAPI
 // broker. In contrast to FrameHostMsg_OpenChannelToPpapiBroker, this is called
 // for every connection.
@@ -782,7 +770,7 @@ IPC_MESSAGE_ROUTED3(ViewHostMsg_RequestPpapiBrokerPermission,
                     int /* routing_id */,
                     GURL /* document_url */,
                     base::FilePath /* plugin_path */)
-#endif  // defined(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 // Send the tooltip text for the current mouse position to the browser.
 IPC_MESSAGE_ROUTED2(ViewHostMsg_SetTooltipText,

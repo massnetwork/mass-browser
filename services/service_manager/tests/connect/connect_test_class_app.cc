@@ -12,6 +12,7 @@
 #include "services/service_manager/public/cpp/interface_factory.h"
 #include "services/service_manager/public/cpp/interface_registry.h"
 #include "services/service_manager/public/cpp/service.h"
+#include "services/service_manager/public/cpp/service_context.h"
 #include "services/service_manager/public/cpp/service_runner.h"
 #include "services/service_manager/public/interfaces/connector.mojom.h"
 #include "services/service_manager/tests/connect/connect_test.mojom.h"
@@ -32,15 +33,12 @@ class ConnectTestClassApp
 
  private:
   // service_manager::Service:
-  void OnStart(const ServiceInfo& info) override {
-    identity_ = info.identity;
-  }
   bool OnConnect(const ServiceInfo& remote_info,
                  InterfaceRegistry* registry) override {
     registry->AddInterface<test::mojom::ConnectTestService>(this);
     registry->AddInterface<test::mojom::ClassInterface>(this);
     inbound_connections_.insert(registry);
-    registry->SetConnectionLostClosure(
+    registry->AddConnectionLostClosure(
         base::Bind(&ConnectTestClassApp::OnConnectionError,
                    base::Unretained(this), registry));
     return true;
@@ -63,7 +61,7 @@ class ConnectTestClassApp
     callback.Run("CLASS APP");
   }
   void GetInstance(const GetInstanceCallback& callback) override {
-    callback.Run(identity_.instance());
+    callback.Run(context()->identity().instance());
   }
 
   // test::mojom::ClassInterface:
@@ -76,10 +74,9 @@ class ConnectTestClassApp
     DCHECK(it != inbound_connections_.end());
     inbound_connections_.erase(it);
     if (inbound_connections_.empty())
-      base::MessageLoop::current()->QuitWhenIdle();
+      context()->QuitNow();
   }
 
-  Identity identity_;
   std::set<InterfaceRegistry*> inbound_connections_;
   mojo::BindingSet<test::mojom::ConnectTestService> bindings_;
   mojo::BindingSet<test::mojom::ClassInterface> class_interface_bindings_;

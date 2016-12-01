@@ -4,9 +4,12 @@
 
 package org.chromium.chrome.browser;
 
+import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.ActivityManager.AppTask;
+import android.app.ActivityManager.RecentTaskInfo;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
@@ -18,6 +21,8 @@ import android.support.annotation.Nullable;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.view.KeyEvent;
+import android.view.KeyboardShortcutGroup;
+import android.view.Menu;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.ViewGroup;
@@ -57,12 +62,14 @@ import org.chromium.chrome.browser.compositor.layouts.phone.StackLayout;
 import org.chromium.chrome.browser.cookies.CookiesFetcher;
 import org.chromium.chrome.browser.device.DeviceClassManager;
 import org.chromium.chrome.browser.document.ChromeLauncherActivity;
+import org.chromium.chrome.browser.document.DocumentUtils;
 import org.chromium.chrome.browser.download.DownloadUtils;
 import org.chromium.chrome.browser.firstrun.FirstRunActivity;
 import org.chromium.chrome.browser.firstrun.FirstRunFlowSequencer;
 import org.chromium.chrome.browser.firstrun.FirstRunSignInProcessor;
 import org.chromium.chrome.browser.firstrun.FirstRunStatus;
 import org.chromium.chrome.browser.fullscreen.ChromeFullscreenManager;
+import org.chromium.chrome.browser.fullscreen.ComposedBrowserControlsVisibilityDelegate;
 import org.chromium.chrome.browser.incognito.IncognitoNotificationManager;
 import org.chromium.chrome.browser.infobar.DataReductionPromoInfoBar;
 import org.chromium.chrome.browser.locale.LocaleManager;
@@ -85,13 +92,13 @@ import org.chromium.chrome.browser.snackbar.undo.UndoBarController;
 import org.chromium.chrome.browser.tab.BrowserControlsVisibilityDelegate;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabDelegateFactory;
+import org.chromium.chrome.browser.tab.TabStateBrowserControlsVisibilityDelegate;
 import org.chromium.chrome.browser.tabmodel.ChromeTabCreator;
-import org.chromium.chrome.browser.tabmodel.EmptyTabModelObserver;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModel.TabLaunchType;
-import org.chromium.chrome.browser.tabmodel.TabModelObserver;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.tabmodel.TabModelSelectorImpl;
+import org.chromium.chrome.browser.tabmodel.TabModelSelectorTabModelObserver;
 import org.chromium.chrome.browser.tabmodel.TabModelSelectorTabObserver;
 import org.chromium.chrome.browser.tabmodel.TabModelUtils;
 import org.chromium.chrome.browser.tabmodel.TabWindowManager;
@@ -99,6 +106,7 @@ import org.chromium.chrome.browser.toolbar.ToolbarControlContainer;
 import org.chromium.chrome.browser.util.FeatureUtilities;
 import org.chromium.chrome.browser.util.IntentUtils;
 import org.chromium.chrome.browser.vr_shell.VrShellDelegate;
+import org.chromium.chrome.browser.webapps.ChromeWebApkHost;
 import org.chromium.chrome.browser.widget.emptybackground.EmptyBackgroundViewWrapper;
 import org.chromium.chrome.browser.widget.findinpage.FindToolbarManager;
 import org.chromium.content.browser.ContentVideoView;
@@ -173,12 +181,6 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
     public static final String INTENT_EXTRA_TEST_RENDER_PROCESS_LIMIT = "render_process_limit";
 
     /**
-     * Sending an intent with this extra sets the ChromeTabbedActivity to skip the First Run
-     * Experience.
-     */
-    public static final String SKIP_FIRST_RUN_EXPERIENCE = "skip_first_run_experience";
-
-    /**
      * Sending an intent with this action to Chrome will cause it to close all tabs
      * (iff the --enable-test-intents command line flag is set). If a URL is supplied in the
      * intent data, this will be loaded and unaffected by the close all action.
@@ -203,7 +205,7 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
 
     private TabModelSelectorImpl mTabModelSelectorImpl;
     private TabModelSelectorTabObserver mTabModelSelectorTabObserver;
-    private TabModelObserver mTabModelObserver;
+    private TabModelSelectorTabModelObserver mTabModelObserver;
 
     private boolean mUIInitialized = false;
 
@@ -244,7 +246,7 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
     }
 
     private class TabbedModeBrowserControlsVisibilityDelegate
-            extends BrowserControlsVisibilityDelegate {
+            extends TabStateBrowserControlsVisibilityDelegate {
         public TabbedModeBrowserControlsVisibilityDelegate(Tab tab) {
             super(tab);
         }
@@ -265,7 +267,9 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
     private class TabbedModeTabDelegateFactory extends TabDelegateFactory {
         @Override
         public BrowserControlsVisibilityDelegate createBrowserControlsVisibilityDelegate(Tab tab) {
-            return new TabbedModeBrowserControlsVisibilityDelegate(tab);
+            return new ComposedBrowserControlsVisibilityDelegate(
+                    new TabbedModeBrowserControlsVisibilityDelegate(tab),
+                    getFullscreenManager().getBrowserVisibilityDelegate());
         }
     }
 
@@ -290,7 +294,7 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
             mTabModelSelectorImpl.onNativeLibraryReady(getTabContentManager());
             mVrShellDelegate.onNativeLibraryReady();
 
-            mTabModelObserver = new EmptyTabModelObserver() {
+            mTabModelObserver = new TabModelSelectorTabModelObserver(mTabModelSelectorImpl) {
                 @Override
                 public void didCloseTab(int tabId, boolean incognito) {
                     closeIfNoTabsAndHomepageEnabled(false);
@@ -334,9 +338,6 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
                             NewTabPageUma.NTP_IMPESSION_POTENTIAL_NOTAB);
                 }
             };
-            for (TabModel model : mTabModelSelectorImpl.getModels()) {
-                model.addObserver(mTabModelObserver);
-            }
 
             Bundle state = getSavedInstanceState();
             if (state != null && state.containsKey(FRE_RUNNING)) {
@@ -382,6 +383,10 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
                 } else {
                     preferenceManager.setPromosSkippedOnFirstStart(true);
                 }
+
+                // Notify users experimenting with WebAPKs if they need to do extra steps to enable
+                // WebAPKs.
+                ChromeWebApkHost.launchWebApkRequirementsDialogIfNeeded(this);
             }
 
             initializeUI();
@@ -447,9 +452,6 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
 
         if (getActivityTab() != null) getActivityTab().setIsAllowedToReturnToExternalApp(false);
 
-        if (mVrShellDelegate.isVrShellEnabled()) {
-            mVrShellDelegate.close();
-        }
         mTabModelSelectorImpl.saveState();
         StartupMetrics.getInstance().recordHistogram(true);
         mActivityStopMetrics.onStopWithNative(this);
@@ -479,9 +481,7 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
             if (CommandLine.getInstance().hasSwitch(ContentSwitches.ENABLE_TEST_INTENTS)) {
                 handleDebugIntent(intent);
             }
-            if (!mVrShellDelegate.isInVR() && mVrShellDelegate.isVrIntent(intent)) {
-                mVrShellDelegate.enterVRIfNecessary(false);
-            }
+            if (mVrShellDelegate.isVrIntent(intent)) mVrShellDelegate.enterVRFromIntent(intent);
         } finally {
             TraceEvent.end("ChromeTabbedActivity.onNewIntentWithNative");
         }
@@ -526,10 +526,6 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
     private void initializeUI() {
         try {
             TraceEvent.begin("ChromeTabbedActivity.initializeUI");
-
-            CommandLine commandLine = CommandLine.getInstance();
-
-            commandLine.appendSwitch(ContentSwitches.ENABLE_INSTANT_EXTENDED_API);
 
             CompositorViewHolder compositorViewHolder = getCompositorViewHolder();
             if (DeviceFormFactor.isTablet(this)) {
@@ -592,7 +588,8 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
                 }
             };
 
-            getToolbarManager().initializeWithNative(mTabModelSelectorImpl, getFullscreenManager(),
+            getToolbarManager().initializeWithNative(mTabModelSelectorImpl,
+                    getFullscreenManager().getBrowserVisibilityDelegate(),
                     mFindToolbarManager, mLayoutManager, mLayoutManager,
                     tabSwitcherClickHandler, newTabClickHandler, bookmarkClickHandler, null);
 
@@ -654,7 +651,7 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
                 if (mVrShellDelegate.isVrIntent(intent)) {
                     // TODO(mthiesse): Improve startup when started from a VR intent. Right now
                     // we launch out of VR, partially load out of VR, then switch into VR.
-                    mVrShellDelegate.enterVRIfNecessary(false);
+                    mVrShellDelegate.enterVRIfNecessary();
                 } else if (!mIntentHandler.shouldIgnoreIntent(ChromeTabbedActivity.this, intent)) {
                     mIntentWithEffect = mIntentHandler.onNewIntent(ChromeTabbedActivity.this,
                             intent);
@@ -723,6 +720,9 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
                     launchFirstRunExperience();
                 }
             }
+            return true;
+        } else if (requestCode == VrShellDelegate.EXIT_VR_RESULT) {
+            mVrShellDelegate.onExitVRResult(resultCode);
             return true;
         }
         return false;
@@ -1058,10 +1058,6 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
             return;
         }
 
-        if (getIntent() != null && getIntent().getBooleanExtra(SKIP_FIRST_RUN_EXPERIENCE, false)) {
-            return;
-        }
-
         final Intent freIntent =
                 FirstRunFlowSequencer.checkIfFirstRunIsNecessary(this, getIntent(), false);
         if (freIntent == null) return;
@@ -1099,17 +1095,25 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
     @Override
     protected boolean isStartedUpCorrectly(Intent intent) {
         // If tabs from this instance were merged into a different ChromeTabbedActivity instance
-        // then this instance should not be created. This may happen if the process is restarted
-        // e.g. on upgrade or from about://flags. See crbug.com/657418
+        // and the other instance is still running, then this instance should not be created. This
+        // may happen if the process is restarted e.g. on upgrade or from about://flags.
+        // See crbug.com/657418
         boolean tabsMergedIntoAnotherInstance =
                 sMergedInstanceTaskId != 0 && sMergedInstanceTaskId != getTaskId();
-        if (tabsMergedIntoAnotherInstance) {
+
+        // Since a static is used to track the merged instance task id, it is possible that
+        // sMergedInstanceTaskId is still set even though the associated task is not running.
+        boolean mergedInstanceTaskStillRunning = isMergedInstanceTaskRunning();
+
+        if (tabsMergedIntoAnotherInstance && mergedInstanceTaskStillRunning) {
             // Currently only two instances of ChromeTabbedActivity may be running at any given
             // time. If tabs were merged into another instance and this instance is being killed due
             // to incorrect startup, then no other instances should exist. Reset the merged instance
             // task id.
             setMergedInstanceTaskId(0);
             return false;
+        } else if (!mergedInstanceTaskStillRunning) {
+            setMergedInstanceTaskId(0);
         }
 
         return super.isStartedUpCorrectly(intent);
@@ -1193,7 +1197,7 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
             if (!currentModel.isIncognito()) currentModel.openMostRecentlyClosedTab();
             RecordUserAction.record("MobileTabClosedUndoShortCut");
         } else if (id == R.id.enter_vr_id) {
-            mVrShellDelegate.enterVRIfNecessary(false);
+            mVrShellDelegate.enterVRIfNecessary();
         } else {
             return super.onMenuOrKeyboardAction(id, fromMenu);
         }
@@ -1232,7 +1236,7 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
         if (!mUIInitialized) return false;
         final Tab currentTab = getActivityTab();
 
-        if (mVrShellDelegate.exitVRIfNecessary()) return true;
+        if (mVrShellDelegate.exitVRIfNecessary(true)) return true;
 
         if (currentTab == null) {
             recordBackPressedUma("currentTab is null", BACK_PRESSED_TAB_IS_NULL);
@@ -1431,11 +1435,7 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
             mTabModelSelectorTabObserver = null;
         }
 
-        if (mTabModelObserver != null) {
-            for (TabModel model : mTabModelSelectorImpl.getModels()) {
-                model.removeObserver(mTabModelObserver);
-            }
-        }
+        if (mTabModelObserver != null) mTabModelObserver.destroy();
 
         if (mUndoBarPopupController != null) {
             mUndoBarPopupController.destroy();
@@ -1475,6 +1475,12 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
                 && (!isTablet() || getCurrentTabModel().getCount() != 0);
         return KeyboardShortcuts.onKeyDown(event, this, isCurrentTabVisible, true)
                 || super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public void onProvideKeyboardShortcuts(List<KeyboardShortcutGroup> data, Menu menu,
+            int deviceId) {
+        data.addAll(KeyboardShortcuts.createShortcutGroup(this));
     }
 
     @VisibleForTesting
@@ -1684,9 +1690,7 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
 
     @Override
     protected ChromeFullscreenManager createFullscreenManager() {
-        return new ChromeFullscreenManager(this,
-                (ToolbarControlContainer) findViewById(R.id.control_container),
-                getTabModelSelector(), getControlContainerHeightResource(), true);
+        return new ChromeFullscreenManager(this, FeatureUtilities.isChromeHomeEnabled());
     }
 
     /**
@@ -1699,5 +1703,20 @@ public class ChromeTabbedActivity extends ChromeActivity implements OverviewMode
 
     private static void setMergedInstanceTaskId(int mergedInstanceTaskId) {
         sMergedInstanceTaskId = mergedInstanceTaskId;
+    }
+
+    @SuppressLint("NewApi")
+    private boolean isMergedInstanceTaskRunning() {
+        if (!FeatureUtilities.isTabModelMergingEnabled() || sMergedInstanceTaskId == 0) {
+            return false;
+        }
+
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        for (AppTask task : manager.getAppTasks()) {
+            RecentTaskInfo info = DocumentUtils.getTaskInfoFromTask(task);
+            if (info == null) continue;
+            if (info.id == sMergedInstanceTaskId) return true;
+        }
+        return false;
     }
 }

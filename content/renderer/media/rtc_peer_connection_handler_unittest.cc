@@ -32,6 +32,7 @@
 #include "content/renderer/media/peer_connection_tracker.h"
 #include "content/renderer/media/webrtc/mock_peer_connection_dependency_factory.h"
 #include "content/renderer/media/webrtc/processed_local_audio_source.h"
+#include "content/renderer/media/webrtc/rtc_stats.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/WebKit/public/platform/WebMediaConstraints.h"
@@ -192,9 +193,9 @@ class MockPeerConnectionTracker : public PeerConnectionTracker {
 
 class MockRTCStatsReportCallback : public blink::WebRTCStatsReportCallback {
  public:
-  MockRTCStatsReportCallback(std::unique_ptr<blink::WebRTCStatsReport>* result)
-      : main_thread_(base::ThreadTaskRunnerHandle::Get()),
-        result_(result) {
+  explicit MockRTCStatsReportCallback(
+      std::unique_ptr<blink::WebRTCStatsReport>* result)
+      : main_thread_(base::ThreadTaskRunnerHandle::Get()), result_(result) {
     DCHECK(result_);
   }
 
@@ -291,7 +292,7 @@ class RTCPeerConnectionHandlerTest : public ::testing::Test {
         new ProcessedLocalAudioSource(
             -1 /* consumer_render_frame_id is N/A for non-browser tests */,
             StreamDeviceInfo(MEDIA_DEVICE_AUDIO_CAPTURE, "Mock device",
-                             "mock_device_id", "mock_group_id",
+                             "mock_device_id",
                              media::AudioParameters::kAudioCDSampleRate,
                              media::CHANNEL_LAYOUT_STEREO,
                              media::AudioParameters::kAudioCDSampleRate / 100),
@@ -672,6 +673,8 @@ TEST_F(RTCPeerConnectionHandlerTest, GetStatsWithBadSelector) {
 }
 
 TEST_F(RTCPeerConnectionHandlerTest, GetRTCStats) {
+  WhitelistStatsForTesting(webrtc::RTCTestStats::kType);
+
   rtc::scoped_refptr<webrtc::RTCStatsReport> report =
       webrtc::RTCStatsReport::Create();
 

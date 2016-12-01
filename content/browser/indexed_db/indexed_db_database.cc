@@ -356,26 +356,25 @@ class IndexedDBDatabase::DeleteRequest
   DISALLOW_COPY_AND_ASSIGN(DeleteRequest);
 };
 
-scoped_refptr<IndexedDBDatabase> IndexedDBDatabase::Create(
-    const base::string16& name,
-    IndexedDBBackingStore* backing_store,
-    IndexedDBFactory* factory,
-    const Identifier& unique_identifier,
-    leveldb::Status* s) {
+std::tuple<scoped_refptr<IndexedDBDatabase>, leveldb::Status>
+IndexedDBDatabase::Create(const base::string16& name,
+                          scoped_refptr<IndexedDBBackingStore> backing_store,
+                          scoped_refptr<IndexedDBFactory> factory,
+                          const Identifier& unique_identifier) {
   scoped_refptr<IndexedDBDatabase> database =
       IndexedDBClassFactory::Get()->CreateIndexedDBDatabase(
           name, backing_store, factory, unique_identifier);
-  *s = database->OpenInternal();
-  if (s->ok())
-    return database;
-  else
-    return NULL;
+  leveldb::Status s = database->OpenInternal();
+  if (!s.ok())
+    database = nullptr;
+  return std::tie(database, s);
 }
 
-IndexedDBDatabase::IndexedDBDatabase(const base::string16& name,
-                                     IndexedDBBackingStore* backing_store,
-                                     IndexedDBFactory* factory,
-                                     const Identifier& unique_identifier)
+IndexedDBDatabase::IndexedDBDatabase(
+    const base::string16& name,
+    scoped_refptr<IndexedDBBackingStore> backing_store,
+    scoped_refptr<IndexedDBFactory> factory,
+    const Identifier& unique_identifier)
     : backing_store_(backing_store),
       metadata_(name,
                 kInvalidId,
@@ -1206,7 +1205,7 @@ void IndexedDBDatabase::GetAllOperation(
   if (!cursor) {
     // Doesn't matter if key or value array here - will be empty array when it
     // hits JavaScript.
-    callbacks->OnSuccessArray(&found_values, object_store_metadata.key_path);
+    callbacks->OnSuccessArray(&found_values);
     return;
   }
 
@@ -1272,7 +1271,7 @@ void IndexedDBDatabase::GetAllOperation(
     // to return an array of keys - no need to create our own array of keys.
     callbacks->OnSuccess(IndexedDBKey(found_keys));
   } else {
-    callbacks->OnSuccessArray(&found_values, object_store_metadata.key_path);
+    callbacks->OnSuccessArray(&found_values);
   }
 }
 
@@ -1319,7 +1318,7 @@ struct IndexedDBDatabase::PutOperationParams {
   std::unique_ptr<IndexedDBKey> key;
   blink::WebIDBPutMode put_mode;
   scoped_refptr<IndexedDBCallbacks> callbacks;
-  std::vector<IndexKeys> index_keys;
+  std::vector<IndexedDBIndexKeys> index_keys;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(PutOperationParams);
@@ -1333,7 +1332,7 @@ void IndexedDBDatabase::Put(
     std::unique_ptr<IndexedDBKey> key,
     blink::WebIDBPutMode put_mode,
     scoped_refptr<IndexedDBCallbacks> callbacks,
-    const std::vector<IndexKeys>& index_keys) {
+    const std::vector<IndexedDBIndexKeys>& index_keys) {
   IDB_TRACE1("IndexedDBDatabase::Put", "txn.id", transaction_id);
   IndexedDBTransaction* transaction = GetTransaction(transaction_id);
   if (!transaction)
@@ -1501,10 +1500,11 @@ void IndexedDBDatabase::PutOperation(std::unique_ptr<PutOperationParams> params,
                     IndexedDBKeyRange(*key));
 }
 
-void IndexedDBDatabase::SetIndexKeys(int64_t transaction_id,
-                                     int64_t object_store_id,
-                                     std::unique_ptr<IndexedDBKey> primary_key,
-                                     const std::vector<IndexKeys>& index_keys) {
+void IndexedDBDatabase::SetIndexKeys(
+    int64_t transaction_id,
+    int64_t object_store_id,
+    std::unique_ptr<IndexedDBKey> primary_key,
+    const std::vector<IndexedDBIndexKeys>& index_keys) {
   IDB_TRACE1("IndexedDBDatabase::SetIndexKeys", "txn.id", transaction_id);
   IndexedDBTransaction* transaction = GetTransaction(transaction_id);
   if (!transaction)

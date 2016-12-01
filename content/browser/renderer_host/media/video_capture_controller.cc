@@ -18,13 +18,13 @@
 #include "build/build_config.h"
 #include "components/display_compositor/gl_helper.h"
 #include "content/browser/renderer_host/media/media_stream_manager.h"
-#include "content/browser/renderer_host/media/video_capture_buffer_tracker_factory_impl.h"
 #include "content/browser/renderer_host/media/video_capture_gpu_jpeg_decoder.h"
 #include "content/browser/renderer_host/media/video_capture_manager.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/common/content_switches.h"
 #include "media/base/video_frame.h"
 #include "media/capture/video/video_capture_buffer_pool_impl.h"
+#include "media/capture/video/video_capture_buffer_tracker_factory_impl.h"
 #include "media/capture/video/video_capture_device_client.h"
 
 #if !defined(OS_ANDROID)
@@ -95,11 +95,11 @@ class VideoFrameReceiverOnIOThread : public media::VideoFrameReceiver {
 
   void OnIncomingCapturedVideoFrame(
       std::unique_ptr<media::VideoCaptureDevice::Client::Buffer> buffer,
-      const scoped_refptr<media::VideoFrame>& frame) override {
+      scoped_refptr<media::VideoFrame> frame) override {
     BrowserThread::PostTask(
         BrowserThread::IO, FROM_HERE,
         base::Bind(&VideoFrameReceiver::OnIncomingCapturedVideoFrame, receiver_,
-                   base::Passed(&buffer), frame));
+                   base::Passed(&buffer), std::move(frame)));
   }
 
   void OnError() override {
@@ -174,7 +174,7 @@ struct VideoCaptureController::ControllerClient {
 
 VideoCaptureController::VideoCaptureController(int max_buffers)
     : buffer_pool_(new media::VideoCaptureBufferPoolImpl(
-          base::MakeUnique<VideoCaptureBufferTrackerFactoryImpl>(),
+          base::MakeUnique<media::VideoCaptureBufferTrackerFactoryImpl>(),
           max_buffers)),
       state_(VIDEO_CAPTURE_STATE_STARTED),
       has_received_frames_(false),
@@ -402,7 +402,7 @@ VideoCaptureController::~VideoCaptureController() {
 
 void VideoCaptureController::OnIncomingCapturedVideoFrame(
     std::unique_ptr<media::VideoCaptureDevice::Client::Buffer> buffer,
-    const scoped_refptr<VideoFrame>& frame) {
+    scoped_refptr<VideoFrame> frame) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
   const int buffer_id = buffer->id();
   DCHECK_NE(buffer_id, media::VideoCaptureBufferPool::kInvalidId);

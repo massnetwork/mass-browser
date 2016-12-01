@@ -61,10 +61,6 @@ const char kAppOemManifestFile[] = "app-mode-oem-manifest";
 // Signals the availability of the ARC instance on this device.
 const char kArcAvailable[] = "arc-available";
 
-// Specifies ARC authorization endpoint to enable automatic sign-in in OptIn
-// flow.
-const char kArcUseAuthEndpoint[] = "arc-use-auth-endpoint";
-
 // Screenshot testing: specifies the directoru where artifacts will be stored.
 const char kArtifactsDir[] = "artifacts-dir";
 
@@ -212,8 +208,14 @@ const char kEafePath[] = "eafe-path";
 // EAFE URL to use for Easy bootstrapping.
 const char kEafeUrl[] = "eafe-url";
 
+// Enables AD functionality.
+const char kEnableAd[] = "enable-ad";
+
 // Enables starting the ARC instance upon session start.
 const char kEnableArc[] = "enable-arc";
+
+// Enables ARC OptIn flow in OOBE.
+const char kEnableArcOOBEOptIn[] = "enable-arc-oobe-optin";
 
 // Enables Data Saver prompt on cellular networks.
 const char kEnableDataSaverPrompt[] = "enable-datasaver-prompt";
@@ -239,15 +241,12 @@ const char kEnableFirstRunUITransitions[] = "enable-first-run-ui-transitions";
 // rather than the kiosk app mode.
 const char kEnableKioskMode[] = "enable-kiosk-mode";
 
-// Disables material design OOBE UI.
-const char kDisableMdOobe[] = "disable-md-oobe";
+// Enables material design OOBE UI.
+const char kEnableMdOobe[] = "enable-md-oobe";
 
 // Enables notifications about captive portals in session.
 const char kEnableNetworkPortalNotification[] =
     "enable-network-portal-notification";
-
-// Enables storage manager in MD Settings.
-const char kEnableMdStorageManager[] = "enable-md-storage-manager";
 
 // Enables suggestions while typing on a physical keyboard.
 const char kEnablePhysicalKeyboardAutocorrect[] =

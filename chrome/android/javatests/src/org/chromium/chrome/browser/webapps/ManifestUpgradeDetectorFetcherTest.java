@@ -5,7 +5,6 @@
 package org.chromium.chrome.browser.webapps;
 
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.test.suitebuilder.annotation.MediumTest;
 
 import org.chromium.base.ThreadUtils;
@@ -16,6 +15,8 @@ import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.test.ChromeTabbedActivityTestBase;
 import org.chromium.chrome.test.util.browser.WebappTestPage;
 import org.chromium.net.test.EmbeddedTestServer;
+
+import java.util.HashMap;
 
 /**
  * Tests the ManifestUpgradeDetectorFetcher.
@@ -35,7 +36,7 @@ public class ManifestUpgradeDetectorFetcherTest extends ChromeTabbedActivityTest
     private static final String WEB_MANIFEST_WITH_LONG_ICON_MURMUR2_HASH =
             "/chrome/test/data/banners/manifest_long_icon_murmur2_hash.json";
     // Murmur2 hash of icon at {@link WEB_MANIFEST_WITH_LONG_ICON_MURMUR2_HASH}.
-    private static final String LONG_ICON_MURMUR2_HASH = "17165487231247065090";
+    private static final String LONG_ICON_MURMUR2_HASH = "13495109619211221667";
 
     // Scope for {@link WEB_MANIFEST_URL1}, {@link WEB_MANIFEST_URL2} and
     // {@link WEB_MANIFEST_WITH_LONG_ICON_MURMUR2_HASH}.
@@ -49,15 +50,13 @@ public class ManifestUpgradeDetectorFetcherTest extends ChromeTabbedActivityTest
     private static class CallbackWaiter
             extends CallbackHelper implements ManifestUpgradeDetectorFetcher.Callback {
         private String mName;
-        private String mIconMurmur2Hash;
+        private String mBestIconMurmur2Hash;
 
         @Override
-        public void onGotManifestData(String startUrl, String scopeUrl, String name,
-                String shortName, String iconUrl, String iconMurmur2Hash, Bitmap iconBitmap,
-                int displayMode, int orientation, long themeColor, long backgroundColor) {
+        public void onGotManifestData(WebApkInfo fetchedInfo, String bestIconUrl) {
             assertNull(mName);
-            mName = name;
-            mIconMurmur2Hash = iconMurmur2Hash;
+            mName = fetchedInfo.name();
+            mBestIconMurmur2Hash = fetchedInfo.iconUrlToMurmur2HashMap().get(bestIconUrl);
             notifyCalled();
         }
 
@@ -65,8 +64,8 @@ public class ManifestUpgradeDetectorFetcherTest extends ChromeTabbedActivityTest
             return mName;
         }
 
-        public String iconMurmur2Hash() {
-            return mIconMurmur2Hash;
+        public String bestIconMurmur2Hash() {
+            return mBestIconMurmur2Hash;
         }
     }
 
@@ -92,14 +91,16 @@ public class ManifestUpgradeDetectorFetcherTest extends ChromeTabbedActivityTest
     /**
      * Starts a ManifestUpgradeDetectorFetcher. Calls {@link callback} once the fetcher is done.
      */
-    private void startManifestUpgradeDetectorFetcher(String scopeUrl, String manifestUrl,
-            final ManifestUpgradeDetectorFetcher.Callback callback) {
-        final ManifestUpgradeDetectorFetcher fetcher =
-                new ManifestUpgradeDetectorFetcher(mTab, scopeUrl, manifestUrl);
+    private void startManifestUpgradeDetectorFetcher(final String scopeUrl,
+            final String manifestUrl, final ManifestUpgradeDetectorFetcher.Callback callback) {
+        final ManifestUpgradeDetectorFetcher fetcher = new ManifestUpgradeDetectorFetcher();
         ThreadUtils.runOnUiThreadBlocking(new Runnable() {
             @Override
             public void run() {
-                fetcher.start(callback);
+                WebApkInfo oldInfo = WebApkInfo.create("", "", scopeUrl, null, null, null, -1, -1,
+                        -1, -1, -1, "random.package", -1, manifestUrl, null,
+                        new HashMap<String, String>());
+                fetcher.start(mTab, oldInfo, callback);
             }
         });
     }
@@ -158,6 +159,6 @@ public class ManifestUpgradeDetectorFetcherTest extends ChromeTabbedActivityTest
                 mTestServer, mTab, WEB_MANIFEST_WITH_LONG_ICON_MURMUR2_HASH);
         waiter.waitForCallback(0);
 
-        assertEquals(LONG_ICON_MURMUR2_HASH, waiter.iconMurmur2Hash());
+        assertEquals(LONG_ICON_MURMUR2_HASH, waiter.bestIconMurmur2Hash());
     }
 }

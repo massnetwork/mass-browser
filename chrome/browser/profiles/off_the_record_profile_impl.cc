@@ -56,8 +56,10 @@
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/features/features.h"
 #include "net/http/http_server_properties.h"
 #include "net/http/transport_security_state.h"
+#include "ppapi/features/features.h"
 #include "storage/browser/database/database_tracker.h"
 
 #if defined(OS_ANDROID)
@@ -74,7 +76,7 @@
 #include "chrome/browser/policy/cloud/user_cloud_policy_manager_factory.h"
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_special_storage_policy.h"
 #include "components/guest_view/browser/guest_view_manager.h"
@@ -93,7 +95,7 @@ using content::BrowserThread;
 using content::DownloadManagerDelegate;
 using content::HostZoomMap;
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 namespace {
 
 void NotifyOTRProfileCreatedOnIOThread(void* original_profile,
@@ -148,12 +150,12 @@ void OffTheRecordProfileImpl::Init() {
 
   TrackZoomLevelsFromParent();
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   ChromePluginServiceFilter::GetInstance()->RegisterResourceContext(
       this, io_data_->GetResourceContextNoInit());
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   // Make the chrome//extension-icon/ resource available.
   extensions::ExtensionIconSource* icon_source =
       new extensions::ExtensionIconSource(profile_);
@@ -172,7 +174,7 @@ void OffTheRecordProfileImpl::Init() {
 OffTheRecordProfileImpl::~OffTheRecordProfileImpl() {
   MaybeSendDestroyedNotification();
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   ChromePluginServiceFilter::GetInstance()->UnregisterResourceContext(
       io_data_->GetResourceContextNoInit());
 #endif
@@ -180,7 +182,7 @@ OffTheRecordProfileImpl::~OffTheRecordProfileImpl() {
   BrowserContextDependencyManager::GetInstance()->DestroyBrowserContextServices(
       this);
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   BrowserThread::PostTask(
       BrowserThread::IO, FROM_HERE,
       base::Bind(&NotifyOTRProfileDestroyedOnIOThread, profile_, this));
@@ -365,7 +367,7 @@ net::SSLConfigService* OffTheRecordProfileImpl::GetSSLConfigService() {
 }
 
 content::BrowserPluginGuestManager* OffTheRecordProfileImpl::GetGuestManager() {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   return guest_view::GuestViewManager::FromBrowserContext(this);
 #else
   return NULL;
@@ -374,7 +376,7 @@ content::BrowserPluginGuestManager* OffTheRecordProfileImpl::GetGuestManager() {
 
 storage::SpecialStoragePolicy*
 OffTheRecordProfileImpl::GetSpecialStoragePolicy() {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   return GetExtensionSpecialStoragePolicy();
 #else
   return NULL;

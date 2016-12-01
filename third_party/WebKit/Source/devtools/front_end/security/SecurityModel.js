@@ -4,50 +4,51 @@
 /**
  * @unrestricted
  */
-WebInspector.SecurityModel = class extends WebInspector.SDKModel {
+Security.SecurityModel = class extends SDK.SDKModel {
   /**
-   * @param {!WebInspector.Target} target
+   * @param {!SDK.Target} target
    */
   constructor(target) {
-    super(WebInspector.SecurityModel, target);
-    this._dispatcher = new WebInspector.SecurityDispatcher(this);
+    super(Security.SecurityModel, target);
+    this._dispatcher = new Security.SecurityDispatcher(this);
     this._securityAgent = target.securityAgent();
     target.registerSecurityDispatcher(this._dispatcher);
     this._securityAgent.enable();
   }
 
   /**
-   * @param {!WebInspector.Target} target
-   * @return {?WebInspector.SecurityModel}
+   * @param {!SDK.Target} target
+   * @return {?Security.SecurityModel}
    */
   static fromTarget(target) {
-    var model = /** @type {?WebInspector.SecurityModel} */ (target.model(WebInspector.SecurityModel));
+    var model = /** @type {?Security.SecurityModel} */ (target.model(Security.SecurityModel));
     if (!model)
-      model = new WebInspector.SecurityModel(target);
+      model = new Security.SecurityModel(target);
     return model;
   }
 
   /**
-   * @param {!SecurityAgent.SecurityState} a
-   * @param {!SecurityAgent.SecurityState} b
+   * @param {!Protocol.Security.SecurityState} a
+   * @param {!Protocol.Security.SecurityState} b
    * @return {number}
    */
   static SecurityStateComparator(a, b) {
     var securityStateMap;
-    if (WebInspector.SecurityModel._symbolicToNumericSecurityState) {
-      securityStateMap = WebInspector.SecurityModel._symbolicToNumericSecurityState;
+    if (Security.SecurityModel._symbolicToNumericSecurityState) {
+      securityStateMap = Security.SecurityModel._symbolicToNumericSecurityState;
     } else {
       securityStateMap = new Map();
       var ordering = [
-        SecurityAgent.SecurityState.Info, SecurityAgent.SecurityState.Insecure, SecurityAgent.SecurityState.Neutral,
-        SecurityAgent.SecurityState.Warning, SecurityAgent.SecurityState.Secure,
+        Protocol.Security.SecurityState.Info, Protocol.Security.SecurityState.Insecure,
+        Protocol.Security.SecurityState.Neutral, Protocol.Security.SecurityState.Warning,
+        Protocol.Security.SecurityState.Secure,
         // Unknown is max so that failed/cancelled requests don't overwrite the origin security state for successful requests,
         // and so that failed/cancelled requests appear at the bottom of the origins list.
-        SecurityAgent.SecurityState.Unknown
+        Protocol.Security.SecurityState.Unknown
       ];
       for (var i = 0; i < ordering.length; i++)
         securityStateMap.set(ordering[i], i + 1);
-      WebInspector.SecurityModel._symbolicToNumericSecurityState = securityStateMap;
+      Security.SecurityModel._symbolicToNumericSecurityState = securityStateMap;
     }
     var aScore = securityStateMap.get(a) || 0;
     var bScore = securityStateMap.get(b) || 0;
@@ -61,7 +62,7 @@ WebInspector.SecurityModel = class extends WebInspector.SDKModel {
 };
 
 /** @enum {symbol} */
-WebInspector.SecurityModel.Events = {
+Security.SecurityModel.Events = {
   SecurityStateChanged: Symbol('SecurityStateChanged')
 };
 
@@ -69,11 +70,11 @@ WebInspector.SecurityModel.Events = {
 /**
  * @unrestricted
  */
-WebInspector.PageSecurityState = class {
+Security.PageSecurityState = class {
   /**
-   * @param {!SecurityAgent.SecurityState} securityState
-   * @param {!Array<!SecurityAgent.SecurityStateExplanation>} explanations
-   * @param {?SecurityAgent.InsecureContentStatus} insecureContentStatus
+   * @param {!Protocol.Security.SecurityState} securityState
+   * @param {!Array<!Protocol.Security.SecurityStateExplanation>} explanations
+   * @param {?Protocol.Security.InsecureContentStatus} insecureContentStatus
    * @param {boolean} schemeIsCryptographic
    */
   constructor(securityState, explanations, insecureContentStatus, schemeIsCryptographic) {
@@ -85,24 +86,24 @@ WebInspector.PageSecurityState = class {
 };
 
 /**
- * @implements {SecurityAgent.Dispatcher}
+ * @implements {Protocol.SecurityDispatcher}
  * @unrestricted
  */
-WebInspector.SecurityDispatcher = class {
+Security.SecurityDispatcher = class {
   constructor(model) {
     this._model = model;
   }
 
   /**
    * @override
-   * @param {!SecurityAgent.SecurityState} securityState
-   * @param {!Array<!SecurityAgent.SecurityStateExplanation>=} explanations
-   * @param {!SecurityAgent.InsecureContentStatus=} insecureContentStatus
+   * @param {!Protocol.Security.SecurityState} securityState
+   * @param {!Array<!Protocol.Security.SecurityStateExplanation>=} explanations
+   * @param {!Protocol.Security.InsecureContentStatus=} insecureContentStatus
    * @param {boolean=} schemeIsCryptographic
    */
   securityStateChanged(securityState, explanations, insecureContentStatus, schemeIsCryptographic) {
-    var pageSecurityState = new WebInspector.PageSecurityState(
+    var pageSecurityState = new Security.PageSecurityState(
         securityState, explanations || [], insecureContentStatus || null, schemeIsCryptographic || false);
-    this._model.dispatchEventToListeners(WebInspector.SecurityModel.Events.SecurityStateChanged, pageSecurityState);
+    this._model.dispatchEventToListeners(Security.SecurityModel.Events.SecurityStateChanged, pageSecurityState);
   }
 };

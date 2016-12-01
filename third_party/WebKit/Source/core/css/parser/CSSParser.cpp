@@ -7,7 +7,6 @@
 #include "core/css/CSSColorValue.h"
 #include "core/css/CSSKeyframeRule.h"
 #include "core/css/StyleColor.h"
-#include "core/css/StylePropertySet.h"
 #include "core/css/StyleRule.h"
 #include "core/css/StyleSheetContents.h"
 #include "core/css/parser/CSSParserFastPaths.h"
@@ -39,8 +38,8 @@ void CSSParser::parseDeclarationListForInspector(
 CSSSelectorList CSSParser::parseSelector(const CSSParserContext& context,
                                          StyleSheetContents* styleSheetContents,
                                          const String& selector) {
-  CSSTokenizer::Scope scope(selector);
-  return CSSSelectorParser::parseSelector(scope.tokenRange(), context,
+  CSSTokenizer tokenizer(selector);
+  return CSSSelectorParser::parseSelector(tokenizer.tokenRange(), context,
                                           styleSheetContents);
 }
 
@@ -48,8 +47,8 @@ CSSSelectorList CSSParser::parsePageSelector(
     const CSSParserContext& context,
     StyleSheetContents* styleSheetContents,
     const String& selector) {
-  CSSTokenizer::Scope scope(selector);
-  return CSSParserImpl::parsePageSelector(scope.tokenRange(),
+  CSSTokenizer tokenizer(selector);
+  return CSSParserImpl::parsePageSelector(tokenizer.tokenRange(),
                                           styleSheetContents);
 }
 
@@ -76,20 +75,28 @@ void CSSParser::parseSheetForInspector(const CSSParserContext& context,
                                                     observer);
 }
 
-bool CSSParser::parseValue(MutableStylePropertySet* declaration,
-                           CSSPropertyID unresolvedProperty,
-                           const String& string,
-                           bool important,
-                           StyleSheetContents* styleSheet) {
-  if (string.isEmpty())
-    return false;
+MutableStylePropertySet::SetResult CSSParser::parseValue(
+    MutableStylePropertySet* declaration,
+    CSSPropertyID unresolvedProperty,
+    const String& string,
+    bool important,
+    StyleSheetContents* styleSheet) {
+  if (string.isEmpty()) {
+    bool didParse = false;
+    bool didChange = false;
+    return MutableStylePropertySet::SetResult{didParse, didChange};
+  }
+
   CSSPropertyID resolvedProperty = resolveCSSPropertyID(unresolvedProperty);
   CSSParserMode parserMode = declaration->cssParserMode();
   CSSValue* value =
       CSSParserFastPaths::maybeParseValue(resolvedProperty, string, parserMode);
-  if (value)
-    return declaration->setProperty(
+  if (value) {
+    bool didParse = true;
+    bool didChange = declaration->setProperty(
         CSSProperty(resolvedProperty, *value, important));
+    return MutableStylePropertySet::SetResult{didParse, didChange};
+  }
   CSSParserContext context(parserMode, nullptr);
   if (styleSheet) {
     context = styleSheet->parserContext();
@@ -99,7 +106,7 @@ bool CSSParser::parseValue(MutableStylePropertySet* declaration,
                     context);
 }
 
-bool CSSParser::parseValueForCustomProperty(
+MutableStylePropertySet::SetResult CSSParser::parseValueForCustomProperty(
     MutableStylePropertySet* declaration,
     const AtomicString& propertyName,
     const String& value,
@@ -107,8 +114,11 @@ bool CSSParser::parseValueForCustomProperty(
     StyleSheetContents* styleSheet,
     bool isAnimationTainted) {
   DCHECK(CSSVariableParser::isValidVariableName(propertyName));
-  if (value.isEmpty())
-    return false;
+  if (value.isEmpty()) {
+    bool didParse = false;
+    bool didChange = false;
+    return MutableStylePropertySet::SetResult{didParse, didChange};
+  }
   CSSParserMode parserMode = declaration->cssParserMode();
   CSSParserContext context(parserMode, nullptr);
   if (styleSheet) {
@@ -124,11 +134,12 @@ ImmutableStylePropertySet* CSSParser::parseCustomPropertySet(
   return CSSParserImpl::parseCustomPropertySet(range);
 }
 
-bool CSSParser::parseValue(MutableStylePropertySet* declaration,
-                           CSSPropertyID unresolvedProperty,
-                           const String& string,
-                           bool important,
-                           const CSSParserContext& context) {
+MutableStylePropertySet::SetResult CSSParser::parseValue(
+    MutableStylePropertySet* declaration,
+    CSSPropertyID unresolvedProperty,
+    const String& string,
+    bool important,
+    const CSSParserContext& context) {
   return CSSParserImpl::parseValue(declaration, unresolvedProperty, string,
                                    important, context);
 }
@@ -141,8 +152,8 @@ const CSSValue* CSSParser::parseSingleValue(CSSPropertyID propertyID,
   if (CSSValue* value = CSSParserFastPaths::maybeParseValue(propertyID, string,
                                                             context.mode()))
     return value;
-  CSSTokenizer::Scope scope(string);
-  return CSSPropertyParser::parseSingleValue(propertyID, scope.tokenRange(),
+  CSSTokenizer tokenizer(string);
+  return CSSPropertyParser::parseSingleValue(propertyID, tokenizer.tokenRange(),
                                              context);
 }
 
@@ -165,9 +176,9 @@ StyleRuleKeyframe* CSSParser::parseKeyframeRule(const CSSParserContext& context,
 }
 
 bool CSSParser::parseSupportsCondition(const String& condition) {
-  CSSTokenizer::Scope scope(condition);
+  CSSTokenizer tokenizer(condition);
   CSSParserImpl parser(strictCSSParserContext());
-  return CSSSupportsParser::supportsCondition(scope.tokenRange(), parser) ==
+  return CSSSupportsParser::supportsCondition(tokenizer.tokenRange(), parser) ==
          CSSSupportsParser::Supported;
 }
 

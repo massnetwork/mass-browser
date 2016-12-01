@@ -15,7 +15,6 @@ import android.os.StrictMode;
 import android.os.SystemClock;
 import android.support.v4.text.BidiFormatter;
 import android.text.format.DateUtils;
-import android.view.ContextMenu;
 import android.view.View;
 import android.view.View.MeasureSpec;
 import android.view.ViewGroup;
@@ -28,7 +27,9 @@ import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.favicon.FaviconHelper.FaviconImageCallback;
 import org.chromium.chrome.browser.favicon.FaviconHelper.IconAvailabilityCallback;
-import org.chromium.chrome.browser.ntp.ContextMenuHandler;
+import org.chromium.chrome.browser.ntp.ContextMenuManager;
+import org.chromium.chrome.browser.ntp.ContextMenuManager.ContextMenuItemId;
+import org.chromium.chrome.browser.ntp.ContextMenuManager.Delegate;
 import org.chromium.chrome.browser.ntp.DisplayStyleObserver;
 import org.chromium.chrome.browser.ntp.NewTabPageView.NewTabPageManager;
 import org.chromium.chrome.browser.ntp.UiConfig;
@@ -37,7 +38,7 @@ import org.chromium.chrome.browser.ntp.cards.CardsVariationParameters;
 import org.chromium.chrome.browser.ntp.cards.DisplayStyleObserverAdapter;
 import org.chromium.chrome.browser.ntp.cards.ImpressionTracker;
 import org.chromium.chrome.browser.ntp.cards.NewTabPageRecyclerView;
-import org.chromium.chrome.browser.offlinepages.OfflinePageBridge;
+import org.chromium.chrome.browser.ntp.cards.SuggestionsCategoryInfo;
 import org.chromium.ui.mojom.WindowOpenDisposition;
 
 import java.net.URI;
@@ -48,7 +49,7 @@ import java.util.concurrent.TimeUnit;
  * A class that represents the view for a single card snippet.
  */
 public class SnippetArticleViewHolder
-        extends CardViewHolder implements ImpressionTracker.Listener, ContextMenuHandler.Delegate {
+        extends CardViewHolder implements ImpressionTracker.Listener, ContextMenuManager.Delegate {
     private static final String PUBLISHER_FORMAT_STRING = "%s - %s";
     private static final int FADE_IN_ANIMATION_TIME_MS = 300;
     private static final int[] FAVICON_SERVICE_SUPPORTED_SIZES = {16, 24, 32, 48, 64};
@@ -79,7 +80,7 @@ public class SnippetArticleViewHolder
      */
     public SnippetArticleViewHolder(NewTabPageRecyclerView parent, NewTabPageManager manager,
             UiConfig uiConfig) {
-        super(R.layout.new_tab_page_snippets_card, parent, uiConfig);
+        super(R.layout.new_tab_page_snippets_card, parent, uiConfig, manager);
 
         mNewTabPageManager = manager;
         mThumbnailView = (ImageView) itemView.findViewById(R.id.article_thumbnail);
@@ -106,6 +107,7 @@ public class SnippetArticleViewHolder
     public void onImpression() {
         if (mArticle != null && mArticle.trackImpression()) {
             mNewTabPageManager.trackSnippetImpression(mArticle);
+            mRecyclerView.onSnippetImpression();
         }
     }
 
@@ -121,28 +123,36 @@ public class SnippetArticleViewHolder
 
     @Override
     public void removeItem() {
-        getRecyclerView().dismissItemWithAnimation(mArticle);
+        getRecyclerView().dismissItemWithAnimation(this);
     }
 
     @Override
-    public boolean canBeSavedOffline() {
-        // TODO(peconn): Only show 'Save for Offline' for appropriate snippet types.
-        return SnippetsConfig.isSaveToOfflineEnabled()
-                && OfflinePageBridge.canSavePage(mArticle.mUrl);
+    public String getUrl() {
+        return mArticle.mUrl;
     }
 
     @Override
-    protected void createContextMenu(ContextMenu menu) {
-        new ContextMenuHandler(mNewTabPageManager, getRecyclerView(), this)
-                .onCreateContextMenu(menu);
+    public boolean isItemSupported(@ContextMenuItemId int menuItemId) {
+        if (mArticle.isDownload()) {
+            if (menuItemId == ContextMenuManager.ID_OPEN_IN_INCOGNITO_TAB) return false;
+            if (menuItemId == ContextMenuManager.ID_SAVE_FOR_OFFLINE) return false;
+        }
+        return true;
+    }
+
+    @Override
+    protected Delegate getContextMenuDelegate() {
+        return this;
     }
 
     /**
      * Updates the layout taking into account screen dimensions and the type of snippet displayed.
      */
     private void updateLayout() {
+        SuggestionsCategoryInfo info =
+                mRecyclerView.getNewTabPageAdapter().getCategoryInfo(mArticle.mCategory);
         boolean narrow = mUiConfig.getCurrentDisplayStyle() == UiConfig.DISPLAY_STYLE_NARROW;
-        boolean minimal = mArticle.mCardLayout == ContentSuggestionsCardLayout.MINIMAL_CARD;
+        boolean minimal = info.getCardLayout() == ContentSuggestionsCardLayout.MINIMAL_CARD;
 
         // If the screen is narrow or we are using the minimal layout, hide the article snippet.
         boolean hideSnippet = narrow || minimal;
@@ -244,7 +254,7 @@ public class SnippetArticleViewHolder
             Runnable offlineChecker = new Runnable() {
                 @Override
                 public void run() {
-                    if (mArticle.isAvailableOffline() || mArticle.isAmpAvailableOffline()) {
+                    if (mArticle.getOfflinePageOfflineId() != null || mArticle.mIsAssetDownload) {
                         mOfflineBadge.setVisibility(View.VISIBLE);
                     }
                 }
@@ -252,6 +262,8 @@ public class SnippetArticleViewHolder
             mArticle.setOfflineStatusChangeRunnable(offlineChecker);
             offlineChecker.run();
         }
+
+        mRecyclerView.onSnippetBound(itemView);
     }
 
     private static class FetchImageCallback extends Callback<Bitmap> {

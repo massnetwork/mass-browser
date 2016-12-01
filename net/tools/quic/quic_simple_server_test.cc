@@ -42,7 +42,9 @@ class QuicChromeServerDispatchPacketTest : public ::testing::Test {
 
   void DispatchPacket(const QuicReceivedPacket& packet) {
     IPEndPoint client_addr, server_addr;
-    dispatcher_.ProcessPacket(server_addr, client_addr, packet);
+    dispatcher_.ProcessPacket(
+        QuicSocketAddress(QuicSocketAddressImpl(server_addr)),
+        QuicSocketAddress(QuicSocketAddressImpl(client_addr)), packet);
   }
 
  protected:
@@ -62,9 +64,9 @@ TEST_F(QuicChromeServerDispatchPacketTest, DispatchPacket) {
                                   0xBC, 0x9A, 0x78, 0x56, 0x34, 0x12,
                                   // private flags
                                   0x00};
-  QuicReceivedPacket encrypted_valid_packet(QuicUtils::AsChars(valid_packet),
-                                            arraysize(valid_packet),
-                                            QuicTime::Zero(), false);
+  QuicReceivedPacket encrypted_valid_packet(
+      reinterpret_cast<char*>(valid_packet), arraysize(valid_packet),
+      QuicTime::Zero(), false);
 
   EXPECT_CALL(dispatcher_, ProcessPacket(_, _, _)).Times(1);
   DispatchPacket(encrypted_valid_packet);

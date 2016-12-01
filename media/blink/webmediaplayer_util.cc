@@ -9,7 +9,7 @@
 #include <string>
 #include <utility>
 
-#include "base/metrics/histogram.h"
+#include "base/metrics/histogram_macros.h"
 #include "media/base/bind_to_current_loop.h"
 #include "media/base/media_client.h"
 #include "third_party/WebKit/public/platform/URLConversion.h"
@@ -50,7 +50,6 @@ blink::WebMediaPlayer::NetworkState PipelineErrorToNetworkState(
     case CHUNK_DEMUXER_ERROR_APPEND_FAILED:
     case CHUNK_DEMUXER_ERROR_EOS_STATUS_DECODE_ERROR:
     case AUDIO_RENDERER_ERROR:
-    case AUDIO_RENDERER_ERROR_SPLICE_FAILED:
       return blink::WebMediaPlayer::NetworkStateDecodeError;
 
     case PIPELINE_OK:

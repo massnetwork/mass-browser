@@ -142,6 +142,10 @@ void WebRuntimeFeatures::enableInputMultipleFieldsUI(bool enable) {
   RuntimeEnabledFeatures::setInputMultipleFieldsUIEnabled(enable);
 }
 
+void WebRuntimeFeatures::enableLazyParseCSS(bool enable) {
+  RuntimeEnabledFeatures::setLazyParseCSSEnabled(enable);
+}
+
 void WebRuntimeFeatures::enableMediaCapture(bool enable) {
   RuntimeEnabledFeatures::setMediaCaptureEnabled(enable);
 }
@@ -152,6 +156,10 @@ void WebRuntimeFeatures::enableMediaDocumentDownloadButton(bool enable) {
 
 void WebRuntimeFeatures::enableNotificationConstructor(bool enable) {
   RuntimeEnabledFeatures::setNotificationConstructorEnabled(enable);
+}
+
+void WebRuntimeFeatures::enableNotificationContentImage(bool enable) {
+  RuntimeEnabledFeatures::setNotificationContentImageEnabled(enable);
 }
 
 void WebRuntimeFeatures::enableNotifications(bool enable) {
@@ -226,8 +234,8 @@ void WebRuntimeFeatures::enableSpeculativeLaunchServiceWorker(bool enable) {
   RuntimeEnabledFeatures::setSpeculativeLaunchServiceWorkerEnabled(enable);
 }
 
-void WebRuntimeFeatures::enableTouch(bool enable) {
-  RuntimeEnabledFeatures::setTouchEnabled(enable);
+void WebRuntimeFeatures::enableTouchEventAPI(bool enable) {
+  RuntimeEnabledFeatures::setTouchEventAPIEnabled(enable);
 }
 
 void WebRuntimeFeatures::enableWebGLDraftExtensions(bool enable) {
@@ -344,6 +352,10 @@ void WebRuntimeFeatures::enableSendBeaconThrowForBlobWithNonSimpleType(
     bool enable) {
   RuntimeEnabledFeatures::setSendBeaconThrowForBlobWithNonSimpleTypeEnabled(
       enable);
+}
+
+void WebRuntimeFeatures::enableBackgroundVideoTrackOptimization(bool enable) {
+  RuntimeEnabledFeatures::setBackgroundVideoTrackOptimizationEnabled(enable);
 }
 
 }  // namespace blink

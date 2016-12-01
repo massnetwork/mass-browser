@@ -11,7 +11,6 @@
 #include "base/memory/ptr_util.h"
 #include "base/metrics/user_metrics.h"
 #include "base/path_service.h"
-#include "base/task_scheduler/switches.h"
 #include "base/task_scheduler/task_scheduler.h"
 #include "base/time/default_tick_clock.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
@@ -28,10 +27,13 @@
 #include "components/rappor/rappor_service.h"
 #include "components/task_scheduler_util/initialization_util.h"
 #include "components/translate/core/browser/translate_download_manager.h"
+#include "components/variations/field_trial_config/field_trial_util.h"
 #include "components/variations/service/variations_service.h"
 #include "components/variations/variations_http_header_provider.h"
+#include "components/variations/variations_switches.h"
 #include "ios/chrome/browser/about_flags.h"
 #include "ios/chrome/browser/application_context_impl.h"
+#include "ios/chrome/browser/browser_state/browser_state_keyed_service_factories.h"
 #include "ios/chrome/browser/browser_state/chrome_browser_state.h"
 #include "ios/chrome/browser/browser_state/chrome_browser_state_manager.h"
 #include "ios/chrome/browser/chrome_paths.h"
@@ -58,42 +60,9 @@
 #include "ios/chrome/browser/rlz/rlz_tracker_delegate_impl.h"  // nogncheck
 #endif
 
-namespace {
-
-void MaybeInitializeTaskScheduler() {
-  static constexpr char kFieldTrialName[] = "BrowserScheduler";
-  std::map<std::string, std::string> variation_params;
-  bool used_default_config = false;
-  if (!variations::GetVariationParams(kFieldTrialName, &variation_params)) {
-    if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
-            switches::kEnableBrowserTaskScheduler)) {
-      return;
-    }
-
-    // TODO(robliao): Remove below once iOS uses fieldtrial_testing_config.json.
-    // Synchronize the below from fieldtrial_testing_config.json.
-    DCHECK(variation_params.empty());
-    variation_params["Background"] = "3;8;0.1;0;30000";
-    variation_params["BackgroundFileIO"] = "3;8;0.1;0;30000";
-    variation_params["Foreground"] = "8;32;0.3;0;30000";
-    variation_params["ForegroundFileIO"] = "8;32;0.3;0;30000";
-    used_default_config = true;
-  }
-
-  if (!task_scheduler_util::InitializeDefaultTaskScheduler(variation_params))
-    return;
-
-  // TODO(gab): Remove this when http://crbug.com/622400 concludes.
-  const auto sequenced_worker_pool_param =
-      variation_params.find("RedirectSequencedWorkerPools");
-  if (used_default_config ||
-      (sequenced_worker_pool_param != variation_params.end() &&
-       sequenced_worker_pool_param->second == "true")) {
-    base::SequencedWorkerPool::RedirectToTaskSchedulerForProcess();
-  }
-}
-
-}  // namespace
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "This file requires ARC support."
+#endif
 
 IOSChromeMainParts::IOSChromeMainParts(
     const base::CommandLine& parsed_command_line)
@@ -170,7 +139,7 @@ void IOSChromeMainParts::PreCreateThreads() {
   //         threads itself so instantiating it earlier is also incorrect.
   // To maintain scoping symmetry, if this line is moved, the corresponding
   // shutdown call may also need to be moved.
-  MaybeInitializeTaskScheduler();
+  task_scheduler_util::InitializeDefaultBrowserTaskScheduler();
 
   SetupMetrics();
 
@@ -196,6 +165,7 @@ void IOSChromeMainParts::PreMainMessageLoopRun() {
       CreateClipboardRecentContentIOS().release());
 
   // Ensure that the browser state is initialized.
+  EnsureBrowserStateKeyedServiceFactoriesBuilt();
   ios::GetChromeBrowserProvider()->AssertBrowserContextKeyedFactoriesBuilt();
   ios::ChromeBrowserStateManager* browser_state_manager =
       application_context_->GetChromeBrowserStateManager();
@@ -301,6 +271,15 @@ void IOSChromeMainParts::SetupFieldTrials() {
   feature_list->InitializeFromCommandLine(
       command_line->GetSwitchValueASCII(switches::kEnableIOSFeatures),
       command_line->GetSwitchValueASCII(switches::kDisableIOSFeatures));
+
+#if defined(FIELDTRIAL_TESTING_ENABLED)
+  if (!command_line->HasSwitch(
+          variations::switches::kDisableFieldTrialTestingConfig) &&
+      !command_line->HasSwitch(switches::kForceFieldTrials) &&
+      !command_line->HasSwitch(variations::switches::kVariationsServerURL)) {
+    variations::AssociateDefaultFieldTrialConfig(feature_list.get());
+  }
+#endif  // defined(FIELDTRIAL_TESTING_ENABLED)
 
   variations::VariationsService* variations_service =
       application_context_->GetVariationsService();

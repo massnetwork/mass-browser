@@ -24,8 +24,6 @@
 #include "ui/events/latency_info.h"
 #include "ui/gfx/geometry/quad_f.h"
 
-class SkBitmap;
-
 namespace gpu {
 namespace gles2 {
 class GLES2Interface;
@@ -35,7 +33,6 @@ class GLES2Interface;
 namespace cc {
 class GLRendererShaderTest;
 class OutputSurface;
-class PictureDrawQuad;
 class Resource;
 class ResourcePool;
 class ScopedResource;
@@ -44,7 +41,6 @@ class TextureDrawQuad;
 class TextureMailboxDeleter;
 class StaticGeometryBinding;
 class DynamicGeometryBinding;
-class ScopedEnsureFramebufferAllocation;
 struct DrawRenderPassDrawQuadParams;
 
 // Class that handles drawing of composited render layers using GL.
@@ -156,12 +152,12 @@ class CC_EXPORT GLRenderer : public DirectRenderer {
 
   void DrawDebugBorderQuad(const DrawingFrame* frame,
                            const DebugBorderDrawQuad* quad);
-  static bool IsDefaultBlendMode(SkXfermode::Mode blend_mode) {
-    return blend_mode == SkXfermode::kSrcOver_Mode;
+  static bool IsDefaultBlendMode(SkBlendMode blend_mode) {
+    return blend_mode == SkBlendMode::kSrcOver;
   }
-  bool CanApplyBlendModeUsingBlendFunc(SkXfermode::Mode blend_mode);
-  void ApplyBlendModeUsingBlendFunc(SkXfermode::Mode blend_mode);
-  void RestoreBlendFuncToDefault(SkXfermode::Mode blend_mode);
+  bool CanApplyBlendModeUsingBlendFunc(SkBlendMode blend_mode);
+  void ApplyBlendModeUsingBlendFunc(SkBlendMode blend_mode);
+  void RestoreBlendFuncToDefault(SkBlendMode blend_mode);
 
   gfx::Rect GetBackdropBoundingBoxForRenderPassQuad(
       DrawingFrame* frame,
@@ -500,7 +496,6 @@ class CC_EXPORT GLRenderer : public DirectRenderer {
   gfx::Rect scissor_rect_;
   bool is_using_bind_uniform_;
   bool is_scissor_enabled_;
-  bool scissor_rect_needs_reset_;
   bool stencil_shadow_;
   bool blend_shadow_;
   unsigned program_shadow_;

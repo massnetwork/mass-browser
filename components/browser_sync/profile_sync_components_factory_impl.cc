@@ -26,6 +26,7 @@
 #include "components/password_manager/core/browser/password_store.h"
 #include "components/password_manager/sync/browser/password_data_type_controller.h"
 #include "components/prefs/pref_service.h"
+#include "components/reading_list/core/reading_list_switches.h"
 #include "components/sync/base/report_unrecoverable_error.h"
 #include "components/sync/device_info/device_info_data_type_controller.h"
 #include "components/sync/device_info/local_device_info_provider_impl.h"
@@ -273,6 +274,16 @@ void ProfileSyncComponentsFactoryImpl::RegisterCommonDataTypes(
     sync_service->RegisterDataTypeController(
         base::MakeUnique<UIDataTypeController>(syncer::ARTICLES, error_callback,
                                                sync_client_));
+  }
+
+  // Reading list sync is enabled by default only on iOS. Register unless
+  // Reading List or Reading List Sync is explicitly disabled.
+  if (!disabled_types.Has(syncer::READING_LIST) &&
+      reading_list::switches::IsReadingListEnabled()) {
+    sync_service->RegisterDataTypeController(
+        base::MakeUnique<ModelTypeController>(
+            syncer::READING_LIST, error_callback, sync_client_,
+            base::ThreadTaskRunnerHandle::Get()));
   }
 }
 

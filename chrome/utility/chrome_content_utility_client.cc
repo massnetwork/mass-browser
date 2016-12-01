@@ -16,16 +16,20 @@
 #include "chrome/common/safe_browsing/zip_analyzer.h"
 #include "chrome/common/safe_browsing/zip_analyzer_results.h"
 #include "chrome/utility/chrome_content_utility_ipc_whitelist.h"
-#include "chrome/utility/image_decoder_impl.h"
 #include "chrome/utility/utility_message_handler.h"
 #include "components/safe_json/utility/safe_json_parser_mojo_impl.h"
 #include "content/public/child/image_decoder_utils.h"
 #include "content/public/common/content_switches.h"
+#include "content/public/common/service_info.h"
 #include "content/public/utility/utility_thread.h"
 #include "courgette/courgette.h"
 #include "courgette/third_party/bsdiff/bsdiff.h"
+#include "extensions/features/features.h"
 #include "ipc/ipc_channel.h"
 #include "mojo/public/cpp/bindings/strong_binding.h"
+#include "printing/features/features.h"
+#include "services/image_decoder/image_decoder_service.h"
+#include "services/image_decoder/public/interfaces/constants.mojom.h"
 #include "services/service_manager/public/cpp/interface_registry.h"
 #include "third_party/zlib/google/zip.h"
 #include "ui/gfx/geometry/size.h"
@@ -43,13 +47,13 @@
 #include "chrome/utility/shell_handler_impl_win.h"
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/utility/extensions/extensions_handler.h"
 #include "chrome/utility/image_writer/image_writer_handler.h"
 #endif
 
-#if defined(ENABLE_PRINT_PREVIEW) || \
-    (defined(ENABLE_BASIC_PRINTING) && defined(OS_WIN))
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW) || \
+    (BUILDFLAG(ENABLE_BASIC_PRINTING) && defined(OS_WIN))
 #include "chrome/utility/printing_handler.h"
 #endif
 
@@ -74,14 +78,15 @@ void CreateProxyResolverFactory(
                           std::move(request));
 }
 
-class ResourceUsageReporterImpl : public mojom::ResourceUsageReporter {
+class ResourceUsageReporterImpl : public chrome::mojom::ResourceUsageReporter {
  public:
   ResourceUsageReporterImpl() {}
   ~ResourceUsageReporterImpl() override {}
 
  private:
   void GetUsageData(const GetUsageDataCallback& callback) override {
-    mojom::ResourceUsageDataPtr data = mojom::ResourceUsageData::New();
+    chrome::mojom::ResourceUsageDataPtr data =
+        chrome::mojom::ResourceUsageData::New();
     size_t total_heap_size = net::ProxyResolverV8::GetTotalHeapSize();
     if (total_heap_size) {
       data->reports_v8_stats = true;
@@ -93,16 +98,15 @@ class ResourceUsageReporterImpl : public mojom::ResourceUsageReporter {
 };
 
 void CreateResourceUsageReporter(
-    mojo::InterfaceRequest<mojom::ResourceUsageReporter> request) {
+    mojo::InterfaceRequest<chrome::mojom::ResourceUsageReporter> request) {
   mojo::MakeStrongBinding(base::MakeUnique<ResourceUsageReporterImpl>(),
                           std::move(request));
 }
 #endif  // !defined(OS_ANDROID)
 
-void CreateImageDecoder(mojo::InterfaceRequest<mojom::ImageDecoder> request) {
+std::unique_ptr<service_manager::Service> CreateImageDecoderService() {
   content::UtilityThread::Get()->EnsureBlinkInitialized();
-  mojo::MakeStrongBinding(base::MakeUnique<ImageDecoderImpl>(),
-                          std::move(request));
+  return image_decoder::ImageDecoderService::Create();
 }
 
 }  // namespace
@@ -113,13 +117,13 @@ ChromeContentUtilityClient::ChromeContentUtilityClient()
   handlers_.push_back(new ProfileImportHandler());
 #endif
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   handlers_.push_back(new extensions::ExtensionsHandler(this));
   handlers_.push_back(new image_writer::ImageWriterHandler());
 #endif
 
-#if defined(ENABLE_PRINT_PREVIEW) || \
-    (defined(ENABLE_BASIC_PRINTING) && defined(OS_WIN))
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW) || \
+    (BUILDFLAG(ENABLE_BASIC_PRINTING) && defined(OS_WIN))
   handlers_.push_back(new printing::PrintingHandler());
 #endif
 
@@ -132,7 +136,7 @@ ChromeContentUtilityClient::~ChromeContentUtilityClient() {
 }
 
 void ChromeContentUtilityClient::UtilityThreadStarted() {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   extensions::UtilityHandler::UtilityThreadStarted();
 #endif
 
@@ -205,12 +209,18 @@ void ChromeContentUtilityClient::ExposeInterfacesToBrowser(
       base::Bind(CreateProxyResolverFactory));
   registry->AddInterface(base::Bind(CreateResourceUsageReporter));
 #endif
-  registry->AddInterface(base::Bind(&CreateImageDecoder));
   registry->AddInterface(
       base::Bind(&safe_json::SafeJsonParserMojoImpl::Create));
 #if defined(OS_WIN)
   registry->AddInterface(base::Bind(&ShellHandlerImpl::Create));
 #endif
+}
+
+void ChromeContentUtilityClient::RegisterServices(StaticServiceMap* services) {
+  content::ServiceInfo image_decoder_info;
+  image_decoder_info.factory = base::Bind(&CreateImageDecoderService);
+  services->insert(
+      std::make_pair(image_decoder::mojom::kServiceName, image_decoder_info));
 }
 
 void ChromeContentUtilityClient::AddHandler(
@@ -220,7 +230,7 @@ void ChromeContentUtilityClient::AddHandler(
 
 // static
 void ChromeContentUtilityClient::PreSandboxStartup() {
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   extensions::ExtensionsHandler::PreSandboxStartup();
 #endif
 }

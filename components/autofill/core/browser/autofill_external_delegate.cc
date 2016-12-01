@@ -28,6 +28,18 @@
 
 namespace autofill {
 
+namespace {
+
+// Returns true if the suggestion entry is an Autofill warning message.
+// Warning messages should display on top of suggestion list.
+bool IsAutofillWarningEntry(int frontend_id) {
+  return frontend_id ==
+             POPUP_ITEM_ID_INSECURE_CONTEXT_PAYMENT_DISABLED_MESSAGE ||
+         frontend_id == POPUP_ITEM_ID_HTTP_NOT_SECURE_WARNING_MESSAGE;
+}
+
+} // anonymous namespace
+
 AutofillExternalDelegate::AutofillExternalDelegate(AutofillManager* manager,
                                                    AutofillDriver* driver)
     : manager_(manager),
@@ -70,8 +82,8 @@ void AutofillExternalDelegate::OnSuggestionsReturned(
   // The suggestions and warnings are "above the fold" and are separated from
   // other menu items with a separator.
   std::vector<Suggestion> suggestions(input_suggestions);
-  // Add or hide warnings as appropriate.
-  ApplyAutofillWarnings(&suggestions);
+  // Hide warnings as appropriate.
+  PossiblyRemoveAutofillWarnings(&suggestions);
 
 #if !defined(OS_ANDROID)
   // If there are above the fold suggestions at this point, add a separator to
@@ -108,8 +120,9 @@ void AutofillExternalDelegate::OnSuggestionsReturned(
   if (has_autofill_suggestions_)
     ApplyAutofillOptions(&suggestions);
 
-  // Append the credit card signin promo, if appropriate.
-  if (should_show_cc_signin_promo_) {
+  // Append the credit card signin promo, if appropriate (there are no other
+  // suggestions).
+  if (suggestions.empty() && should_show_cc_signin_promo_) {
 // No separator on Android.
 #if !defined(OS_ANDROID)
     // If there are autofill suggestions, the "Autofill options" row was added
@@ -264,12 +277,6 @@ void AutofillExternalDelegate::Reset() {
   manager_->client()->HideAutofillPopup();
 }
 
-void AutofillExternalDelegate::OnPingAck() {
-  // Reissue the most recent query, which will reopen the Autofill popup.
-  manager_->OnQueryFormFieldAutofill(query_id_, query_form_, query_field_,
-                                     element_bounds_);
-}
-
 base::WeakPtr<AutofillExternalDelegate> AutofillExternalDelegate::GetWeakPtr() {
   return weak_ptr_factory_.GetWeakPtr();
 }
@@ -282,7 +289,7 @@ void AutofillExternalDelegate::OnCreditCardScanned(const CreditCard& card) {
 void AutofillExternalDelegate::FillAutofillFormData(int unique_id,
                                                     bool is_preview) {
   // If the selected element is a warning we don't want to do anything.
-  if (unique_id == POPUP_ITEM_ID_WARNING_MESSAGE)
+  if (IsAutofillWarningEntry(unique_id))
     return;
 
   AutofillDriver::RendererFormDataAction renderer_action = is_preview ?
@@ -298,12 +305,13 @@ void AutofillExternalDelegate::FillAutofillFormData(int unique_id,
                               unique_id);
 }
 
-void AutofillExternalDelegate::ApplyAutofillWarnings(
+void AutofillExternalDelegate::PossiblyRemoveAutofillWarnings(
     std::vector<Suggestion>* suggestions) {
-  if (suggestions->size() > 1 &&
-      (*suggestions)[0].frontend_id == POPUP_ITEM_ID_WARNING_MESSAGE) {
-    // If we received a warning instead of suggestions from Autofill but regular
-    // suggestions from autocomplete, don't show the Autofill warning.
+  while (suggestions->size() > 1 &&
+         IsAutofillWarningEntry(suggestions->front().frontend_id) &&
+         !IsAutofillWarningEntry(suggestions->back().frontend_id)) {
+    // If we received warnings instead of suggestions from Autofill but regular
+    // suggestions from autocomplete, don't show the Autofill warnings.
     suggestions->erase(suggestions->begin());
   }
 }

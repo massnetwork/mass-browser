@@ -127,7 +127,7 @@ WebPreferences::WebPreferences()
       should_print_backgrounds(false),
       should_clear_document_background(true),
       enable_scroll_animator(false),
-      touch_enabled(false),
+      touch_event_api_enabled(false),
       device_supports_touch(false),
       device_supports_mouse(true),
       touch_adjustment_enabled(true),
@@ -181,6 +181,10 @@ WebPreferences::WebPreferences()
       animation_policy(IMAGE_ANIMATION_POLICY_ALLOWED),
       user_gesture_required_for_presentation(true),
       text_track_margin_percentage(0.0f),
+      expensive_background_throttling_cpu_budget(-1.0f),
+      expensive_background_throttling_initial_budget(-1.0f),
+      expensive_background_throttling_max_budget(-1.0f),
+      expensive_background_throttling_max_delay(-1.0f),
 #if defined(OS_ANDROID)
       text_autosizing_enabled(true),
       font_scale_factor(1.0f),
@@ -202,7 +206,6 @@ WebPreferences::WebPreferences()
       ignore_main_frame_overflow_hidden_quirk(false),
       report_screen_size_in_physical_pixels_quirk(false),
       resue_global_for_unowned_main_frame(false),
-      autoplay_muted_videos_enabled(false),
       progress_bar_completion(ProgressBarCompletion::LOAD_EVENT),
       spellcheck_enabled_by_default(true),
 #endif
@@ -216,8 +219,8 @@ WebPreferences::WebPreferences()
       default_minimum_page_scale_factor(1.f),
       default_maximum_page_scale_factor(4.f),
 #endif
-      hide_download_ui(false)
-{
+      hide_download_ui(false),
+      background_video_track_optimization_enabled(false) {
   standard_font_family_map[kCommonScript] =
       base::ASCIIToUTF16("Times New Roman");
   fixed_font_family_map[kCommonScript] = base::ASCIIToUTF16("Courier New");

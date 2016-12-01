@@ -29,25 +29,25 @@
  */
 
 /**
+ * @implements {Network.NetworkLogEntry}
  * @unrestricted
  */
-WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNode {
+Network.NetworkDataGridNode = class extends UI.SortableDataGridNode {
   /**
-   * @param {!WebInspector.NetworkLogView} parentView
-   * @param {!WebInspector.NetworkRequest} request
+   * @param {!Network.NetworkLogView} parentView
+   * @param {!SDK.NetworkRequest} request
    */
   constructor(parentView, request) {
     super({});
     this._parentView = parentView;
     this._request = request;
-    this._staleGraph = true;
     this._isNavigationRequest = false;
     this.selectable = true;
   }
 
   /**
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static NameComparator(a, b) {
@@ -61,8 +61,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
   }
 
   /**
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static RemoteAddressComparator(a, b) {
@@ -76,8 +76,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
   }
 
   /**
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static SizeComparator(a, b) {
@@ -89,8 +89,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
   }
 
   /**
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static TypeComparator(a, b) {
@@ -105,8 +105,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
   }
 
   /**
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static InitiatorComparator(a, b) {
@@ -119,9 +119,9 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
       return 1;
 
     if (typeof aInitiator.__source === 'undefined')
-      aInitiator.__source = WebInspector.displayNameForURL(aInitiator.url);
+      aInitiator.__source = Bindings.displayNameForURL(aInitiator.url);
     if (typeof bInitiator.__source === 'undefined')
-      bInitiator.__source = WebInspector.displayNameForURL(bInitiator.url);
+      bInitiator.__source = Bindings.displayNameForURL(bInitiator.url);
 
     if (aInitiator.__source < bInitiator.__source)
       return -1;
@@ -142,8 +142,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
   }
 
   /**
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static RequestCookiesCountComparator(a, b) {
@@ -153,8 +153,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
   }
 
   /**
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static ResponseCookiesCountComparator(a, b) {
@@ -164,20 +164,20 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
   }
 
   /**
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static InitialPriorityComparator(a, b) {
-    var priorityMap = WebInspector.NetworkDataGridNode._symbolicToNumericPriority;
+    var priorityMap = Network.NetworkDataGridNode._symbolicToNumericPriority;
     if (!priorityMap) {
-      WebInspector.NetworkDataGridNode._symbolicToNumericPriority = new Map();
-      priorityMap = WebInspector.NetworkDataGridNode._symbolicToNumericPriority;
-      priorityMap.set(NetworkAgent.ResourcePriority.VeryLow, 1);
-      priorityMap.set(NetworkAgent.ResourcePriority.Low, 2);
-      priorityMap.set(NetworkAgent.ResourcePriority.Medium, 3);
-      priorityMap.set(NetworkAgent.ResourcePriority.High, 4);
-      priorityMap.set(NetworkAgent.ResourcePriority.VeryHigh, 5);
+      Network.NetworkDataGridNode._symbolicToNumericPriority = new Map();
+      priorityMap = Network.NetworkDataGridNode._symbolicToNumericPriority;
+      priorityMap.set(Protocol.Network.ResourcePriority.VeryLow, 1);
+      priorityMap.set(Protocol.Network.ResourcePriority.Low, 2);
+      priorityMap.set(Protocol.Network.ResourcePriority.Medium, 3);
+      priorityMap.set(Protocol.Network.ResourcePriority.High, 4);
+      priorityMap.set(Protocol.Network.ResourcePriority.VeryHigh, 5);
     }
     var aScore = priorityMap.get(a._request.initialPriority()) || 0;
     var bScore = priorityMap.get(b._request.initialPriority()) || 0;
@@ -187,8 +187,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
 
   /**
    * @param {string} propertyName
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static RequestPropertyComparator(propertyName, a, b) {
@@ -201,8 +201,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
 
   /**
    * @param {string} propertyName
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static ResponseHeaderStringComparator(propertyName, a, b) {
@@ -213,8 +213,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
 
   /**
    * @param {string} propertyName
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static ResponseHeaderNumberComparator(propertyName, a, b) {
@@ -231,8 +231,8 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
 
   /**
    * @param {string} propertyName
-   * @param {!WebInspector.NetworkDataGridNode} a
-   * @param {!WebInspector.NetworkDataGridNode} b
+   * @param {!Network.NetworkDataGridNode} a
+   * @param {!Network.NetworkDataGridNode} b
    * @return {number}
    */
   static ResponseHeaderDateComparator(propertyName, a, b) {
@@ -253,20 +253,22 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
     var resourceType = this._request.resourceType();
     var simpleType = resourceType.name();
 
-    if (resourceType === WebInspector.resourceTypes.Other || resourceType === WebInspector.resourceTypes.Image)
+    if (resourceType === Common.resourceTypes.Other || resourceType === Common.resourceTypes.Image)
       simpleType = mimeType.replace(/^(application|image)\//, '');
 
     return simpleType;
   }
 
   /**
-   * @return {!WebInspector.NetworkRequest}
+   * @override
+   * @return {!SDK.NetworkRequest}
    */
   request() {
     return this._request;
   }
 
   /**
+   * @override
    * @return {boolean}
    */
   isNavigationRequest() {
@@ -290,17 +292,12 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
    * @override
    */
   createCells() {
-    this._showTiming = !WebInspector.moduleSetting('networkColorCodeResourceTypes').get() &&
-        !this._parentView.calculator().startAtZero;
     this._nameCell = null;
-    this._timelineCell = null;
     this._initiatorCell = null;
 
     this._element.classList.toggle('network-error-row', this._isFailed());
     this._element.classList.toggle('network-navigation-row', this._isNavigationRequest);
     super.createCells();
-
-    this._updateGraph();
   }
 
   /**
@@ -322,9 +319,6 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
     switch (columnIdentifier) {
       case 'name':
         this._renderNameCell(cell);
-        break;
-      case 'timeline':
-        this._createTimelineBar(cell);
         break;
       case 'method':
         this._setTextAndTitle(cell, this._request.requestMethod);
@@ -351,7 +345,7 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
         this._setTextAndTitle(cell, this._arrayLength(this._request.responseCookies));
         break;
       case 'priority':
-        this._setTextAndTitle(cell, WebInspector.uiLabelForPriority(this._request.initialPriority()));
+        this._setTextAndTitle(cell, Components.uiLabelForPriority(this._request.initialPriority()));
         break;
       case 'connectionid':
         this._setTextAndTitle(cell, this._request.connectionId);
@@ -367,6 +361,9 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
         break;
       case 'time':
         this._renderTimeCell(cell);
+        break;
+      case 'timeline':
+        this._setTextAndTitle(cell, '');
         break;
       default:
         this._setTextAndTitle(cell, this._request.responseHeaderValue(columnIdentifier) || '');
@@ -389,9 +386,7 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
    * @protected
    */
   willAttach() {
-    if (this._staleGraph)
-      this._updateGraph();
-    if (this._initiatorCell && this._request.initiatorInfo().type === WebInspector.NetworkRequest.InitiatorType.Script)
+    if (this._initiatorCell && this._request.initiatorInfo().type === SDK.NetworkRequest.InitiatorType.Script)
       this._initiatorCell.insertBefore(this._linkifiedInitiatorAnchor, this._initiatorCell.firstChild);
   }
 
@@ -414,7 +409,7 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
    */
   select(supressSelectedEvent) {
     super.select(supressSelectedEvent);
-    this._parentView.dispatchEventToListeners(WebInspector.NetworkLogView.Events.RequestSelected, this._request);
+    this._parentView.dispatchEventToListeners(Network.NetworkLogView.Events.RequestSelected, this._request);
   }
 
   /**
@@ -427,56 +422,12 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
     var domChanges = [];
     var matchInfo = this._nameCell.textContent.match(regexp);
     if (matchInfo)
-      WebInspector.highlightSearchResult(this._nameCell, matchInfo.index, matchInfo[0].length, domChanges);
+      UI.highlightSearchResult(this._nameCell, matchInfo.index, matchInfo[0].length, domChanges);
     return domChanges;
   }
 
   _openInNewTab() {
     InspectorFrontendHost.openInNewTab(this._request.url);
-  }
-
-  /**
-   * @param {!Element} cell
-   */
-  _createTimelineBar(cell) {
-    if (Runtime.experiments.isEnabled('canvasNetworkTimeline'))
-      return;
-    cell = cell.createChild('div');
-    this._timelineCell = cell;
-
-    cell.className = 'network-graph-side';
-
-    this._barAreaElement = cell.createChild('div', 'network-graph-bar-area');
-    this._barAreaElement.request = this._request;
-
-    if (this._showTiming)
-      return;
-
-    var type = this._request.resourceType().name();
-    var cached = this._request.cached();
-
-    this._barLeftElement = this._barAreaElement.createChild('div', 'network-graph-bar');
-    this._barLeftElement.classList.add(type, 'waiting');
-    this._barLeftElement.classList.toggle('cached', cached);
-
-    this._barRightElement = this._barAreaElement.createChild('div', 'network-graph-bar');
-    this._barRightElement.classList.add(type);
-    this._barRightElement.classList.toggle('cached', cached);
-
-    this._labelLeftElement = this._barAreaElement.createChild('div', 'network-graph-label');
-    this._labelLeftElement.classList.add('waiting');
-
-    this._labelRightElement = this._barAreaElement.createChild('div', 'network-graph-label');
-
-    cell.addEventListener('mouseover', this._onMouseOver.bind(this), false);
-  }
-
-  /**
-   * @param {!Event} event
-   */
-  _onMouseOver(event) {
-    this._refreshLabelPositions();
-    this._parentView[WebInspector.NetworkDataGridNode._hoveredRowSymbol] = this;
   }
 
   /**
@@ -493,7 +444,7 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
     this._nameCell = cell;
     cell.addEventListener('dblclick', this._openInNewTab.bind(this), false);
     var iconElement;
-    if (this._request.resourceType() === WebInspector.resourceTypes.Image) {
+    if (this._request.resourceType() === Common.resourceTypes.Image) {
       var previewImage = createElementWithClass('img', 'image-network-icon-preview');
       this._request.populateImageSource(previewImage);
 
@@ -518,45 +469,46 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
         'network-dim-cell', !this._isFailed() && (this._request.cached() || !this._request.statusCode));
 
     if (this._request.failed && !this._request.canceled && !this._request.wasBlocked()) {
-      var failText = WebInspector.UIString('(failed)');
+      var failText = Common.UIString('(failed)');
       if (this._request.localizedFailDescription) {
         cell.createTextChild(failText);
         this._appendSubtitle(cell, this._request.localizedFailDescription);
         cell.title = failText + ' ' + this._request.localizedFailDescription;
-      } else
+      } else {
         this._setTextAndTitle(cell, failText);
+      }
     } else if (this._request.statusCode) {
       cell.createTextChild('' + this._request.statusCode);
       this._appendSubtitle(cell, this._request.statusText);
       cell.title = this._request.statusCode + ' ' + this._request.statusText;
     } else if (this._request.parsedURL.isDataURL()) {
-      this._setTextAndTitle(cell, WebInspector.UIString('(data)'));
+      this._setTextAndTitle(cell, Common.UIString('(data)'));
     } else if (this._request.canceled) {
-      this._setTextAndTitle(cell, WebInspector.UIString('(canceled)'));
+      this._setTextAndTitle(cell, Common.UIString('(canceled)'));
     } else if (this._request.wasBlocked()) {
-      var reason = WebInspector.UIString('other');
+      var reason = Common.UIString('other');
       switch (this._request.blockedReason()) {
-        case NetworkAgent.BlockedReason.Csp:
-          reason = WebInspector.UIString('csp');
+        case Protocol.Network.BlockedReason.Csp:
+          reason = Common.UIString('csp');
           break;
-        case NetworkAgent.BlockedReason.MixedContent:
-          reason = WebInspector.UIString('mixed-content');
+        case Protocol.Network.BlockedReason.MixedContent:
+          reason = Common.UIString('mixed-content');
           break;
-        case NetworkAgent.BlockedReason.Origin:
-          reason = WebInspector.UIString('origin');
+        case Protocol.Network.BlockedReason.Origin:
+          reason = Common.UIString('origin');
           break;
-        case NetworkAgent.BlockedReason.Inspector:
-          reason = WebInspector.UIString('devtools');
+        case Protocol.Network.BlockedReason.Inspector:
+          reason = Common.UIString('devtools');
           break;
-        case NetworkAgent.BlockedReason.Other:
-          reason = WebInspector.UIString('other');
+        case Protocol.Network.BlockedReason.Other:
+          reason = Common.UIString('other');
           break;
       }
-      this._setTextAndTitle(cell, WebInspector.UIString('(blocked:%s)', reason));
+      this._setTextAndTitle(cell, Common.UIString('(blocked:%s)', reason));
     } else if (this._request.finished) {
-      this._setTextAndTitle(cell, WebInspector.UIString('Finished'));
+      this._setTextAndTitle(cell, Common.UIString('Finished'));
     } else {
-      this._setTextAndTitle(cell, WebInspector.UIString('(pending)'));
+      this._setTextAndTitle(cell, Common.UIString('(pending)'));
     }
   }
 
@@ -569,41 +521,41 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
     var initiator = request.initiatorInfo();
 
     if (request.timing && request.timing.pushStart)
-      cell.appendChild(createTextNode(WebInspector.UIString('Push / ')));
+      cell.appendChild(createTextNode(Common.UIString('Push / ')));
     switch (initiator.type) {
-      case WebInspector.NetworkRequest.InitiatorType.Parser:
+      case SDK.NetworkRequest.InitiatorType.Parser:
         cell.title = initiator.url + ':' + (initiator.lineNumber + 1);
-        var uiSourceCode = WebInspector.networkMapping.uiSourceCodeForURLForAnyTarget(initiator.url);
-        cell.appendChild(WebInspector.linkifyResourceAsNode(
-            initiator.url, initiator.lineNumber, initiator.columnNumber, undefined, undefined,
-            uiSourceCode ? uiSourceCode.displayName() : undefined));
-        this._appendSubtitle(cell, WebInspector.UIString('Parser'));
+        var uiSourceCode = Workspace.workspace.uiSourceCodeForURL(initiator.url);
+        cell.appendChild(Components.Linkifier.linkifyURL(
+            initiator.url, uiSourceCode ? uiSourceCode.displayName() : undefined, '', initiator.lineNumber,
+            initiator.columnNumber));
+        this._appendSubtitle(cell, Common.UIString('Parser'));
         break;
 
-      case WebInspector.NetworkRequest.InitiatorType.Redirect:
+      case SDK.NetworkRequest.InitiatorType.Redirect:
         cell.title = initiator.url;
         console.assert(request.redirectSource);
-        var redirectSource = /** @type {!WebInspector.NetworkRequest} */ (request.redirectSource);
-        cell.appendChild(WebInspector.linkifyRequestAsNode(redirectSource));
-        this._appendSubtitle(cell, WebInspector.UIString('Redirect'));
+        var redirectSource = /** @type {!SDK.NetworkRequest} */ (request.redirectSource);
+        cell.appendChild(Components.Linkifier.linkifyURL(redirectSource.url));
+        this._appendSubtitle(cell, Common.UIString('Redirect'));
         break;
 
-      case WebInspector.NetworkRequest.InitiatorType.Script:
+      case SDK.NetworkRequest.InitiatorType.Script:
         if (!this._linkifiedInitiatorAnchor) {
           this._linkifiedInitiatorAnchor = this._parentView.linkifier.linkifyScriptLocation(
               request.target(), initiator.scriptId, initiator.url, initiator.lineNumber, initiator.columnNumber);
           this._linkifiedInitiatorAnchor.title = '';
         }
         cell.appendChild(this._linkifiedInitiatorAnchor);
-        this._appendSubtitle(cell, WebInspector.UIString('Script'));
+        this._appendSubtitle(cell, Common.UIString('Script'));
         cell.classList.add('network-script-initiated');
         cell.request = request;
         break;
 
       default:
-        cell.title = WebInspector.UIString('Other');
+        cell.title = Common.UIString('Other');
         cell.classList.add('network-dim-cell');
-        cell.appendChild(createTextNode(WebInspector.UIString('Other')));
+        cell.appendChild(createTextNode(Common.UIString('Other')));
     }
   }
 
@@ -612,13 +564,13 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
    */
   _renderSizeCell(cell) {
     if (this._request.fetchedViaServiceWorker) {
-      this._setTextAndTitle(cell, WebInspector.UIString('(from ServiceWorker)'));
+      this._setTextAndTitle(cell, Common.UIString('(from ServiceWorker)'));
       cell.classList.add('network-dim-cell');
     } else if (this._request.cached()) {
       if (this._request.cachedInMemory())
-        this._setTextAndTitle(cell, WebInspector.UIString('(from memory cache)'));
+        this._setTextAndTitle(cell, Common.UIString('(from memory cache)'));
       else
-        this._setTextAndTitle(cell, WebInspector.UIString('(from disk cache)'));
+        this._setTextAndTitle(cell, Common.UIString('(from disk cache)'));
       cell.classList.add('network-dim-cell');
     } else {
       var resourceSize = Number.bytesToString(this._request.resourceSize);
@@ -637,7 +589,7 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
       this._appendSubtitle(cell, Number.secondsToString(this._request.latency));
     } else {
       cell.classList.add('network-dim-cell');
-      this._setTextAndTitle(cell, WebInspector.UIString('Pending'));
+      this._setTextAndTitle(cell, Common.UIString('Pending'));
     }
   }
 
@@ -651,144 +603,21 @@ WebInspector.NetworkDataGridNode = class extends WebInspector.SortableDataGridNo
     subtitleElement.textContent = subtitleText;
     cellElement.appendChild(subtitleElement);
   }
-
-  refreshGraph() {
-    if (!this._timelineCell)
-      return;
-    this._staleGraph = true;
-    if (this.attached())
-      this.dataGrid.scheduleUpdate();
-  }
-
-  _updateTimingGraph() {
-    var calculator = this._parentView.calculator();
-    var timeRanges =
-        WebInspector.RequestTimingView.calculateRequestTimeRanges(this._request, calculator.minimumBoundary());
-    var right = timeRanges[0].end;
-
-    var container = this._barAreaElement;
-    var nextBar = container.firstChild;
-    for (var i = 0; i < timeRanges.length; ++i) {
-      var range = timeRanges[i];
-      var start = calculator.computePercentageFromEventTime(range.start);
-      var end = (range.end !== Number.MAX_VALUE) ? calculator.computePercentageFromEventTime(range.end) : 100;
-      if (!nextBar)
-        nextBar = container.createChild('div');
-      nextBar.className = 'network-graph-bar request-timing';
-      nextBar.classList.add(range.name);
-      nextBar.style.setProperty('left', start + '%');
-      nextBar.style.setProperty('right', (100 - end) + '%');
-      nextBar = nextBar.nextSibling;
-    }
-    while (nextBar) {
-      var nextSibling = nextBar.nextSibling;
-      nextBar.remove();
-      nextBar = nextSibling;
-    }
-  }
-
-  _updateGraph() {
-    this._staleGraph = false;
-    if (!this._timelineCell)
-      return;
-    if (this._showTiming) {
-      this._updateTimingGraph();
-      return;
-    }
-
-    var calculator = this._parentView.calculator();
-    var percentages = calculator.computeBarGraphPercentages(this._request);
-    this._percentages = percentages;
-
-    this._barAreaElement.classList.remove('hidden');
-
-    this._barLeftElement.style.setProperty('left', percentages.start + '%');
-    this._barLeftElement.style.setProperty('right', (100 - percentages.middle) + '%');
-
-    this._barRightElement.style.setProperty('left', percentages.middle + '%');
-    this._barRightElement.style.setProperty('right', (100 - percentages.end) + '%');
-
-    var labels = calculator.computeBarGraphLabels(this._request);
-    this._labelLeftElement.textContent = labels.left;
-    this._labelRightElement.textContent = labels.right;
-
-    var tooltip = (labels.tooltip || '');
-    this._barLeftElement.title = tooltip;
-    this._labelLeftElement.title = tooltip;
-    this._labelRightElement.title = tooltip;
-    this._barRightElement.title = tooltip;
-
-    if (this._parentView[WebInspector.NetworkDataGridNode._hoveredRowSymbol] === this)
-      this._refreshLabelPositions();
-  }
-
-  _refreshLabelPositions() {
-    if (!this._percentages)
-      return;
-    this._labelLeftElement.style.removeProperty('left');
-    this._labelLeftElement.style.removeProperty('right');
-    this._labelLeftElement.classList.remove('before');
-    this._labelLeftElement.classList.remove('hidden');
-
-    this._labelRightElement.style.removeProperty('left');
-    this._labelRightElement.style.removeProperty('right');
-    this._labelRightElement.classList.remove('after');
-    this._labelRightElement.classList.remove('hidden');
-
-    const labelPadding = 10;
-    const barRightElementOffsetWidth = this._barRightElement.offsetWidth;
-    const barLeftElementOffsetWidth = this._barLeftElement.offsetWidth;
-
-    if (this._barLeftElement) {
-      var leftBarWidth = barLeftElementOffsetWidth - labelPadding;
-      var rightBarWidth = (barRightElementOffsetWidth - barLeftElementOffsetWidth) - labelPadding;
-    } else {
-      var leftBarWidth = (barLeftElementOffsetWidth - barRightElementOffsetWidth) - labelPadding;
-      var rightBarWidth = barRightElementOffsetWidth - labelPadding;
-    }
-
-    const labelLeftElementOffsetWidth = this._labelLeftElement.offsetWidth;
-    const labelRightElementOffsetWidth = this._labelRightElement.offsetWidth;
-
-    const labelBefore = (labelLeftElementOffsetWidth > leftBarWidth);
-    const labelAfter = (labelRightElementOffsetWidth > rightBarWidth);
-    const graphElementOffsetWidth = this._timelineCell.offsetWidth;
-
-    if (labelBefore && (graphElementOffsetWidth * (this._percentages.start / 100)) < (labelLeftElementOffsetWidth + 10))
-      var leftHidden = true;
-
-    if (labelAfter &&
-        (graphElementOffsetWidth * ((100 - this._percentages.end) / 100)) < (labelRightElementOffsetWidth + 10))
-      var rightHidden = true;
-
-    if (barLeftElementOffsetWidth === barRightElementOffsetWidth) {
-      // The left/right label data are the same, so a before/after label can be replaced by an on-bar label.
-      if (labelBefore && !labelAfter)
-        leftHidden = true;
-      else if (labelAfter && !labelBefore)
-        rightHidden = true;
-    }
-
-    if (labelBefore) {
-      if (leftHidden)
-        this._labelLeftElement.classList.add('hidden');
-      this._labelLeftElement.style.setProperty('right', (100 - this._percentages.start) + '%');
-      this._labelLeftElement.classList.add('before');
-    } else {
-      this._labelLeftElement.style.setProperty('left', this._percentages.start + '%');
-      this._labelLeftElement.style.setProperty('right', (100 - this._percentages.middle) + '%');
-    }
-
-    if (labelAfter) {
-      if (rightHidden)
-        this._labelRightElement.classList.add('hidden');
-      this._labelRightElement.style.setProperty('left', this._percentages.end + '%');
-      this._labelRightElement.classList.add('after');
-    } else {
-      this._labelRightElement.style.setProperty('left', this._percentages.middle + '%');
-      this._labelRightElement.style.setProperty('right', (100 - this._percentages.end) + '%');
-    }
-  }
 };
 
-WebInspector.NetworkDataGridNode._hoveredRowSymbol = Symbol('hoveredRow');
+/**
+ * @interface
+ */
+Network.NetworkLogEntry = function() {};
+
+Network.NetworkLogEntry.prototype = {
+  /**
+   * @return {!SDK.NetworkRequest}
+   */
+  request() {},
+
+  /**
+   * @return {boolean}
+   */
+  isNavigationRequest() {}
+};

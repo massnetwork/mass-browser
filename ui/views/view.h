@@ -53,14 +53,13 @@ class Transform;
 }
 
 namespace ui {
-struct AXViewState;
+struct AXActionData;
+struct AXNodeData;
 class Compositor;
 class InputMethod;
 class Layer;
 class NativeTheme;
 class PaintContext;
-class TextInputClient;
-class Texture;
 class ThemeProvider;
 }
 
@@ -75,6 +74,7 @@ class FocusTraversable;
 class LayoutManager;
 class NativeViewAccessibility;
 class ScrollView;
+class ViewObserver;
 class Widget;
 class WordLookupClient;
 
@@ -945,8 +945,15 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
 
   // Accessibility -------------------------------------------------------------
 
-  // Modifies |state| to reflect the current accessible state of this view.
-  virtual void GetAccessibleState(ui::AXViewState* state) { }
+  // Modifies |node_data| to reflect the current accessible state of this view.
+  virtual void GetAccessibleNodeData(ui::AXNodeData* node_data) {}
+
+  // Handle a request from assistive technology to perform an action on this
+  // view. Returns true on success, but note that the success/failure is
+  // not propagated to the client that requested the action, since the
+  // request is sometimes asynchronous. The right way to send a response is
+  // via NotifyAccessibilityEvent(), below.
+  virtual bool HandleAccessibleAction(const ui::AXActionData& action_data);
 
   // Returns an instance of the native accessibility interface for this view.
   virtual gfx::NativeViewAccessible GetNativeViewAccessible();
@@ -993,6 +1000,10 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
                                      bool is_horizontal, bool is_positive);
   virtual int GetLineScrollIncrement(ScrollView* scroll_view,
                                      bool is_horizontal, bool is_positive);
+
+  void AddObserver(ViewObserver* observer);
+  void RemoveObserver(ViewObserver* observer);
+  bool HasObserver(const ViewObserver* observer) const;
 
  protected:
   // Used to track a drag. RootView passes this into
@@ -1568,6 +1579,10 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
   // Belongs to this view, but it's reference-counted on some platforms
   // so we can't use a scoped_ptr. It's dereferenced in the destructor.
   NativeViewAccessibility* native_view_accessibility_;
+
+  // Observers -------------------------------------------------------------
+
+  base::ObserverList<ViewObserver> observers_;
 
   DISALLOW_COPY_AND_ASSIGN(View);
 };

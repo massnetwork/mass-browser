@@ -5,12 +5,14 @@
 #include "core/layout/compositing/CompositingInputsUpdater.h"
 
 #include "core/dom/Document.h"
+#include "core/frame/FrameHost.h"
 #include "core/frame/FrameView.h"
 #include "core/layout/LayoutBlock.h"
 #include "core/layout/LayoutView.h"
 #include "core/layout/compositing/CompositedLayerMapping.h"
 #include "core/layout/compositing/PaintLayerCompositor.h"
 #include "core/page/scrolling/RootScrollerController.h"
+#include "core/page/scrolling/TopDocumentRootScrollerController.h"
 #include "core/paint/PaintLayer.h"
 #include "platform/tracing/TraceEvent.h"
 
@@ -144,7 +146,6 @@ void CompositingInputsUpdater::updateRecursive(PaintLayer* layer,
 
   if (updateType == ForceUpdate) {
     PaintLayer::AncestorDependentCompositingInputs properties;
-    PaintLayer::RareAncestorDependentCompositingInputs rareProperties;
 
     if (!layer->isRootLayer()) {
       if (!RuntimeEnabledFeatures::slimmingPaintV2Enabled()) {
@@ -168,16 +169,16 @@ void CompositingInputsUpdater::updateRecursive(PaintLayer* layer,
       }
 
       const PaintLayer* parent = layer->parent();
-      rareProperties.opacityAncestor =
+      properties.opacityAncestor =
           parent->isTransparent() ? parent : parent->opacityAncestor();
-      rareProperties.transformAncestor =
+      properties.transformAncestor =
           parent->transform() ? parent : parent->transformAncestor();
-      rareProperties.filterAncestor = parent->hasFilterInducingProperty()
-                                          ? parent
-                                          : parent->filterAncestor();
+      properties.filterAncestor = parent->hasFilterInducingProperty()
+                                      ? parent
+                                      : parent->filterAncestor();
       bool layerIsFixedPosition =
           layer->layoutObject()->style()->position() == FixedPosition;
-      rareProperties.nearestFixedPositionLayer =
+      properties.nearestFixedPositionLayer =
           layerIsFixedPosition ? layer : parent->nearestFixedPositionLayer();
 
       if (info.hasAncestorWithClipRelatedProperty) {
@@ -198,7 +199,7 @@ void CompositingInputsUpdater::updateRecursive(PaintLayer* layer,
                   ? properties.clippingContainer->enclosingLayer()
                   : layer->compositor()->rootLayer();
           if (hasClippedStackingAncestor(layer, clippingLayer))
-            rareProperties.clipParent = clippingLayer;
+            properties.clipParent = clippingLayer;
         }
       }
 
@@ -208,22 +209,21 @@ void CompositingInputsUpdater::updateRecursive(PaintLayer* layer,
         const PaintLayer* parentLayerOnContainingBlockChain =
             findParentLayerOnContainingBlockChain(containingBlock);
 
-        rareProperties.ancestorScrollingLayer =
+        properties.ancestorScrollingLayer =
             parentLayerOnContainingBlockChain->ancestorScrollingLayer();
         if (parentLayerOnContainingBlockChain->scrollsOverflow())
-          rareProperties.ancestorScrollingLayer =
-              parentLayerOnContainingBlockChain;
+          properties.ancestorScrollingLayer = parentLayerOnContainingBlockChain;
 
         if (layer->stackingNode()->isStacked() &&
-            rareProperties.ancestorScrollingLayer &&
+            properties.ancestorScrollingLayer &&
             !info.ancestorStackingContext->layoutObject()->isDescendantOf(
-                rareProperties.ancestorScrollingLayer->layoutObject()))
-          rareProperties.scrollParent = rareProperties.ancestorScrollingLayer;
+                properties.ancestorScrollingLayer->layoutObject()))
+          properties.scrollParent = properties.ancestorScrollingLayer;
       }
     }
 
     layer->updateAncestorDependentCompositingInputs(
-        properties, rareProperties, info.hasAncestorWithClipPath);
+        properties, info.hasAncestorWithClipPath);
   }
 
   if (layer->stackingNode()->isStackingContext())

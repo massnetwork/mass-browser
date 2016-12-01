@@ -13,6 +13,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -34,14 +35,12 @@ class Origin;
 
 namespace content {
 
-class IndexedDBBlobInfo;
 class IndexedDBConnection;
 class IndexedDBDatabaseCallbacks;
 class IndexedDBFactory;
 class IndexedDBKey;
 class IndexedDBKeyPath;
 class IndexedDBKeyRange;
-class IndexedDBObservation;
 class IndexedDBObserverChanges;
 class IndexedDBTransaction;
 struct IndexedDBValue;
@@ -49,21 +48,17 @@ struct IndexedDBValue;
 class CONTENT_EXPORT IndexedDBDatabase
     : NON_EXPORTED_BASE(public base::RefCounted<IndexedDBDatabase>) {
  public:
-  // An index and corresponding set of keys
-  using IndexKeys = std::pair<int64_t, std::vector<IndexedDBKey>>;
-
   // Identifier is pair of (origin, database name).
   using Identifier = std::pair<url::Origin, base::string16>;
 
   static const int64_t kInvalidId = 0;
   static const int64_t kMinimumIndexId = 30;
 
-  static scoped_refptr<IndexedDBDatabase> Create(
+  static std::tuple<scoped_refptr<IndexedDBDatabase>, leveldb::Status> Create(
       const base::string16& name,
-      IndexedDBBackingStore* backing_store,
-      IndexedDBFactory* factory,
-      const Identifier& unique_identifier,
-      leveldb::Status* s);
+      scoped_refptr<IndexedDBBackingStore> backing_store,
+      scoped_refptr<IndexedDBFactory> factory,
+      const Identifier& unique_identifier);
 
   const Identifier& identifier() const { return identifier_; }
   IndexedDBBackingStore* backing_store() { return backing_store_.get(); }
@@ -177,11 +172,11 @@ class CONTENT_EXPORT IndexedDBDatabase
            std::unique_ptr<IndexedDBKey> key,
            blink::WebIDBPutMode mode,
            scoped_refptr<IndexedDBCallbacks> callbacks,
-           const std::vector<IndexKeys>& index_keys);
+           const std::vector<IndexedDBIndexKeys>& index_keys);
   void SetIndexKeys(int64_t transaction_id,
                     int64_t object_store_id,
                     std::unique_ptr<IndexedDBKey> primary_key,
-                    const std::vector<IndexKeys>& index_keys);
+                    const std::vector<IndexedDBIndexKeys>& index_keys);
   void SetIndexesReady(int64_t transaction_id,
                        int64_t object_store_id,
                        const std::vector<int64_t>& index_ids);
@@ -281,8 +276,8 @@ class CONTENT_EXPORT IndexedDBDatabase
 
  protected:
   IndexedDBDatabase(const base::string16& name,
-                    IndexedDBBackingStore* backing_store,
-                    IndexedDBFactory* factory,
+                    scoped_refptr<IndexedDBBackingStore> backing_store,
+                    scoped_refptr<IndexedDBFactory> factory,
                     const Identifier& unique_identifier);
   virtual ~IndexedDBDatabase();
 

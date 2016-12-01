@@ -23,7 +23,6 @@
 #include "base/strings/string16.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "chrome/browser/browser_process.h"
@@ -1320,13 +1319,25 @@ bool TabsUpdateFunction::UpdateURL(const std::string &url_string,
     return true;
   }
 
-  web_contents_->GetController().LoadURL(
-      url, content::Referrer(), ui::PAGE_TRANSITION_LINK, std::string());
+  bool use_renderer_initiated = false;
+  // For the PDF extension, treat it as renderer-initiated so that it does not
+  // show in the omnibox until it commits.  This avoids URL spoofs since urls
+  // can be opened on behalf of untrusted content.
+  // TODO(devlin|nasko): Make this the default for all extensions.
+  if (extension() && extension()->id() == extension_misc::kPdfExtensionId)
+    use_renderer_initiated = true;
+  NavigationController::LoadURLParams load_params(url);
+  load_params.is_renderer_initiated = use_renderer_initiated;
+  web_contents_->GetController().LoadURLWithParams(load_params);
 
   // The URL of a tab contents never actually changes to a JavaScript URL, so
   // this check only makes sense in other cases.
-  if (!url.SchemeIs(url::kJavaScriptScheme))
-    DCHECK_EQ(url.spec(), web_contents_->GetURL().spec());
+  if (!url.SchemeIs(url::kJavaScriptScheme)) {
+    // The URL should be present in the pending entry, though it may not be
+    // visible in the omnibox until it commits.
+    DCHECK_EQ(
+        url, web_contents_->GetController().GetPendingEntry()->GetVirtualURL());
+  }
 
   return true;
 }

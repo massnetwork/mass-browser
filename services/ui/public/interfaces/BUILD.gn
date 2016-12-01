@@ -13,7 +13,6 @@ mojom("interfaces") {
     "cursor.mojom",
     "display_manager.mojom",
     "event_matcher.mojom",
-    "gpu_memory_buffer.mojom",
     "gpu_service.mojom",
     "ime.mojom",
     "mus_constants.mojom",
@@ -34,6 +33,7 @@ mojom("interfaces") {
   ]
 
   public_deps = [
+    ":constants",
     "//cc/ipc:interfaces",
     "//gpu/ipc/common:interfaces",
     "//services/ui/public/interfaces/display",
@@ -42,8 +42,12 @@ mojom("interfaces") {
     "//ui/gfx/mojo",
     "//ui/platform_window/mojo:interfaces",
   ]
+}
 
-  use_new_wrapper_types = false
+mojom("constants") {
+  sources = [
+    "constants.mojom",
+  ]
 }
 
 test("ui_struct_traits_unittests") {

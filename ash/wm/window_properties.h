@@ -11,8 +11,6 @@
 #include "ui/gfx/geometry/rect.h"
 
 namespace aura {
-class Window;
-
 template <typename T>
 struct WindowProperty;
 }
@@ -42,10 +40,6 @@ ASH_EXPORT extern const aura::WindowProperty<gfx::Rect*>* const
 // set. This is used by e.g. the always maximized mode window manager.
 ASH_EXPORT extern const aura::WindowProperty<ui::WindowShowState>* const
     kRestoreShowStateOverrideKey;
-
-// A property key to store the icon resource id for a window's shelf item.
-ASH_EXPORT extern const aura::WindowProperty<int>* const
-    kShelfIconResourceIdKey;
 
 // A property key to store the id for a window's shelf item.
 ASH_EXPORT extern const aura::WindowProperty<ShelfID>* const kShelfIDKey;

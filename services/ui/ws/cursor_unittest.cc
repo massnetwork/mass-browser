@@ -11,7 +11,6 @@
 #include "services/ui/common/types.h"
 #include "services/ui/common/util.h"
 #include "services/ui/public/interfaces/window_tree.mojom.h"
-#include "services/ui/surfaces/display_compositor.h"
 #include "services/ui/ws/display_manager.h"
 #include "services/ui/ws/ids.h"
 #include "services/ui/ws/platform_display.h"
@@ -49,12 +48,11 @@ class CursorTest : public testing::Test {
  protected:
   // testing::Test:
   void SetUp() override {
-    window_server_delegate()->set_num_displays_to_create(1);
+    platform_screen_.Init(window_server()->display_manager());
+    platform_screen_.AddDisplay();
 
     // As a side effect, this allocates Displays.
-    WindowManagerWindowTreeFactorySetTestApi(
-        window_server()->window_manager_window_tree_factory_set())
-        .Add(kTestId1);
+    AddWindowManager(window_server(), kTestId1);
     window_server()->user_id_tracker()->AddUserId(kTestId1);
     window_server()->user_id_tracker()->SetActiveUserId(kTestId1);
   }
@@ -105,6 +103,7 @@ class CursorTest : public testing::Test {
 
  private:
   WindowServerTestHelper ws_test_helper_;
+  TestPlatformScreen platform_screen_;
   DISALLOW_COPY_AND_ASSIGN(CursorTest);
 };
 

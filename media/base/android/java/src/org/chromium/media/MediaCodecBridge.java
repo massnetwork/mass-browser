@@ -456,7 +456,8 @@ class MediaCodecBridge {
                 status = MEDIA_CODEC_OK;
                 index = indexOrStatus;
             } else if (indexOrStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
-                assert Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT;
+                // TODO(crbug.com/665478)
+                // assert Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT;
                 mOutputBuffers = mMediaCodec.getOutputBuffers();
                 status = MEDIA_CODEC_OUTPUT_BUFFERS_CHANGED;
             } else if (indexOrStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
@@ -618,6 +619,18 @@ class MediaCodecBridge {
         if (name != null) {
             format.setByteBuffer(name, ByteBuffer.wrap(bytes));
         }
+    }
+
+    @TargetApi(Build.VERSION_CODES.M)
+    @CalledByNative
+    private boolean setSurface(Surface surface) {
+        try {
+            mMediaCodec.setOutputSurface(surface);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            Log.e(TAG, "Cannot set output surface", e);
+            return false;
+        }
+        return true;
     }
 
     @CalledByNative

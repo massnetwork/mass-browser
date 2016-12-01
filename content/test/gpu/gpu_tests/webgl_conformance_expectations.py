@@ -112,6 +112,11 @@ class WebGLConformanceExpectations(GpuTestExpectations):
     # ========================
     # Fails on all platforms
 
+    # Test that needs to be fixed in the WebGL CTS
+    # https://github.com/KhronosGroup/WebGL/issues/2173
+    self.Fail('conformance/misc/bad-arguments-test.html',
+        bug=2173) # WebGL issue number
+
     # We need to add WebGL 1 check in command buffer that format/type from
     # TexSubImage2D have to match the current texture's.
     self.Fail('conformance/textures/misc/tex-sub-image-2d-bad-args.html',
@@ -271,7 +276,7 @@ class WebGLConformanceExpectations(GpuTestExpectations):
 
     # AMD Radeon 6450 and/or R7 240
     self.Fail('conformance/extensions/angle-instanced-arrays.html',
-        ['linux', 'amd'], bug=479260)
+        ['linux', 'amd', 'no_angle'], bug=479260)
     self.Flaky('conformance/extensions/ext-texture-filter-anisotropic.html',
         ['linux', ('amd', 0x6779)], bug=436212)
     self.Flaky('conformance/glsl/misc/shader-struct-scope.html',
@@ -579,6 +584,8 @@ class WebGLConformanceExpectations(GpuTestExpectations):
               ['android', ('qualcomm', 'Adreno (TM) 420')], bug=499555)
     self.Fail('conformance/textures/webgl_canvas/*',
               ['android', ('qualcomm', 'Adreno (TM) 430')], bug=611945)
+    self.Flaky('conformance/uniforms/uniform-samplers-test.html',
+              ['android', ('qualcomm', 'Adreno (TM) 430')], bug=663071)
 
     # Nexus 9
     self.Fail('deqp/data/gles2/shaders/functions.html',

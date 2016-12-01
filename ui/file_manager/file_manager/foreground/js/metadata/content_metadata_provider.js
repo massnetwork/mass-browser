@@ -58,9 +58,13 @@ ContentMetadataProvider.PROPERTY_NAMES = [
   'ifd',
   'imageHeight',
   'imageWidth',
+  'mediaAlbum',
   'mediaArtist',
+  'mediaDuration',
+  'mediaGenre',
   'mediaMimeType',
-  'mediaTitle'
+  'mediaTitle',
+  'mediaTrack',
 ];
 
 /**
@@ -85,9 +89,7 @@ ContentMetadataProvider.convertContentMetadata = function(metadata) {
   item.ifd = metadata['ifd'];
   item.imageHeight = metadata['height'];
   item.imageWidth = metadata['width'];
-  item.mediaArtist = metadata['artist'];
   item.mediaMimeType = metadata['mimeType'];
-  item.mediaTitle = metadata['title'];
   return item;
 };
 
@@ -307,8 +309,12 @@ ContentMetadataProvider.prototype.convertMediaMetadataToMetadataItem_ =
     }
     item.imageHeight = metadata['height'];
     item.imageWidth = metadata['width'];
+    item.mediaAlbum = metadata['album'];
     item.mediaArtist = metadata['artist'];
+    item.mediaDuration = metadata['duration'];
+    item.mediaGenre = metadata['genre'];
     item.mediaTitle = metadata['title'];
+    item.mediaTrack = metadata['track'];
     if (metadata.attachedImages && metadata.attachedImages.length > 0) {
       var reader = new FileReader();
       reader.onload = function(e) {
@@ -342,13 +348,6 @@ ContentMetadataProvider.prototype.createError_ = function(
   item.contentImageTransformError = error;
   item.contentThumbnailTransformError = error;
   item.contentThumbnailUrlError = error;
-  item.exifLittleEndianError = error;
-  item.ifdError = error;
-  item.imageHeightError = error;
-  item.imageWidthError = error;
-  item.mediaArtistError = error;
-  item.mediaMimeTypeError = error;
-  item.mediaTitleError = error;
   return item;
 };
 

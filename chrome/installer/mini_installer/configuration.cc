@@ -4,6 +4,7 @@
 
 #include "chrome/installer/mini_installer/configuration.h"
 
+#include <windows.h>
 #include <shellapi.h>  // NOLINT
 #include <stddef.h>
 
@@ -13,6 +14,19 @@
 #include "chrome/installer/mini_installer/regkey.h"
 
 namespace mini_installer {
+
+namespace {
+
+// Returns true if GoogleUpdateIsMachine=1 is present in the environment.
+bool GetGoogleUpdateIsMachineEnvVar() {
+  const DWORD kBufferSize = 2;
+  StackString<kBufferSize> value;
+  DWORD length = ::GetEnvironmentVariableW(L"GoogleUpdateIsMachine",
+                                           value.get(), kBufferSize);
+  return length == 1 && *value.get() == L'1';
+}
+
+}  // namespace
 
 Configuration::Configuration() : args_(NULL) {
   Clear();
@@ -39,10 +53,8 @@ void Configuration::SetChromeAppGuid() {
   const HKEY root_key =
       is_system_level_ ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
   const wchar_t* app_guid =
-      has_chrome_frame_ ?
-          google_update::kChromeFrameAppGuid :
-          is_side_by_side_ ? google_update::kSxSAppGuid
-                           : google_update::kAppGuid;
+      is_side_by_side_ ? google_update::kSxSAppGuid
+                       : google_update::kAppGuid;
 
   // This is the value for single-install and case 3.
   chrome_app_guid_ = app_guid;
@@ -88,10 +100,10 @@ void Configuration::Clear() {
   operation_ = INSTALL_PRODUCT;
   argument_count_ = 0;
   has_chrome_ = false;
-  has_chrome_frame_ = false;
   is_multi_install_ = false;
   is_system_level_ = false;
   is_side_by_side_ = false;
+  has_invalid_switch_ = false;
   previous_version_ = NULL;
 }
 
@@ -107,29 +119,31 @@ bool Configuration::Initialize(HMODULE module) {
 bool Configuration::ParseCommandLine(const wchar_t* command_line) {
   command_line_ = command_line;
   args_ = ::CommandLineToArgvW(command_line_, &argument_count_);
-  if (args_ != NULL) {
-    for (int i = 1; i < argument_count_; ++i) {
-      if (0 == ::lstrcmpi(args_[i], L"--chrome-sxs"))
-        is_side_by_side_ = true;
-      else if (0 == ::lstrcmpi(args_[i], L"--chrome"))
-        has_chrome_ = true;
-      else if (0 == ::lstrcmpi(args_[i], L"--chrome-frame"))
-        has_chrome_frame_ = true;
-      else if (0 == ::lstrcmpi(args_[i], L"--multi-install"))
-        is_multi_install_ = true;
-      else if (0 == ::lstrcmpi(args_[i], L"--system-level"))
-        is_system_level_ = true;
-      else if (0 == ::lstrcmpi(args_[i], L"--cleanup"))
-        operation_ = CLEANUP;
-    }
+  if (!args_)
+    return false;
 
-    SetChromeAppGuid();
-    if (!is_multi_install_) {
-      has_chrome_ = !has_chrome_frame_;
-    }
+  for (int i = 1; i < argument_count_; ++i) {
+    if (0 == ::lstrcmpi(args_[i], L"--chrome-sxs"))
+      is_side_by_side_ = true;
+    else if (0 == ::lstrcmpi(args_[i], L"--chrome"))
+      has_chrome_ = true;
+    else if (0 == ::lstrcmpi(args_[i], L"--multi-install"))
+      is_multi_install_ = true;
+    else if (0 == ::lstrcmpi(args_[i], L"--system-level"))
+      is_system_level_ = true;
+    else if (0 == ::lstrcmpi(args_[i], L"--cleanup"))
+      operation_ = CLEANUP;
+    else if (0 == ::lstrcmpi(args_[i], L"--chrome-frame"))
+      has_invalid_switch_ = true;
   }
 
-  return args_ != NULL;
+  if (!is_system_level_)
+    is_system_level_ = GetGoogleUpdateIsMachineEnvVar();
+  SetChromeAppGuid();
+  if (!is_multi_install_)
+    has_chrome_ = true;
+
+  return true;
 }
 
 void Configuration::ReadResources(HMODULE module) {

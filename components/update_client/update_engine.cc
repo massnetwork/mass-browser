@@ -26,7 +26,7 @@ UpdateContext::UpdateContext(
     const std::vector<std::string>& ids,
     const UpdateClient::CrxDataCallback& crx_data_callback,
     const UpdateEngine::NotifyObserversCallback& notify_observers_callback,
-    const UpdateEngine::CompletionCallback& callback,
+    const UpdateEngine::Callback& callback,
     UpdateChecker::Factory update_checker_factory,
     CrxDownloader::Factory crx_downloader_factory,
     PingManager* ping_manager)
@@ -81,7 +81,7 @@ void UpdateEngine::Update(
     bool is_foreground,
     const std::vector<std::string>& ids,
     const UpdateClient::CrxDataCallback& crx_data_callback,
-    const CompletionCallback& callback) {
+    const Callback& callback) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   if (IsThrottled(is_foreground)) {
@@ -100,7 +100,7 @@ void UpdateEngine::Update(
       (*update_context->update_checker_factory)(config_, metadata_.get()),
       config_->GetBrowserVersion(), config_->ExtraRequestParams()));
 
-  update_context->current_action.reset(update_check_action.release());
+  update_context->current_action = std::move(update_check_action);
   update_contexts_.insert(update_context.get());
 
   update_context->current_action->Run(

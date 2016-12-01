@@ -88,8 +88,8 @@ class StatelessRejectorTest : public ::testing::TestWithParam<TestParams> {
             &clock_,
             QuicRandom::GetInstance(),
             kDefaultMaxPacketSize,
-            IPEndPoint(net::test::Loopback4(), 12345),
-            IPEndPoint(net::test::Loopback4(), 443))) {
+            QuicSocketAddress(QuicIpAddress::Loopback4(), 12345),
+            QuicSocketAddress(QuicIpAddress::Loopback4(), 443))) {
     FLAGS_enable_quic_stateless_reject_support =
         GetParam().flags == ENABLED || GetParam().flags == CHEAP_DISABLED;
     FLAGS_quic_use_cheap_stateless_rejects =
@@ -103,7 +103,7 @@ class StatelessRejectorTest : public ::testing::TestWithParam<TestParams> {
     scid_hex_ = "#" + QuicUtils::HexEncode(config_peer_.GetPrimaryConfig()->id);
 
     // Encode the QUIC version.
-    ver_hex_ = QuicUtils::TagToString(QuicVersionToQuicTag(GetParam().version));
+    ver_hex_ = QuicTagToString(QuicVersionToQuicTag(GetParam().version));
 
     // Generate a public value.
     char public_value[32];
@@ -122,7 +122,7 @@ class StatelessRejectorTest : public ::testing::TestWithParam<TestParams> {
 
     // Generate a source address token.
     SourceAddressTokens previous_tokens;
-    IPAddress ip = net::test::Loopback4();
+    QuicIpAddress ip = QuicIpAddress::Loopback4();
     MockRandom rand;
     string stk = config_peer_.NewSourceAddressToken(
         config_peer_.GetPrimaryConfig()->id, previous_tokens, ip, &rand,
@@ -176,7 +176,7 @@ TEST_P(StatelessRejectorTest, InvalidChlo) {
   rejector_->OnChlo(GetParam().version, kConnectionId,
                     kServerDesignateConnectionId, client_hello);
 
-  if (GetParam().flags != ENABLED || GetParam().version <= QUIC_VERSION_32) {
+  if (GetParam().flags != ENABLED) {
     EXPECT_EQ(StatelessRejector::UNSUPPORTED, rejector_->state());
     return;
   }
@@ -228,7 +228,7 @@ TEST_P(StatelessRejectorTest, RejectChlo) {
 
   rejector_->OnChlo(GetParam().version, kConnectionId,
                     kServerDesignateConnectionId, client_hello);
-  if (GetParam().flags != ENABLED || GetParam().version <= QUIC_VERSION_32) {
+  if (GetParam().flags != ENABLED) {
     EXPECT_EQ(StatelessRejector::UNSUPPORTED, rejector_->state());
     return;
   }
@@ -274,7 +274,7 @@ TEST_P(StatelessRejectorTest, AcceptChlo) {
 
   rejector_->OnChlo(GetParam().version, kConnectionId,
                     kServerDesignateConnectionId, client_hello);
-  if (GetParam().flags != ENABLED || GetParam().version <= QUIC_VERSION_32) {
+  if (GetParam().flags != ENABLED) {
     EXPECT_EQ(StatelessRejector::UNSUPPORTED, rejector_->state());
     return;
   }

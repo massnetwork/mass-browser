@@ -220,6 +220,9 @@ bool RuleSet::findBestRuleSetAndAdd(const CSSSelector& component,
     case CSSSelector::PseudoFocus:
       m_focusPseudoClassRules.append(ruleData);
       return true;
+    case CSSSelector::PseudoPlaceholder:
+      m_placeholderPseudoRules.append(ruleData);
+      return true;
     default:
       break;
   }
@@ -297,10 +300,10 @@ void RuleSet::addChildRules(const HeapVector<Member<StyleRuleBase>>& rules,
       addPageRule(toStyleRulePage(rule));
     } else if (rule->isMediaRule()) {
       StyleRuleMedia* mediaRule = toStyleRuleMedia(rule);
-      if ((!mediaRule->mediaQueries() ||
-           medium.eval(mediaRule->mediaQueries(),
-                       &m_viewportDependentMediaQueryResults,
-                       &m_deviceDependentMediaQueryResults)))
+      if (!mediaRule->mediaQueries() ||
+          medium.eval(mediaRule->mediaQueries(),
+                      &m_features.viewportDependentMediaQueryResults(),
+                      &m_features.deviceDependentMediaQueryResults()))
         addChildRules(mediaRule->childRules(), medium, addRuleFlags);
     } else if (rule->isFontFaceRule()) {
       addFontFaceRule(toStyleRuleFontFace(rule));
@@ -327,8 +330,8 @@ void RuleSet::addRulesFromSheet(StyleSheetContents* sheet,
     if (importRule->styleSheet() &&
         (!importRule->mediaQueries() ||
          medium.eval(importRule->mediaQueries(),
-                     &m_viewportDependentMediaQueryResults,
-                     &m_deviceDependentMediaQueryResults)))
+                     &m_features.viewportDependentMediaQueryResults(),
+                     &m_features.deviceDependentMediaQueryResults())))
       addRulesFromSheet(importRule->styleSheet(), medium, addRuleFlags);
   }
 
@@ -371,6 +374,7 @@ void RuleSet::compactRules() {
   m_linkPseudoClassRules.shrinkToFit();
   m_cuePseudoRules.shrinkToFit();
   m_focusPseudoClassRules.shrinkToFit();
+  m_placeholderPseudoRules.shrinkToFit();
   m_universalRules.shrinkToFit();
   m_shadowHostRules.shrinkToFit();
   m_pageRules.shrinkToFit();
@@ -404,6 +408,7 @@ DEFINE_TRACE(RuleSet) {
   visitor->trace(m_linkPseudoClassRules);
   visitor->trace(m_cuePseudoRules);
   visitor->trace(m_focusPseudoClassRules);
+  visitor->trace(m_placeholderPseudoRules);
   visitor->trace(m_universalRules);
   visitor->trace(m_shadowHostRules);
   visitor->trace(m_features);
@@ -413,8 +418,6 @@ DEFINE_TRACE(RuleSet) {
   visitor->trace(m_deepCombinatorOrShadowPseudoRules);
   visitor->trace(m_contentPseudoElementRules);
   visitor->trace(m_slottedPseudoElementRules);
-  visitor->trace(m_viewportDependentMediaQueryResults);
-  visitor->trace(m_deviceDependentMediaQueryResults);
   visitor->trace(m_pendingRules);
 #ifndef NDEBUG
   visitor->trace(m_allRules);

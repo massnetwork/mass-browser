@@ -27,7 +27,7 @@
     readonly attribute DOMString type;
     readonly attribute EventTarget? target;
     readonly attribute EventTarget? currentTarget;
-    [RuntimeEnabled=ShadowDOMV1, MeasureAs=EventComposedPath, CallWith=ScriptState] sequence<EventTarget> composedPath();
+    [MeasureAs=EventComposedPath, CallWith=ScriptState] sequence<EventTarget> composedPath();
 
     const unsigned short NONE = 0;
     const unsigned short CAPTURING_PHASE = 1;
@@ -35,15 +35,15 @@
     const unsigned short BUBBLING_PHASE = 3;
     readonly attribute unsigned short eventPhase;
 
-    void stopPropagation();
-    void stopImmediatePropagation();
+    [Measure] void stopPropagation();
+    [Measure] void stopImmediatePropagation();
 
     readonly attribute boolean bubbles;
     readonly attribute boolean cancelable;
     void preventDefault();
     readonly attribute boolean defaultPrevented;
 
-    [RuntimeEnabled=ShadowDOMV1, MeasureAs=EventComposed] readonly attribute boolean composed;
+    [MeasureAs=EventComposed] readonly attribute boolean composed;
 
     [Unforgeable] readonly attribute boolean isTrusted;
 

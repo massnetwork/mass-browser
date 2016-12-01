@@ -40,7 +40,6 @@
 #include "core/fetch/ImageResource.h"
 #include "core/fetch/MemoryCache.h"
 #include "core/fetch/ResourceFetcher.h"
-#include "core/fetch/ScriptResource.h"
 #include "core/frame/FrameHost.h"
 #include "core/frame/LocalDOMWindow.h"
 #include "core/frame/LocalFrame.h"
@@ -58,9 +57,11 @@
 #include "core/loader/NetworkHintsInterface.h"
 #include "core/loader/ProgressTracker.h"
 #include "core/loader/appcache/ApplicationCacheHost.h"
+#include "core/loader/resource/ScriptResource.h"
 #include "core/page/FrameTree.h"
 #include "core/page/Page.h"
 #include "platform/HTTPNames.h"
+#include "platform/MIMETypeRegistry.h"
 #include "platform/UserGestureIndicator.h"
 #include "platform/mhtml/ArchiveResource.h"
 #include "platform/network/ContentSecurityPolicyResponseHeaders.h"
@@ -70,7 +71,6 @@
 #include "platform/weborigin/SecurityPolicy.h"
 #include "public/platform/Platform.h"
 #include "public/platform/WebDocumentSubresourceFilter.h"
-#include "public/platform/WebMimeRegistry.h"
 #include "wtf/Assertions.h"
 #include "wtf/AutoReset.h"
 #include "wtf/text/WTFString.h"
@@ -287,7 +287,7 @@ void DocumentLoader::notifyFinished(Resource* resource) {
 
 void DocumentLoader::finishedLoading(double finishTime) {
   DCHECK(m_frame->loader().stateMachine()->creatingInitialEmptyDocument() ||
-         !m_frame->page()->defersLoading() ||
+         !m_frame->page()->suspended() ||
          InspectorInstrumentation::isDebuggerPaused(m_frame));
 
   double responseEndTime = finishTime;
@@ -354,8 +354,7 @@ bool DocumentLoader::redirectReceived(
 }
 
 static bool canShowMIMEType(const String& mimeType, LocalFrame* frame) {
-  if (Platform::current()->mimeRegistry()->supportsMIMEType(mimeType) ==
-      WebMimeRegistry::IsSupported)
+  if (MIMETypeRegistry::isSupportedMIMEType(mimeType))
     return true;
   PluginData* pluginData = frame->pluginData();
   return !mimeType.isEmpty() && pluginData &&
@@ -401,7 +400,7 @@ void DocumentLoader::cancelLoadAfterXFrameOptionsOrCSPDenied(
   KURL blockedURL = SecurityOrigin::urlWithUniqueSecurityOrigin();
   m_originalRequest.setURL(blockedURL);
   m_request.setURL(blockedURL);
-  m_redirectChain.removeLast();
+  m_redirectChain.pop_back();
   appendRedirect(blockedURL);
   m_response = ResourceResponse(blockedURL, "text/html", 0, nullAtom, String());
   finishedLoading(monotonicallyIncreasingTime());
@@ -482,7 +481,7 @@ void DocumentLoader::responseReceived(
     }
   }
 
-  DCHECK(!m_frame->page()->defersLoading());
+  DCHECK(!m_frame->page()->suspended());
 
   m_response = response;
 
@@ -564,7 +563,7 @@ void DocumentLoader::dataReceived(Resource* resource,
   DCHECK(length);
   DCHECK_EQ(resource, m_mainResource);
   DCHECK(!m_response.isNull());
-  DCHECK(!m_frame->page()->defersLoading());
+  DCHECK(!m_frame->page()->suspended());
 
   if (m_inDataReceived) {
     // If this function is reentered, defer processing of the additional data to

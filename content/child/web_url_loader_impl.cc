@@ -16,6 +16,7 @@
 #include "base/files/file_path.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
+#include "base/optional.h"
 #include "base/single_thread_task_runner.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
@@ -38,6 +39,7 @@
 #include "content/public/child/fixed_received_data.h"
 #include "content/public/child/request_peer.h"
 #include "content/public/common/browser_side_navigation_policy.h"
+#include "mojo/public/cpp/bindings/associated_group.h"
 #include "net/base/data_url.h"
 #include "net/base/filename_util.h"
 #include "net/base/net_errors.h"
@@ -52,7 +54,6 @@
 #include "third_party/WebKit/public/platform/WebHTTPLoadInfo.h"
 #include "third_party/WebKit/public/platform/WebSecurityOrigin.h"
 #include "third_party/WebKit/public/platform/WebSecurityStyle.h"
-#include "third_party/WebKit/public/platform/WebTaskRunner.h"
 #include "third_party/WebKit/public/platform/WebURL.h"
 #include "third_party/WebKit/public/platform/WebURLError.h"
 #include "third_party/WebKit/public/platform/WebURLLoadTiming.h"
@@ -363,7 +364,8 @@ class WebURLLoaderImpl::Context : public base::RefCounted<Context> {
 
   Context(WebURLLoaderImpl* loader,
           ResourceDispatcher* resource_dispatcher,
-          mojom::URLLoaderFactory* factory);
+          mojom::URLLoaderFactory* factory,
+          mojo::AssociatedGroup* associated_group);
 
   WebURLLoaderClient* client() const { return client_; }
   void set_client(WebURLLoaderClient* client) { client_ = client; }
@@ -388,7 +390,8 @@ class WebURLLoaderImpl::Context : public base::RefCounted<Context> {
                           bool was_ignored_by_handler,
                           bool stale_copy_in_cache,
                           const base::TimeTicks& completion_time,
-                          int64_t total_transfer_size);
+                          int64_t total_transfer_size,
+                          int64_t encoded_body_size);
 
  private:
   friend class base::RefCounted<Context>;
@@ -412,7 +415,9 @@ class WebURLLoaderImpl::Context : public base::RefCounted<Context> {
   DeferState defers_loading_;
   int request_id_;
 
+  // These are owned by the Blink::Platform singleton.
   mojom::URLLoaderFactory* url_loader_factory_;
+  mojo::AssociatedGroup* associated_group_;
 };
 
 // A thin wrapper class for Context to ensure its lifetime while it is
@@ -434,7 +439,8 @@ class WebURLLoaderImpl::RequestPeerImpl : public RequestPeer {
                           bool was_ignored_by_handler,
                           bool stale_copy_in_cache,
                           const base::TimeTicks& completion_time,
-                          int64_t total_transfer_size) override;
+                          int64_t total_transfer_size,
+                          int64_t encoded_body_size) override;
 
  private:
   scoped_refptr<Context> context_;
@@ -445,14 +451,16 @@ class WebURLLoaderImpl::RequestPeerImpl : public RequestPeer {
 
 WebURLLoaderImpl::Context::Context(WebURLLoaderImpl* loader,
                                    ResourceDispatcher* resource_dispatcher,
-                                   mojom::URLLoaderFactory* url_loader_factory)
+                                   mojom::URLLoaderFactory* url_loader_factory,
+                                   mojo::AssociatedGroup* associated_group)
     : loader_(loader),
       client_(NULL),
       resource_dispatcher_(resource_dispatcher),
       task_runner_(base::ThreadTaskRunnerHandle::Get()),
       defers_loading_(NOT_DEFERRING),
       request_id_(-1),
-      url_loader_factory_(url_loader_factory) {}
+      url_loader_factory_(url_loader_factory),
+      associated_group_(associated_group) {}
 
 void WebURLLoaderImpl::Context::Cancel() {
   TRACE_EVENT_WITH_FLOW0("loading", "WebURLLoaderImpl::Context::Cancel", this,
@@ -549,7 +557,10 @@ void WebURLLoaderImpl::Context::Start(const WebURLRequest& request,
   resource_request->method = method;
   resource_request->url = url;
   resource_request->first_party_for_cookies = request.firstPartyForCookies();
-  resource_request->request_initiator = request.requestorOrigin();
+  resource_request->request_initiator =
+      request.requestorOrigin().isNull()
+          ? base::Optional<url::Origin>()
+          : base::Optional<url::Origin>(request.requestorOrigin());
   resource_request->referrer = referrer_url;
 
   resource_request->referrer_policy = request.referrerPolicy();
@@ -623,7 +634,7 @@ void WebURLLoaderImpl::Context::Start(const WebURLRequest& request,
       std::move(resource_request), request.requestorID(), task_runner_,
       extra_data->frame_origin(),
       base::MakeUnique<WebURLLoaderImpl::RequestPeerImpl>(this),
-      request.getLoadingIPCType(), url_loader_factory_);
+      request.getLoadingIPCType(), url_loader_factory_, associated_group_);
 
   if (defers_loading_ != NOT_DEFERRING)
     resource_dispatcher_->SetDefersLoading(request_id_, true);
@@ -654,13 +665,11 @@ bool WebURLLoaderImpl::Context::OnReceivedRedirect(
   PopulateURLResponse(request_.url(), info, &response,
                       request_.reportRawHeaders());
 
-  WebURLRequest new_request;
-  PopulateURLRequestForRedirect(
+  WebURLRequest new_request = PopulateURLRequestForRedirect(
       request_, redirect_info,
       info.was_fetched_via_service_worker
           ? blink::WebURLRequest::SkipServiceWorker::None
-          : blink::WebURLRequest::SkipServiceWorker::All,
-      &new_request);
+          : blink::WebURLRequest::SkipServiceWorker::All);
 
   bool follow = client_->willFollowRedirect(loader_, new_request, response);
   if (!follow) {
@@ -762,9 +771,7 @@ void WebURLLoaderImpl::Context::OnReceivedResponse(
     // will break if one of the following happens:
     //  1) The body data transfer is done (with or without an error).
     //  2) |read_handle| (and its reader) is detached.
-
-    // The client takes |read_handle|'s ownership.
-    client_->didReceiveResponse(loader_, response, read_handle.release());
+    client_->didReceiveResponse(loader_, response, std::move(read_handle));
     // TODO(yhirano): Support ftp listening and multipart
     return;
   } else {
@@ -808,8 +815,7 @@ void WebURLLoaderImpl::Context::OnReceivedData(
   } else {
     // We dispatch the data even when |useStreamOnResponse()| is set, in order
     // to make Devtools work.
-    client_->didReceiveData(loader_, payload, data_length, encoded_data_length,
-                            data->encoded_body_length());
+    client_->didReceiveData(loader_, payload, data_length, encoded_data_length);
 
     if (request_.useStreamOnResponse()) {
       // We don't support ftp_listening_delegate_ for now.
@@ -834,7 +840,8 @@ void WebURLLoaderImpl::Context::OnCompletedRequest(
     bool was_ignored_by_handler,
     bool stale_copy_in_cache,
     const base::TimeTicks& completion_time,
-    int64_t total_transfer_size) {
+    int64_t total_transfer_size,
+    int64_t encoded_body_size) {
   if (ftp_listing_delegate_) {
     ftp_listing_delegate_->OnCompletedRequest();
     ftp_listing_delegate_.reset(NULL);
@@ -850,14 +857,14 @@ void WebURLLoaderImpl::Context::OnCompletedRequest(
         this, TRACE_EVENT_FLAG_FLOW_IN);
 
     if (error_code != net::OK) {
-      client_->didFail(
-          loader_,
-          CreateWebURLError(request_.url(), stale_copy_in_cache, error_code,
-              was_ignored_by_handler));
+      client_->didFail(loader_,
+                       CreateWebURLError(request_.url(), stale_copy_in_cache,
+                                         error_code, was_ignored_by_handler),
+                       total_transfer_size, encoded_body_size);
     } else {
       client_->didFinishLoading(loader_,
                                 (completion_time - TimeTicks()).InSecondsF(),
-                                total_transfer_size);
+                                total_transfer_size, encoded_body_size);
     }
   }
 }
@@ -882,8 +889,9 @@ void WebURLLoaderImpl::Context::CancelBodyStreaming() {
   }
   if (client_) {
     // TODO(yhirano): Set |stale_copy_in_cache| appropriately if possible.
-    client_->didFail(
-        loader_, CreateWebURLError(request_.url(), false, net::ERR_ABORTED));
+    client_->didFail(loader_,
+                     CreateWebURLError(request_.url(), false, net::ERR_ABORTED),
+                     WebURLLoaderClient::kUnknownEncodedDataLength, 0);
   }
 
   // Notify the browser process that the request is canceled.
@@ -949,11 +957,11 @@ void WebURLLoaderImpl::Context::HandleDataURL() {
     OnReceivedResponse(info);
     auto size = data.size();
     if (size != 0)
-      OnReceivedData(
-          base::MakeUnique<FixedReceivedData>(data.data(), size, 0, size));
+      OnReceivedData(base::MakeUnique<FixedReceivedData>(data.data(), size, 0));
   }
 
-  OnCompletedRequest(error_code, false, false, base::TimeTicks::Now(), 0);
+  OnCompletedRequest(error_code, false, false, base::TimeTicks::Now(), 0,
+                     data.size());
 }
 
 // WebURLLoaderImpl::RequestPeerImpl ------------------------------------------
@@ -999,17 +1007,22 @@ void WebURLLoaderImpl::RequestPeerImpl::OnCompletedRequest(
     bool was_ignored_by_handler,
     bool stale_copy_in_cache,
     const base::TimeTicks& completion_time,
-    int64_t total_transfer_size) {
+    int64_t total_transfer_size,
+    int64_t encoded_body_size) {
   context_->OnCompletedRequest(error_code, was_ignored_by_handler,
                                stale_copy_in_cache, completion_time,
-                               total_transfer_size);
+                               total_transfer_size, encoded_body_size);
 }
 
 // WebURLLoaderImpl -----------------------------------------------------------
 
 WebURLLoaderImpl::WebURLLoaderImpl(ResourceDispatcher* resource_dispatcher,
-                                   mojom::URLLoaderFactory* url_loader_factory)
-    : context_(new Context(this, resource_dispatcher, url_loader_factory)) {}
+                                   mojom::URLLoaderFactory* url_loader_factory,
+                                   mojo::AssociatedGroup* associated_group)
+    : context_(new Context(this,
+                           resource_dispatcher,
+                           url_loader_factory,
+                           associated_group)) {}
 
 WebURLLoaderImpl::~WebURLLoaderImpl() {
   cancel();
@@ -1054,7 +1067,7 @@ void WebURLLoaderImpl::PopulateURLResponse(const GURL& url,
       info.cors_exposed_header_names.end(), cors_exposed_header_names.begin(),
       [](const std::string& h) { return blink::WebString::fromLatin1(h); });
   response->setCorsExposedHeaderNames(cors_exposed_header_names);
-  response->addToEncodedDataLength(info.encoded_data_length);
+  response->setEncodedDataLength(info.encoded_data_length);
 
   SetSecurityStyleAndDetails(url, info, response, report_security_info);
 
@@ -1157,41 +1170,42 @@ void WebURLLoaderImpl::PopulateURLResponse(const GURL& url,
   }
 }
 
-void WebURLLoaderImpl::PopulateURLRequestForRedirect(
+WebURLRequest WebURLLoaderImpl::PopulateURLRequestForRedirect(
     const blink::WebURLRequest& request,
     const net::RedirectInfo& redirect_info,
-    blink::WebURLRequest::SkipServiceWorker skip_service_worker,
-    blink::WebURLRequest* new_request) {
+    blink::WebURLRequest::SkipServiceWorker skip_service_worker) {
   // TODO(darin): We lack sufficient information to construct the actual
   // request that resulted from the redirect.
-  new_request->setURL(redirect_info.new_url);
-  new_request->setFirstPartyForCookies(
+  WebURLRequest new_request(redirect_info.new_url);
+  new_request.setFirstPartyForCookies(
       redirect_info.new_first_party_for_cookies);
-  new_request->setDownloadToFile(request.downloadToFile());
-  new_request->setUseStreamOnResponse(request.useStreamOnResponse());
-  new_request->setRequestContext(request.getRequestContext());
-  new_request->setFrameType(request.getFrameType());
-  new_request->setSkipServiceWorker(skip_service_worker);
-  new_request->setShouldResetAppCache(request.shouldResetAppCache());
-  new_request->setFetchRequestMode(request.getFetchRequestMode());
-  new_request->setFetchCredentialsMode(request.getFetchCredentialsMode());
+  new_request.setDownloadToFile(request.downloadToFile());
+  new_request.setUseStreamOnResponse(request.useStreamOnResponse());
+  new_request.setRequestContext(request.getRequestContext());
+  new_request.setFrameType(request.getFrameType());
+  new_request.setSkipServiceWorker(skip_service_worker);
+  new_request.setShouldResetAppCache(request.shouldResetAppCache());
+  new_request.setFetchRequestMode(request.getFetchRequestMode());
+  new_request.setFetchCredentialsMode(request.getFetchCredentialsMode());
 
-  new_request->setHTTPReferrer(WebString::fromUTF8(redirect_info.new_referrer),
+  new_request.setHTTPReferrer(WebString::fromUTF8(redirect_info.new_referrer),
                                NetReferrerPolicyToBlinkReferrerPolicy(
                                    redirect_info.new_referrer_policy));
-  new_request->setPriority(request.getPriority());
+  new_request.setPriority(request.getPriority());
 
   std::string old_method = request.httpMethod().utf8();
-  new_request->setHTTPMethod(WebString::fromUTF8(redirect_info.new_method));
+  new_request.setHTTPMethod(WebString::fromUTF8(redirect_info.new_method));
   if (redirect_info.new_method == old_method)
-    new_request->setHTTPBody(request.httpBody());
+    new_request.setHTTPBody(request.httpBody());
+  return new_request;
 }
 
 void WebURLLoaderImpl::loadSynchronously(const WebURLRequest& request,
                                          WebURLResponse& response,
                                          WebURLError& error,
                                          WebData& data,
-                                         int64_t& encoded_data_length) {
+                                         int64_t& encoded_data_length,
+                                         int64_t& encoded_body_length) {
   TRACE_EVENT0("loading", "WebURLLoaderImpl::loadSynchronously");
   SyncLoadResponse sync_load_response;
   context_->Start(request, &sync_load_response);
@@ -1211,9 +1225,9 @@ void WebURLLoaderImpl::loadSynchronously(const WebURLRequest& request,
 
   PopulateURLResponse(final_url, sync_load_response, &response,
                       request.reportRawHeaders());
-  response.addToEncodedBodyLength(sync_load_response.encoded_body_length);
   response.addToDecodedBodyLength(sync_load_response.data.size());
   encoded_data_length = sync_load_response.encoded_data_length;
+  encoded_body_length = sync_load_response.encoded_body_length;
 
   data.assign(sync_load_response.data.data(), sync_load_response.data.size());
 }
@@ -1242,8 +1256,8 @@ void WebURLLoaderImpl::didChangePriority(WebURLRequest::Priority new_priority,
 }
 
 void WebURLLoaderImpl::setLoadingTaskRunner(
-    blink::WebTaskRunner* loading_task_runner) {
-  context_->SetTaskRunner(loading_task_runner->toSingleThreadTaskRunner());
+    base::SingleThreadTaskRunner* loading_task_runner) {
+  context_->SetTaskRunner(loading_task_runner);
 }
 
 }  // namespace content

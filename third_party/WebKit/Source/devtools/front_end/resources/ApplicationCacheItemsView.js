@@ -26,15 +26,15 @@
 /**
  * @unrestricted
  */
-WebInspector.ApplicationCacheItemsView = class extends WebInspector.SimpleView {
+Resources.ApplicationCacheItemsView = class extends UI.SimpleView {
   constructor(model, frameId) {
-    super(WebInspector.UIString('AppCache'));
+    super(Common.UIString('AppCache'));
 
     this._model = model;
 
     this.element.classList.add('storage-view', 'table');
 
-    this._deleteButton = new WebInspector.ToolbarButton(WebInspector.UIString('Delete'), 'delete-toolbar-item');
+    this._deleteButton = new UI.ToolbarButton(Common.UIString('Delete'), 'largeicon-delete');
     this._deleteButton.setVisible(false);
     this._deleteButton.addEventListener('click', this._deleteButtonClicked, this);
 
@@ -45,8 +45,7 @@ WebInspector.ApplicationCacheItemsView = class extends WebInspector.SimpleView {
 
     this._frameId = frameId;
 
-    this._emptyWidget =
-        new WebInspector.EmptyWidget(WebInspector.UIString('No Application Cache information available.'));
+    this._emptyWidget = new UI.EmptyWidget(Common.UIString('No Application Cache information available.'));
     this._emptyWidget.show(this.element);
 
     this._markDirty();
@@ -62,12 +61,12 @@ WebInspector.ApplicationCacheItemsView = class extends WebInspector.SimpleView {
 
   /**
    * @override
-   * @return {!Array.<!WebInspector.ToolbarItem>}
+   * @return {!Array.<!UI.ToolbarItem>}
    */
   syncToolbarItems() {
     return [
-      this._deleteButton, new WebInspector.ToolbarItem(this._connectivityIcon), new WebInspector.ToolbarSeparator(),
-      new WebInspector.ToolbarItem(this._statusIcon)
+      this._deleteButton, new UI.ToolbarItem(this._connectivityIcon), new UI.ToolbarSeparator(),
+      new UI.ToolbarItem(this._statusIcon)
     ];
   }
 
@@ -106,12 +105,12 @@ WebInspector.ApplicationCacheItemsView = class extends WebInspector.SimpleView {
 
     var statusInformation = {};
     // We should never have UNCACHED status, since we remove frames with UNCACHED application cache status from the tree.
-    statusInformation[applicationCache.UNCACHED] = {type: 'red-ball', text: 'UNCACHED'};
-    statusInformation[applicationCache.IDLE] = {type: 'green-ball', text: 'IDLE'};
-    statusInformation[applicationCache.CHECKING] = {type: 'orange-ball', text: 'CHECKING'};
-    statusInformation[applicationCache.DOWNLOADING] = {type: 'orange-ball', text: 'DOWNLOADING'};
-    statusInformation[applicationCache.UPDATEREADY] = {type: 'green-ball', text: 'UPDATEREADY'};
-    statusInformation[applicationCache.OBSOLETE] = {type: 'red-ball', text: 'OBSOLETE'};
+    statusInformation[applicationCache.UNCACHED] = {type: 'smallicon-red-ball', text: 'UNCACHED'};
+    statusInformation[applicationCache.IDLE] = {type: 'smallicon-green-ball', text: 'IDLE'};
+    statusInformation[applicationCache.CHECKING] = {type: 'smallicon-orange-ball', text: 'CHECKING'};
+    statusInformation[applicationCache.DOWNLOADING] = {type: 'smallicon-orange-ball', text: 'DOWNLOADING'};
+    statusInformation[applicationCache.UPDATEREADY] = {type: 'smallicon-green-ball', text: 'UPDATEREADY'};
+    statusInformation[applicationCache.OBSOLETE] = {type: 'smallicon-red-ball', text: 'OBSOLETE'};
 
     var info = statusInformation[status] || statusInformation[applicationCache.UNCACHED];
 
@@ -129,11 +128,11 @@ WebInspector.ApplicationCacheItemsView = class extends WebInspector.SimpleView {
    */
   updateNetworkState(isNowOnline) {
     if (isNowOnline) {
-      this._connectivityIcon.type = 'green-ball';
-      this._connectivityIcon.textContent = WebInspector.UIString('Online');
+      this._connectivityIcon.type = 'smallicon-green-ball';
+      this._connectivityIcon.textContent = Common.UIString('Online');
     } else {
-      this._connectivityIcon.type = 'red-ball';
-      this._connectivityIcon.textContent = WebInspector.UIString('Offline');
+      this._connectivityIcon.type = 'smallicon-red-ball';
+      this._connectivityIcon.textContent = Common.UIString('Offline');
     }
   }
 
@@ -142,7 +141,7 @@ WebInspector.ApplicationCacheItemsView = class extends WebInspector.SimpleView {
   }
 
   /**
-   * @param {?ApplicationCacheAgent.ApplicationCache} applicationCache
+   * @param {?Protocol.ApplicationCache.ApplicationCache} applicationCache
    */
   _updateCallback(applicationCache) {
     if (!applicationCache || !applicationCache.manifestURL) {
@@ -176,23 +175,18 @@ WebInspector.ApplicationCacheItemsView = class extends WebInspector.SimpleView {
 
     // FIXME: For Chrome, put creationTime and updateTime somewhere.
     // NOTE: localizedString has not yet been added.
-    // WebInspector.UIString("(%s) Created: %s Updated: %s", this._size, this._creationTime, this._updateTime);
+    // Common.UIString("(%s) Created: %s Updated: %s", this._size, this._creationTime, this._updateTime);
   }
 
   _createDataGrid() {
-    var columns = /** @type {!Array<!WebInspector.DataGrid.ColumnDescriptor>} */ ([
-      {
-        id: 'resource',
-        title: WebInspector.UIString('Resource'),
-        sort: WebInspector.DataGrid.Order.Ascending,
-        sortable: true
-      },
-      {id: 'type', title: WebInspector.UIString('Type'), sortable: true},
-      {id: 'size', title: WebInspector.UIString('Size'), align: WebInspector.DataGrid.Align.Right, sortable: true}
+    var columns = /** @type {!Array<!UI.DataGrid.ColumnDescriptor>} */ ([
+      {id: 'resource', title: Common.UIString('Resource'), sort: UI.DataGrid.Order.Ascending, sortable: true},
+      {id: 'type', title: Common.UIString('Type'), sortable: true},
+      {id: 'size', title: Common.UIString('Size'), align: UI.DataGrid.Align.Right, sortable: true}
     ]);
-    this._dataGrid = new WebInspector.DataGrid(columns);
+    this._dataGrid = new UI.DataGrid(columns);
     this._dataGrid.asWidget().show(this.element);
-    this._dataGrid.addEventListener(WebInspector.DataGrid.Events.SortingChanged, this._populateDataGrid, this);
+    this._dataGrid.addEventListener(UI.DataGrid.Events.SortingChanged, this._populateDataGrid, this);
   }
 
   _populateDataGrid() {
@@ -231,7 +225,7 @@ WebInspector.ApplicationCacheItemsView = class extends WebInspector.SimpleView {
       data.resource = resource.url;
       data.type = resource.type;
       data.size = Number.bytesToString(resource.size);
-      var node = new WebInspector.DataGridNode(data);
+      var node = new UI.DataGridNode(data);
       node.resource = resource;
       node.selectable = true;
       this._dataGrid.rootNode().appendChild(node);

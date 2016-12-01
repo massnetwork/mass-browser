@@ -4,10 +4,10 @@
 /**
  * @unrestricted
  */
-WebInspector.RemoteObjectPreviewFormatter = class {
+Components.RemoteObjectPreviewFormatter = class {
   /**
    * @param {!Element} parentElement
-   * @param {!RuntimeAgent.ObjectPreview} preview
+   * @param {!Protocol.Runtime.ObjectPreview} preview
    */
   appendObjectPreview(parentElement, preview) {
     var description = preview.description;
@@ -38,18 +38,32 @@ WebInspector.RemoteObjectPreviewFormatter = class {
 
   /**
    * @param {!Element} parentElement
-   * @param {!RuntimeAgent.ObjectPreview} preview
+   * @param {!Protocol.Runtime.ObjectPreview} preview
    */
   _appendPropertiesPreview(parentElement, preview) {
     var isArray = preview.subtype === 'array' || preview.subtype === 'typedarray';
-    var arrayLength = WebInspector.RemoteObject.arrayLength(preview);
+    var arrayLength = SDK.RemoteObject.arrayLength(preview);
     var properties = preview.properties;
     if (isArray)
       properties = properties.slice().stableSort(compareIndexesFirst);
+    else
+      properties = properties.slice().stableSort(compareFunctionsLast);
 
     /**
-     * @param {!RuntimeAgent.PropertyPreview} a
-     * @param {!RuntimeAgent.PropertyPreview} b
+     * @param {!Protocol.Runtime.PropertyPreview} a
+     * @param {!Protocol.Runtime.PropertyPreview} b
+     */
+    function compareFunctionsLast(a, b) {
+      if (a.type !== 'function' && b.type === 'function')
+        return -1;
+      if (a.type === 'function' && b.type !== 'function')
+        return 1;
+      return 0;
+    }
+
+    /**
+     * @param {!Protocol.Runtime.PropertyPreview} a
+     * @param {!Protocol.Runtime.PropertyPreview} b
      */
     function compareIndexesFirst(a, b) {
       var index1 = toArrayIndex(a.name);
@@ -94,7 +108,7 @@ WebInspector.RemoteObjectPreviewFormatter = class {
 
   /**
    * @param {!Element} parentElement
-   * @param {!RuntimeAgent.ObjectPreview} preview
+   * @param {!Protocol.Runtime.ObjectPreview} preview
    */
   _appendEntriesPreview(parentElement, preview) {
     parentElement.createTextChild('{');
@@ -115,7 +129,7 @@ WebInspector.RemoteObjectPreviewFormatter = class {
   }
 
   /**
-   * @param {!Array.<!RuntimeAgent.PropertyPreview>} propertyPath
+   * @param {!Array.<!Protocol.Runtime.PropertyPreview>} propertyPath
    * @return {!Element}
    */
   _renderPropertyPreviewOrAccessor(propertyPath) {
@@ -139,7 +153,7 @@ WebInspector.RemoteObjectPreviewFormatter = class {
     }
 
     if (type === 'object' && subtype === 'node' && description) {
-      WebInspector.DOMPresentationUtils.createSpansForNodeTitle(span, description);
+      Components.DOMPresentationUtils.createSpansForNodeTitle(span, description);
       return span;
     }
 

@@ -4,15 +4,35 @@
 
 #include "chrome/common/chrome_features.h"
 
+#include "extensions/features/features.h"
+#include "ppapi/features/features.h"
+
 namespace features {
 
 // All features in alphabetical order.
+
+#if defined(OS_MACOSX)
+// Enables Javascript execution via AppleScript.
+const base::Feature kAppleScriptExecuteJavaScript{
+    "AppleScriptExecuteJavaScript", base::FEATURE_ENABLED_BY_DEFAULT};
+#endif  // defined(OS_MACOSX)
 
 #if defined(OS_CHROMEOS)
 // Whether to handle low memory kill of ARC apps by Chrome.
 const base::Feature kArcMemoryManagement{
     "ArcMemoryManagement", base::FEATURE_ENABLED_BY_DEFAULT};
 #endif  // defined(OS_CHROMEOS)
+
+// If enabled, the list of content suggestions on the New Tab page will contain
+// assets (e.g. books, pictures, audio) that the user downloaded for later use.
+const base::Feature kAssetDownloadSuggestionsFeature{
+    "NTPAssetDownloadSuggestions", base::FEATURE_ENABLED_BY_DEFAULT};
+
+#if !defined(OS_ANDROID) && !defined(OS_IOS)
+// Enables auto-dismissing JavaScript dialogs.
+const base::Feature kAutoDismissingDialogs{"AutoDismissingDialogs",
+                                           base::FEATURE_DISABLED_BY_DEFAULT};
+#endif
 
 #if defined(OS_WIN) || defined(OS_MACOSX)
 // Enables automatic tab discarding, when the system is in low memory state.
@@ -38,10 +58,6 @@ const base::Feature kBackspaceGoesBackFeature {
 // after the user has explicitly dismissed them too many times.
 const base::Feature kBlockPromptsIfDismissedOften{
     "BlockPromptsIfDismissedOften", base::FEATURE_DISABLED_BY_DEFAULT};
-
-// Experiment to disable small cross-origin content. (http://crbug.com/608886)
-const base::Feature kBlockSmallContent{"BlockSmallPluginContent",
-                                       base::FEATURE_ENABLED_BY_DEFAULT};
 
 // Fixes for browser hang bugs are deployed in a field trial in order to measure
 // their impact. See crbug.com/478209.
@@ -95,7 +111,7 @@ const base::Feature kLinuxObsoleteSystemIsEndOfTheLine{
 const base::Feature kMaterialDesignBookmarks{"MaterialDesignBookmarks",
                                              base::FEATURE_DISABLED_BY_DEFAULT};
 
-#if defined(ENABLE_EXTENSIONS)
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 // Enabled or disabled the Material Design version of chrome://extensions.
 const base::Feature kMaterialDesignExtensions{
     "MaterialDesignExtensions", base::FEATURE_DISABLED_BY_DEFAULT};
@@ -110,6 +126,16 @@ const base::Feature kMaterialDesignHistory{"MaterialDesignHistory",
 const base::Feature kMaterialDesignSettings{"MaterialDesignSettings",
                                             base::FEATURE_DISABLED_BY_DEFAULT};
 
+#if !defined(OS_ANDROID) && !defined(OS_IOS)
+// Enables media content bitstream remoting, an optimization that can activate
+// during Cast Tab Mirroring. When kMediaRemotingEncrypted is disabled, the
+// feature will not activate for encrypted content.
+const base::Feature kMediaRemoting{"MediaRemoting",
+                                   base::FEATURE_DISABLED_BY_DEFAULT};
+const base::Feature kMediaRemotingEncrypted{"MediaRemotingEncrypted",
+                                            base::FEATURE_DISABLED_BY_DEFAULT};
+#endif  // !defined(OS_ANDROID) && !defined(OS_IOS)
+
 // Enables or disables modal permission prompts.
 const base::Feature kModalPermissionPrompts{"ModalPermissionPrompts",
                                             base::FEATURE_DISABLED_BY_DEFAULT};
@@ -121,11 +147,16 @@ const base::Feature kNativeNotifications{"NativeNotifications",
                                          base::FEATURE_DISABLED_BY_DEFAULT};
 #endif  // defined(OS_MACOSX)
 
+// If enabled, the list of content suggestions on the New Tab page will contain
+// pages that the user downloaded for later use.
+const base::Feature kOfflinePageDownloadSuggestionsFeature{
+    "NTPOfflinePageDownloadSuggestions", base::FEATURE_ENABLED_BY_DEFAULT};
+
 // Enables YouTube Flash videos to be overridden.
 const base::Feature kOverrideYouTubeFlashEmbed{
     "OverrideYouTubeFlashEmbed", base::FEATURE_ENABLED_BY_DEFAULT};
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // Prefer HTML content by hiding Flash from the list of plugins.
 // https://crbug.com/626728
 const base::Feature kPreferHtmlOverPlugins{"PreferHtmlOverPlugins",
@@ -133,7 +164,7 @@ const base::Feature kPreferHtmlOverPlugins{"PreferHtmlOverPlugins",
 #endif
 
 // Enables the Print Scaling feature in print preview.
-#if defined(ENABLE_PRINT_PREVIEW)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 const base::Feature kPrintScaling{"PrintScaling",
                                   base::FEATURE_DISABLED_BY_DEFAULT};
 #endif
@@ -150,7 +181,7 @@ const base::Feature kRuntimeMemoryLeakDetector{
     "RuntimeMemoryLeakDetector", base::FEATURE_DISABLED_BY_DEFAULT};
 #endif  // defined(OS_CHROMEOS)
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // Disables Plugin Power Saver when Flash is in ALLOW mode.
 const base::Feature kRunAllFlashInAllowMode{"RunAllFlashInAllowMode",
                                             base::FEATURE_DISABLED_BY_DEFAULT};

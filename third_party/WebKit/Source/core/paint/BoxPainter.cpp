@@ -22,6 +22,7 @@
 #include "core/paint/BoxDecorationData.h"
 #include "core/paint/LayoutObjectDrawingRecorder.h"
 #include "core/paint/NinePieceImagePainter.h"
+#include "core/paint/ObjectPainter.h"
 #include "core/paint/PaintInfo.h"
 #include "core/paint/PaintLayer.h"
 #include "core/paint/RoundedInnerRectClipper.h"
@@ -51,12 +52,17 @@ bool isPaintingBackgroundOfPaintContainerIntoScrollingContentsLayer(
 
 void BoxPainter::paint(const PaintInfo& paintInfo,
                        const LayoutPoint& paintOffset) {
-  LayoutPoint adjustedPaintOffset = paintOffset + m_layoutBox.location();
+  ObjectPainter(m_layoutBox).checkPaintOffset(paintInfo, paintOffset);
   // Default implementation. Just pass paint through to the children.
+  paintChildren(paintInfo, paintOffset + m_layoutBox.location());
+}
+
+void BoxPainter::paintChildren(const PaintInfo& paintInfo,
+                               const LayoutPoint& paintOffset) {
   PaintInfo childInfo(paintInfo);
   for (LayoutObject* child = m_layoutBox.slowFirstChild(); child;
        child = child->nextSibling())
-    child->paint(childInfo, adjustedPaintOffset);
+    child->paint(childInfo, paintOffset);
 }
 
 void BoxPainter::paintBoxDecorationBackground(const PaintInfo& paintInfo,
@@ -192,10 +198,7 @@ void BoxPainter::paintBoxDecorationBackgroundWithRect(
     // FIXME: Should eventually give the theme control over whether the box
     // shadow should paint, since controls could have custom shadows of their
     // own.
-    if (!m_layoutBox.boxShadowShouldBeAppliedToBackground(
-            boxDecorationData.bleedAvoidance)) {
-      paintBoxShadow(paintInfo, paintRect, style, Normal);
-    }
+    paintBoxShadow(paintInfo, paintRect, style, Normal);
 
     if (bleedAvoidanceIsClipping(boxDecorationData.bleedAvoidance)) {
       stateSaver.save();
@@ -301,28 +304,9 @@ void BoxPainter::paintFillLayers(const PaintInfo& paintInfo,
                                  BackgroundBleedAvoidance bleedAvoidance,
                                  SkBlendMode op,
                                  const LayoutObject* backgroundObject) {
-  // TODO(trchen): Box shadow optimization and background color are concepts
-  // that only apply to background layers. Ideally we should refactor those out
-  // of paintFillLayer.
   FillLayerOcclusionOutputList reversedPaintList;
-  bool shouldDrawBackgroundInSeparateBuffer = false;
-  if (!m_layoutBox.boxShadowShouldBeAppliedToBackground(bleedAvoidance)) {
-    shouldDrawBackgroundInSeparateBuffer =
-        calculateFillLayerOcclusionCulling(reversedPaintList, fillLayer);
-  } else {
-    // If we are responsible for painting box shadow, don't perform fill layer
-    // culling.
-    // TODO(trchen): In theory we only need to make sure the last layer has
-    // border box clipping and make it paint the box shadow. Investigate
-    // optimization opportunity later.
-    for (auto currentLayer = &fillLayer; currentLayer;
-         currentLayer = currentLayer->next()) {
-      reversedPaintList.append(currentLayer);
-      if (currentLayer->composite() != CompositeSourceOver ||
-          currentLayer->blendMode() != WebBlendModeNormal)
-        shouldDrawBackgroundInSeparateBuffer = true;
-    }
-  }
+  bool shouldDrawBackgroundInSeparateBuffer =
+      calculateFillLayerOcclusionCulling(reversedPaintList, fillLayer);
 
   // TODO(trchen): We can optimize out isolation group if we have a
   // non-transparent background color and the bottom layer encloses all other
@@ -343,38 +327,6 @@ void BoxPainter::paintFillLayers(const PaintInfo& paintInfo,
 }
 
 namespace {
-
-// RAII shadow helper.
-class ShadowContext {
-  STACK_ALLOCATED();
-
- public:
-  ShadowContext(GraphicsContext& context,
-                const LayoutObject& obj,
-                bool applyShadow)
-      : m_saver(context, applyShadow) {
-    if (!applyShadow)
-      return;
-
-    const ShadowList* shadowList = obj.style()->boxShadow();
-    DCHECK(shadowList);
-    for (size_t i = shadowList->shadows().size(); i--;) {
-      const ShadowData& boxShadow = shadowList->shadows()[i];
-      if (boxShadow.style() != Normal)
-        continue;
-      FloatSize shadowOffset(boxShadow.x(), boxShadow.y());
-      context.setShadow(
-          shadowOffset, boxShadow.blur(),
-          boxShadow.color().resolve(obj.resolveColor(CSSPropertyColor)),
-          DrawLooperBuilder::ShadowRespectsTransforms,
-          DrawLooperBuilder::ShadowIgnoresAlpha);
-      break;
-    }
-  }
-
- private:
-  GraphicsContextStateSaver m_saver;
-};
 
 FloatRoundedRect getBackgroundRoundedRect(const LayoutObject& obj,
                                           const LayoutRect& borderRect,
@@ -490,9 +442,6 @@ struct FillLayerInfo {
     shouldPaintColor =
         isBottomLayer && color.alpha() &&
         (!shouldPaintImage || !layer.imageOccludesNextLayers(obj));
-    shouldPaintShadow =
-        shouldPaintColor &&
-        obj.boxShadowShouldBeAppliedToBackground(bleedAvoidance, box);
   }
 
   // FillLayerInfo is a temporary, stack-allocated container which cannot
@@ -510,7 +459,6 @@ struct FillLayerInfo {
 
   bool shouldPaintImage;
   bool shouldPaintColor;
-  bool shouldPaintShadow;
 };
 
 // RAII image paint helper.
@@ -628,13 +576,11 @@ inline bool paintFastBottomLayer(const LayoutBoxModelObject& obj,
     border.setRadii(FloatRoundedRect::Radii());
   }
 
-  // Paint the color + shadow if needed.
-  if (info.shouldPaintColor) {
-    const ShadowContext shadowContext(context, obj, info.shouldPaintShadow);
+  // Paint the color if needed.
+  if (info.shouldPaintColor)
     context.fillRoundedRect(border, info.color);
-  }
 
-  // Paint the image + shadow if needed.
+  // Paint the image if needed.
   if (!info.shouldPaintImage || imageTile.isEmpty())
     return true;
 
@@ -650,9 +596,6 @@ inline bool paintFastBottomLayer(const LayoutBoxModelObject& obj,
   const FloatRect srcRect =
       Image::computeSubsetForTile(imageTile, border.rect(), intrinsicTileSize);
 
-  // The shadow may have been applied with the color fill.
-  const ShadowContext shadowContext(
-      context, obj, info.shouldPaintShadow && !info.shouldPaintColor);
   TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("devtools.timeline"), "PaintImage",
                "data", InspectorPaintImageEvent::data(obj, *info.image));
   context.drawImageRRect(imageContext.image(), border, srcRect,
@@ -795,12 +738,9 @@ void BoxPainter::paintFillLayer(const LayoutBoxModelObject& obj,
   // TODO(trchen): In the !bgLayer.hasRepeatXY() case, we could improve the
   // culling test by verifying whether the background image covers the entire
   // painting area.
-  if (info.isBottomLayer && info.color.alpha()) {
+  if (info.isBottomLayer && info.color.alpha() && info.shouldPaintColor) {
     IntRect backgroundRect(pixelSnappedIntRect(scrolledPaintRect));
-    if (info.shouldPaintColor || info.shouldPaintShadow) {
-      const ShadowContext shadowContext(context, obj, info.shouldPaintShadow);
-      context.fillRect(backgroundRect, info.color);
-    }
+    context.fillRect(backgroundRect, info.color);
   }
 
   // no progressive loading of the background image
@@ -1111,7 +1051,7 @@ bool BoxPainter::shouldForceWhiteBackgroundForPrintEconomy(
     const ComputedStyle& style,
     const Document& document) {
   return document.printing() &&
-         style.getPrintColorAdjust() == PrintColorAdjustEconomy &&
+         style.getPrintColorAdjust() == PrintColorAdjust::Economy &&
          (!document.settings() ||
           !document.settings()->shouldPrintBackgrounds());
 }

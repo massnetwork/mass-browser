@@ -26,10 +26,13 @@
 #include "content/public/common/socket_permission_request.h"
 #include "content/public/common/window_container_type.h"
 #include "media/audio/audio_manager.h"
+#include "media/media_features.h"
+#include "media/mojo/interfaces/remoting.mojom.h"
 #include "net/base/mime_util.h"
 #include "net/cookies/canonical_cookie.h"
 #include "storage/browser/fileapi/file_system_context.h"
 #include "third_party/WebKit/public/platform/WebPageVisibilityState.h"
+#include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 
 #if defined(OS_POSIX) && !defined(OS_MACOSX)
@@ -44,7 +47,6 @@ class GURL;
 
 namespace base {
 class CommandLine;
-class DictionaryValue;
 class FilePath;
 }
 
@@ -76,8 +78,6 @@ class SSLCertRequestInfo;
 class SSLInfo;
 class URLRequest;
 class URLRequestContext;
-class URLRequestContextGetter;
-class X509Certificate;
 }
 
 namespace sandbox {
@@ -93,7 +93,6 @@ class Origin;
 }
 
 namespace storage {
-class ExternalMountPoints;
 class FileSystemBackend;
 class QuotaEvictionPolicy;
 }
@@ -101,18 +100,14 @@ class QuotaEvictionPolicy;
 namespace content {
 
 enum class PermissionType;
-class AccessTokenStore;
 class BrowserChildProcessHost;
 class BrowserContext;
 class BrowserMainParts;
-class BrowserPluginGuestDelegate;
 class BrowserPpapiHost;
 class BrowserURLHandler;
 class ClientCertificateDelegate;
 class DevToolsManagerDelegate;
-class ExternalVideoSurfaceContainer;
 class GpuProcessHost;
-class LocationProvider;
 class MediaObserver;
 class MemoryCoordinatorDelegate;
 class NavigationHandle;
@@ -242,9 +237,20 @@ class CONTENT_EXPORT ContentBrowserClient {
   // This also applies in cases where the new URL will open in another process.
   virtual bool ShouldAllowOpenURL(SiteInstance* site_instance, const GURL& url);
 
-  // Allows the embedder to override OpenURLParams.
-  virtual void OverrideOpenURLParams(SiteInstance* site_instance,
-                                     OpenURLParams* params) {}
+  // Allows the embedder to override parameters when navigating. Called for both
+  // opening new URLs and when transferring URLs across processes.
+  virtual void OverrideNavigationParams(SiteInstance* site_instance,
+                                        ui::PageTransition* transition,
+                                        bool* is_renderer_initiated,
+                                        content::Referrer* referrer) {}
+
+  // Allows the embedder to override top document isolation for specific frames.
+  // |url| is the URL being loaded in the subframe, and |parent_site_instance|
+  // is the SiteInstance of the parent frame. Called only for subframes and only
+  // when top document isolation mode is enabled.
+  virtual bool ShouldFrameShareParentSiteInstanceDespiteTopDocumentIsolation(
+      const GURL& url,
+      SiteInstance* parent_site_instance);
 
   // Returns whether a new view for a given |site_url| can be launched in a
   // given |process_host|.
@@ -366,14 +372,14 @@ class CONTENT_EXPORT ContentBrowserClient {
       ResourceContext* context,
       const std::vector<std::pair<int, int> >& render_frames);
 
-#if defined(ENABLE_WEBRTC)
+#if BUILDFLAG(ENABLE_WEBRTC)
   // Allow the embedder to control if WebRTC identities are allowed to be cached
   // and potentially reused for future requests (within the same origin).
   // This is called on the IO thread.
   virtual bool AllowWebRTCIdentityCache(const GURL& url,
                                         const GURL& first_party_url,
                                         ResourceContext* context);
-#endif  // defined(ENABLE_WEBRTC)
+#endif  // BUILDFLAG(ENABLE_WEBRTC)
 
   // Allow the embedder to control whether we can use <keygen>.
   virtual bool AllowKeygen(const GURL& url, content::ResourceContext* context);
@@ -390,10 +396,10 @@ class CONTENT_EXPORT ContentBrowserClient {
       const url::Origin& requesting_origin,
       const url::Origin& embedding_origin);
 
-  // Returns a blacklist of UUIDs that have restrictions when accessed
-  // via Web Bluetooth. Parsed by BluetoothBlacklist::Add().
+  // Returns a blocklist of UUIDs that have restrictions when accessed
+  // via Web Bluetooth. Parsed by BluetoothBlocklist::Add().
   //
-  // The blacklist string must be a comma-separated list of UUID:exclusion
+  // The blocklist string must be a comma-separated list of UUID:exclusion
   // pairs. The pairs may be separated by whitespace. Pair components are
   // colon-separated and must not have whitespace around the colon.
   //
@@ -403,7 +409,7 @@ class CONTENT_EXPORT ContentBrowserClient {
   //
   // Example:
   // "1812:e, 00001800-0000-1000-8000-00805f9b34fb:w, ignored:1, alsoignored."
-  virtual std::string GetWebBluetoothBlacklist();
+  virtual std::string GetWebBluetoothBlocklist();
 
   // Allow the embedder to override the request context based on the URL for
   // certain operations, like cookie access. Returns nullptr to indicate the
@@ -777,6 +783,14 @@ class CONTENT_EXPORT ContentBrowserClient {
   // Returns an instance of MemoryCoordinatorDelegate.
   virtual std::unique_ptr<MemoryCoordinatorDelegate>
   GetMemoryCoordinatorDelegate();
+
+  // Binds a new media remoter service to |request|, if supported by the
+  // embedder, for the |source| that lives in the render frame represented
+  // by |render_frame_host|. This may be called multiple times if there is more
+  // than one source candidate in the same render frame.
+  virtual void CreateMediaRemoter(RenderFrameHost* render_frame_host,
+                                  media::mojom::RemotingSourcePtr source,
+                                  media::mojom::RemoterRequest request) {}
 };
 
 }  // namespace content

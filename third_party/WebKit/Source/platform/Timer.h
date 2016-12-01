@@ -27,8 +27,8 @@
 #define Timer_h
 
 #include "platform/PlatformExport.h"
+#include "platform/WebTaskRunner.h"
 #include "platform/heap/Handle.h"
-#include "public/platform/WebTaskRunner.h"
 #include "public/platform/WebTraceLocation.h"
 #include "wtf/AddressSanitizer.h"
 #include "wtf/Allocator.h"
@@ -196,7 +196,9 @@ class UnthrottledThreadTimer : public TaskRunnerTimer<TimerFiredClass> {
 
 NO_SANITIZE_ADDRESS
 inline bool TimerBase::isActive() const {
-  ASSERT(m_thread == currentThread());
+#if DCHECK_IS_ON()
+  DCHECK_EQ(m_thread, currentThread());
+#endif
   return m_weakPtrFactory.hasWeakPtrs();
 }
 

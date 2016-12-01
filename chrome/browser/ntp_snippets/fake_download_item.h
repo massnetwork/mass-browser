@@ -39,7 +39,7 @@ class FakeDownloadItem : public content::DownloadItem {
   void SetId(uint32_t id);
   uint32_t GetId() const override;
 
-  void SetURL(GURL url);
+  void SetURL(const GURL& url);
   const GURL& GetURL() const override;
 
   void SetTargetFilePath(const base::FilePath& file_path);
@@ -48,15 +48,25 @@ class FakeDownloadItem : public content::DownloadItem {
   void SetFileExternallyRemoved(bool is_file_externally_removed);
   bool GetFileExternallyRemoved() const override;
 
+  void SetStartTime(const base::Time& start_time);
+  base::Time GetStartTime() const override;
+
   void SetEndTime(const base::Time& end_time);
   base::Time GetEndTime() const override;
 
   void SetState(const DownloadState& state);
   DownloadState GetState() const override;
 
+  void SetMimeType(const std::string& mime_type);
+  std::string GetMimeType() const override;
+
+  void SetOriginalUrl(const GURL& url);
+  const GURL& GetOriginalUrl() const override;
+
   // The methods below are not supported and are not expected to be called.
   void ValidateDangerousDownload() override;
-  void StealDangerousDownload(const AcquireFileCallback& callback) override;
+  void StealDangerousDownload(bool delete_file_afterward,
+                              const AcquireFileCallback& callback) override;
   void Pause() override;
   void Resume() override;
   void Cancel(bool user_cancel) override;
@@ -70,14 +80,12 @@ class FakeDownloadItem : public content::DownloadItem {
   bool CanResume() const override;
   bool IsDone() const override;
   const std::vector<GURL>& GetUrlChain() const override;
-  const GURL& GetOriginalUrl() const override;
   const GURL& GetReferrerUrl() const override;
   const GURL& GetSiteUrl() const override;
   const GURL& GetTabUrl() const override;
   const GURL& GetTabReferrerUrl() const override;
   std::string GetSuggestedFilename() const override;
   std::string GetContentDisposition() const override;
-  std::string GetMimeType() const override;
   std::string GetOriginalMimeType() const override;
   std::string GetRemoteAddress() const override;
   bool HasUserGesture() const override;
@@ -99,7 +107,6 @@ class FakeDownloadItem : public content::DownloadItem {
   bool AllDataSaved() const override;
   int64_t GetTotalBytes() const override;
   int64_t GetReceivedBytes() const override;
-  base::Time GetStartTime() const override;
   bool CanShowInFolder() override;
   bool CanOpenDownload() override;
   bool ShouldOpenFileBasedOnExtension() override;
@@ -121,8 +128,11 @@ class FakeDownloadItem : public content::DownloadItem {
   GURL url_;
   base::FilePath file_path_;
   bool is_file_externally_removed_;
+  base::Time start_time_;
   base::Time end_time_;
   DownloadState download_state_;
+  std::string mime_type_;
+  GURL original_url_;
 
   // The members below are to be returned by methods, which return by reference.
   std::string dummy_string;

@@ -20,7 +20,6 @@
 #include "base/path_service.h"
 #include "base/single_thread_task_runner.h"
 #include "base/strings/string16.h"
-#include "base/strings/stringprintf.h"
 #include "base/sys_info.h"
 #include "base/task_runner_util.h"
 #include "base/threading/thread_task_runner_handle.h"
@@ -32,7 +31,7 @@
 #include "chrome/browser/browser_shutdown.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/chromeos/accessibility/accessibility_manager.h"
-#include "chrome/browser/chromeos/arc/arc_auth_service.h"
+#include "chrome/browser/chromeos/arc/arc_session_manager.h"
 #include "chrome/browser/chromeos/base/locale_util.h"
 #include "chrome/browser/chromeos/boot_times_recorder.h"
 #include "chrome/browser/chromeos/first_run/first_run.h"
@@ -529,14 +528,15 @@ void UserSessionManager::RestoreAuthenticationSession(Profile* user_profile) {
       ProfileHelper::Get()->GetUserByProfile(user_profile);
   DCHECK(user);
   if (!net::NetworkChangeNotifier::IsOffline()) {
-    pending_signin_restore_sessions_.erase(user->email());
+    pending_signin_restore_sessions_.erase(user->GetAccountId().GetUserEmail());
     RestoreAuthSessionImpl(user_profile, false /* has_auth_cookies */);
   } else {
     // Even if we're online we should wait till initial
     // OnConnectionTypeChanged() call. Otherwise starting fetchers too early may
     // end up canceling all request when initial network connection type is
     // processed. See http://crbug.com/121643.
-    pending_signin_restore_sessions_.insert(user->email());
+    pending_signin_restore_sessions_.insert(
+        user->GetAccountId().GetUserEmail());
   }
 }
 
@@ -787,7 +787,7 @@ void UserSessionManager::OnSessionRestoreStateChanged(
   if (!connection_error) {
     // We are in one of "done" states here.
     user_manager::UserManager::Get()->SaveUserOAuthStatus(
-        user_manager::UserManager::Get()->GetLoggedInUser()->GetAccountId(),
+        user_manager::UserManager::Get()->GetActiveUser()->GetAccountId(),
         user_status);
   }
 
@@ -834,9 +834,9 @@ void UserSessionManager::OnConnectionTypeChanged(
       continue;
 
     Profile* user_profile = ProfileHelper::Get()->GetProfileByUserUnsafe(*it);
-    bool should_restore_session =
-        pending_signin_restore_sessions_.find((*it)->email()) !=
-        pending_signin_restore_sessions_.end();
+    bool should_restore_session = pending_signin_restore_sessions_.find(
+                                      (*it)->GetAccountId().GetUserEmail()) !=
+                                  pending_signin_restore_sessions_.end();
     OAuth2LoginManager* login_manager =
         OAuth2LoginManagerFactory::GetInstance()->GetForProfile(user_profile);
     if (login_manager->SessionRestoreIsRunning()) {
@@ -844,7 +844,8 @@ void UserSessionManager::OnConnectionTypeChanged(
       // we need to kick off OAuth token verification process again.
       login_manager->ContinueSessionRestore();
     } else if (should_restore_session) {
-      pending_signin_restore_sessions_.erase((*it)->email());
+      pending_signin_restore_sessions_.erase(
+          (*it)->GetAccountId().GetUserEmail());
       RestoreAuthSessionImpl(user_profile, false /* has_auth_cookies */);
     }
   }
@@ -1154,9 +1155,10 @@ void UserSessionManager::FinalizePrepareProfile(Profile* profile) {
       DCHECK(arc::ArcServiceManager::Get());
       arc::ArcServiceManager::Get()->OnPrimaryUserProfilePrepared(
           account_id, std::move(arc_enabled_pref));
-      arc::ArcAuthService* arc_auth_service = arc::ArcAuthService::Get();
-      DCHECK(arc_auth_service);
-      arc_auth_service->OnPrimaryUserProfilePrepared(profile);
+      arc::ArcSessionManager* arc_session_manager =
+          arc::ArcSessionManager::Get();
+      DCHECK(arc_session_manager);
+      arc_session_manager->OnPrimaryUserProfilePrepared(profile);
     }
   }
 
@@ -1325,7 +1327,6 @@ void UserSessionManager::RestoreAuthSessionImpl(
     bool restore_from_auth_cookies) {
   CHECK((authenticator_.get() && authenticator_->authentication_context()) ||
         !restore_from_auth_cookies);
-
   if (chrome::IsRunningInForcedAppMode() ||
       base::CommandLine::ForCurrentProcess()->HasSwitch(
           chromeos::switches::kDisableGaiaServices)) {
@@ -1843,9 +1844,9 @@ void UserSessionManager::Shutdown() {
   if (arc::ArcBridgeService::GetEnabled(
           base::CommandLine::ForCurrentProcess())) {
     DCHECK(arc::ArcServiceManager::Get());
-    arc::ArcAuthService* arc_auth_service = arc::ArcAuthService::Get();
-    if (arc_auth_service)
-      arc_auth_service->Shutdown();
+    arc::ArcSessionManager* arc_session_manager = arc::ArcSessionManager::Get();
+    if (arc_session_manager)
+      arc_session_manager->Shutdown();
   }
   token_handle_fetcher_.reset();
   token_handle_util_.reset();

@@ -39,7 +39,6 @@ class ServiceWorkerRegistration;
 class ServiceWorkerRegistrationHandle;
 class ServiceWorkerVersion;
 struct ServiceWorkerObjectInfo;
-struct ServiceWorkerRegistrationInfo;
 struct ServiceWorkerRegistrationObjectInfo;
 struct ServiceWorkerVersionAttributes;
 
@@ -106,6 +105,10 @@ class CONTENT_EXPORT ServiceWorkerDispatcherHost
                          int route_id,
                          ServiceWorkerProviderType provider_type,
                          bool is_parent_frame_secure) override;
+  void OnProviderDestroyed(int provider_id) override;
+  void OnSetHostedVersionId(int provider_id,
+                            int64_t version_id,
+                            int embedded_worker_id) override;
 
   // IPC Message handlers
   void OnRegisterServiceWorker(int thread_id,
@@ -138,10 +141,11 @@ class CONTENT_EXPORT ServiceWorkerDispatcherHost
                                    int request_id,
                                    int provider_id,
                                    int64_t registration_id);
-  void OnProviderDestroyed(int provider_id);
-  void OnSetHostedVersionId(int provider_id,
-                            int64_t version_id,
-                            int embedded_worker_id);
+  void OnSetNavigationPreloadHeader(int thread_id,
+                                    int request_id,
+                                    int provider_id,
+                                    int64_t registration_id,
+                                    const std::string& value);
   void OnWorkerReadyForInspection(int embedded_worker_id);
   void OnWorkerScriptLoaded(int embedded_worker_id);
   void OnWorkerThreadStarted(int embedded_worker_id,
@@ -254,6 +258,17 @@ class CONTENT_EXPORT ServiceWorkerDispatcherHost
   ServiceWorkerProviderHost* GetProviderHostForRequest(
       ProviderStatus* out_status,
       int provider_id);
+
+  void DidUpdateNavigationPreloadEnabled(int thread_id,
+                                         int request_id,
+                                         int registration_id,
+                                         bool enable,
+                                         ServiceWorkerStatusCode status);
+  void DidUpdateNavigationPreloadHeader(int thread_id,
+                                        int request_id,
+                                        int registration_id,
+                                        const std::string& value,
+                                        ServiceWorkerStatusCode status);
 
   const int render_process_id_;
   MessagePortMessageFilter* const message_port_message_filter_;

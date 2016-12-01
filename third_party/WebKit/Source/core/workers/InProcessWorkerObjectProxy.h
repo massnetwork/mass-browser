@@ -33,6 +33,7 @@
 
 #include "core/CoreExport.h"
 #include "core/dom/MessagePort.h"
+#include "core/frame/UseCounter.h"
 #include "core/workers/WorkerReportingProxy.h"
 #include "platform/Timer.h"
 #include "platform/heap/Handle.h"
@@ -43,9 +44,7 @@ namespace blink {
 
 class ConsoleMessage;
 class ExecutionContext;
-class ExecutionContextTask;
 class InProcessWorkerMessagingProxy;
-class ParentFrameTaskRunners;
 class WorkerGlobalScope;
 class WorkerOrWorkletGlobalScope;
 
@@ -64,14 +63,18 @@ class CORE_EXPORT InProcessWorkerObjectProxy : public WorkerReportingProxy {
 
  public:
   static std::unique_ptr<InProcessWorkerObjectProxy> create(
-      InProcessWorkerMessagingProxy*);
+      const WeakPtr<InProcessWorkerMessagingProxy>&);
   ~InProcessWorkerObjectProxy() override;
 
   void postMessageToWorkerObject(PassRefPtr<SerializedScriptValue>,
                                  std::unique_ptr<MessagePortChannelArray>);
-  void postTaskToMainExecutionContext(std::unique_ptr<ExecutionContextTask>);
   void confirmMessageFromWorkerObject();
   void startPendingActivityTimer();
+
+  // TODO(nhiroki): Move these to WorkerReportingProxy so that we can reuse them
+  // for other workers and worklets (https://crbug.com/376039, 667357).
+  void countFeature(UseCounter::Feature);
+  void countDeprecation(UseCounter::Feature);
 
   // WorkerReportingProxy overrides.
   void reportException(const String& errorMessage,
@@ -82,6 +85,7 @@ class CORE_EXPORT InProcessWorkerObjectProxy : public WorkerReportingProxy {
                             const String& message,
                             SourceLocation*) override;
   void postMessageToPageInspector(const String&) override;
+  ParentFrameTaskRunners* getParentFrameTaskRunners() override;
   void didCreateWorkerGlobalScope(WorkerOrWorkletGlobalScope*) override;
   void didEvaluateWorkerScript(bool success) override;
   void didCloseWorkerGlobalScope() override;
@@ -89,7 +93,7 @@ class CORE_EXPORT InProcessWorkerObjectProxy : public WorkerReportingProxy {
   void didTerminateWorkerThread() override;
 
  protected:
-  InProcessWorkerObjectProxy(InProcessWorkerMessagingProxy*);
+  InProcessWorkerObjectProxy(const WeakPtr<InProcessWorkerMessagingProxy>&);
   virtual ExecutionContext* getExecutionContext();
 
  private:
@@ -97,11 +101,13 @@ class CORE_EXPORT InProcessWorkerObjectProxy : public WorkerReportingProxy {
 
   void checkPendingActivity(TimerBase*);
 
-  // Returns the parent frame's task runners.
-  ParentFrameTaskRunners* getParentFrameTaskRunners();
-
   // This object always outlives this proxy.
   InProcessWorkerMessagingProxy* m_messagingProxy;
+
+  // No guarantees about the lifetimes of tasks posted by this proxy wrt the
+  // InProcessWorkerMessagingProxy so a weak pointer must be used when posting
+  // the tasks.
+  WeakPtr<InProcessWorkerMessagingProxy> m_messagingProxyWeakPtr;
 
   // Used for checking pending activities on the worker global scope. This is
   // cancelled when the worker global scope is destroyed.

@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 /**
- * @implements {WebInspector.SuggestBoxDelegate}
+ * @implements {UI.SuggestBoxDelegate}
  * @unrestricted
  */
-WebInspector.TextEditorAutocompleteController = class {
+TextEditor.TextEditorAutocompleteController = class {
   /**
-   * @param {!WebInspector.CodeMirrorTextEditor} textEditor
+   * @param {!TextEditor.CodeMirrorTextEditor} textEditor
    * @param {!CodeMirror} codeMirror
-   * @param {!WebInspector.AutocompleteConfig} config
+   * @param {!UI.AutocompleteConfig} config
    */
   constructor(textEditor, codeMirror, config) {
     this._textEditor = textEditor;
@@ -38,7 +38,7 @@ WebInspector.TextEditorAutocompleteController = class {
     this._codeMirror.on('blur', this._blur);
     if (this._config.isWordChar) {
       this._codeMirror.on('beforeChange', this._beforeChange);
-      this._dictionary = new WebInspector.TextDictionary();
+      this._dictionary = new Common.TextDictionary();
       this._addWordsFromText(this._codeMirror.getValue());
     }
   }
@@ -71,12 +71,12 @@ WebInspector.TextEditorAutocompleteController = class {
    * @param {string} text
    */
   _addWordsFromText(text) {
-    WebInspector.TextUtils.textToWords(
+    Common.TextUtils.textToWords(
         text, /** @type {function(string):boolean} */ (this._config.isWordChar), addWord.bind(this));
 
     /**
      * @param {string} word
-     * @this {WebInspector.TextEditorAutocompleteController}
+     * @this {TextEditor.TextEditorAutocompleteController}
      */
     function addWord(word) {
       if (word.length && (word[0] < '0' || word[0] > '9'))
@@ -88,7 +88,7 @@ WebInspector.TextEditorAutocompleteController = class {
    * @param {string} text
    */
   _removeWordsFromText(text) {
-    WebInspector.TextUtils.textToWords(
+    Common.TextUtils.textToWords(
         text, /** @type {function(string):boolean} */ (this._config.isWordChar),
         (word) => this._dictionary.removeWord(word));
   }
@@ -96,7 +96,7 @@ WebInspector.TextEditorAutocompleteController = class {
   /**
    * @param {number} lineNumber
    * @param {number} columnNumber
-   * @return {?WebInspector.TextRange}
+   * @return {?Common.TextRange}
    */
   _substituteRange(lineNumber, columnNumber) {
     var range =
@@ -107,20 +107,23 @@ WebInspector.TextEditorAutocompleteController = class {
   }
 
   /**
-   * @param {!WebInspector.TextRange} prefixRange
-   * @param {!WebInspector.TextRange} substituteRange
-   * @return {!Promise.<!WebInspector.SuggestBox.Suggestions>}
+   * @param {!Common.TextRange} queryRange
+   * @param {!Common.TextRange} substituteRange
+   * @param {boolean=} force
+   * @param {string=} tokenType
+   * @return {!Promise.<!UI.SuggestBox.Suggestions>}
    */
-  _wordsWithPrefix(prefixRange, substituteRange) {
-    var external =
-        this._config.suggestionsCallback ? this._config.suggestionsCallback(prefixRange, substituteRange) : null;
+  _wordsWithQuery(queryRange, substituteRange, force, tokenType) {
+    var external = this._config.suggestionsCallback ?
+        this._config.suggestionsCallback(queryRange, substituteRange, force, tokenType) :
+        null;
     if (external)
       return external;
 
-    if (!this._dictionary || prefixRange.startColumn === prefixRange.endColumn)
+    if (!this._dictionary || (!force && queryRange.isEmpty()))
       return Promise.resolve([]);
 
-    var completions = this._dictionary.wordsWithPrefix(this._textEditor.text(prefixRange));
+    var completions = this._dictionary.wordsWithPrefix(this._textEditor.text(queryRange));
     var substituteWord = this._textEditor.text(substituteRange);
     if (this._dictionary.wordCount(substituteWord) === 1)
       completions = completions.filter((word) => word !== substituteWord);
@@ -145,7 +148,7 @@ WebInspector.TextEditorAutocompleteController = class {
       var linesToUpdate = {};
       for (var changeIndex = 0; changeIndex < changes.length; ++changeIndex) {
         var changeObject = changes[changeIndex];
-        var editInfo = WebInspector.CodeMirrorUtils.changeObjectToEditOperation(changeObject);
+        var editInfo = TextEditor.CodeMirrorUtils.changeObjectToEditOperation(changeObject);
         for (var i = editInfo.newRange.startLine; i <= editInfo.newRange.endLine; ++i)
           linesToUpdate[i] = this._codeMirror.getLine(i);
       }
@@ -170,11 +173,11 @@ WebInspector.TextEditorAutocompleteController = class {
         break;
       }
     }
-    if (this._prefixRange) {
+    if (this._queryRange) {
       if (singleCharInput)
-        this._prefixRange.endColumn++;
+        this._queryRange.endColumn++;
       else if (singleCharDelete)
-        this._prefixRange.endColumn--;
+        this._queryRange.endColumn--;
       if (singleCharDelete || singleCharInput)
         this._setHint(this._lastHintText);
     }
@@ -190,7 +193,7 @@ WebInspector.TextEditorAutocompleteController = class {
   }
 
   /**
-   * @param {!WebInspector.TextRange} mainSelection
+   * @param {!Common.TextRange} mainSelection
    * @return {boolean}
    */
   _validateSelectionsContexts(mainSelection) {
@@ -209,7 +212,10 @@ WebInspector.TextEditorAutocompleteController = class {
     return true;
   }
 
-  autocomplete() {
+  /**
+   * @param {boolean=} force
+   */
+  autocomplete(force) {
     this._initializeIfNeeded();
     if (this._codeMirror.somethingSelected()) {
       this.clearAutocomplete();
@@ -223,37 +229,37 @@ WebInspector.TextEditorAutocompleteController = class {
       return;
     }
 
-    var prefixRange = substituteRange.clone();
-    prefixRange.endColumn = cursor.ch;
-    var prefix = this._textEditor.text(prefixRange);
+    var queryRange = substituteRange.clone();
+    queryRange.endColumn = cursor.ch;
+    var query = this._textEditor.text(queryRange);
     var hadSuggestBox = false;
     if (this._suggestBox)
       hadSuggestBox = true;
-
-    this._wordsWithPrefix(prefixRange, substituteRange).then(wordsAcquired.bind(this));
+    var token = this._textEditor.tokenAtTextPosition(substituteRange.startLine, substituteRange.startColumn);
+    var tokenType = (token && token.type) || '';
+    this._wordsWithQuery(queryRange, substituteRange, force, tokenType).then(wordsAcquired.bind(this));
 
     /**
-     * @param {!WebInspector.SuggestBox.Suggestions} wordsWithPrefix
-     * @this {WebInspector.TextEditorAutocompleteController}
+     * @param {!UI.SuggestBox.Suggestions} wordsWithQuery
+     * @this {TextEditor.TextEditorAutocompleteController}
      */
-    function wordsAcquired(wordsWithPrefix) {
-      if (!wordsWithPrefix.length || (wordsWithPrefix.length === 1 && prefix === wordsWithPrefix[0].title) ||
+    function wordsAcquired(wordsWithQuery) {
+      if (!wordsWithQuery.length || (wordsWithQuery.length === 1 && query === wordsWithQuery[0].title) ||
           (!this._suggestBox && hadSuggestBox)) {
         this.clearAutocomplete();
         this._onSuggestionsShownForTest([]);
         return;
       }
       if (!this._suggestBox)
-        this._suggestBox = new WebInspector.SuggestBox(this, 20, this._config.captureEnter);
+        this._suggestBox = new UI.SuggestBox(this, 20, this._config.captureEnter);
 
-      var oldPrefixRange = this._prefixRange;
-      this._prefixRange = prefixRange;
-      if (!oldPrefixRange || prefixRange.startLine !== oldPrefixRange.startLine ||
-          prefixRange.startColumn !== oldPrefixRange.startColumn)
+      var oldQueryRange = this._queryRange;
+      this._queryRange = queryRange;
+      if (!oldQueryRange || queryRange.startLine !== oldQueryRange.startLine ||
+          queryRange.startColumn !== oldQueryRange.startColumn)
         this._updateAnchorBox();
-      this._suggestBox.updateSuggestions(this._anchorBox, wordsWithPrefix, 0, !this._isCursorAtEndOfLine(), prefix);
-      this._onSuggestionsShownForTest(wordsWithPrefix);
-      this._setHint(wordsWithPrefix[0].title);
+      this._suggestBox.updateSuggestions(this._anchorBox, wordsWithQuery, true, !this._isCursorAtEndOfLine(), query);
+      this._onSuggestionsShownForTest(wordsWithQuery);
     }
   }
 
@@ -261,31 +267,34 @@ WebInspector.TextEditorAutocompleteController = class {
    * @param {string} hint
    */
   _setHint(hint) {
-    if (!this._isCursorAtEndOfLine()) {
+    var query = this._textEditor.text(this._queryRange);
+    if (!this._isCursorAtEndOfLine() || !hint.startsWith(query)) {
       this._clearHint();
       return;
     }
-    var prefix = this._textEditor.text(this._prefixRange);
-    var suffix = hint.substring(prefix.length).split('\n')[0];
+    var suffix = hint.substring(query.length).split('\n')[0];
     this._hintElement.textContent = suffix;
     var cursor = this._codeMirror.getCursor('to');
     if (this._hintMarker) {
       var position = this._hintMarker.position();
-      if (!position || !position.equal(WebInspector.TextRange.createFromLocation(cursor.line, cursor.ch))) {
+      if (!position || !position.equal(Common.TextRange.createFromLocation(cursor.line, cursor.ch))) {
         this._hintMarker.clear();
         this._hintMarker = null;
       }
     }
 
-    if (!this._hintMarker)
+    if (!this._hintMarker) {
       this._hintMarker = this._textEditor.addBookmark(
-          cursor.line, cursor.ch, this._hintElement, WebInspector.TextEditorAutocompleteController.HintBookmark, true);
-    else if (this._lastHintText !== hint)
+          cursor.line, cursor.ch, this._hintElement, TextEditor.TextEditorAutocompleteController.HintBookmark, true);
+    } else if (this._lastHintText !== hint) {
       this._hintMarker.refresh();
+    }
     this._lastHintText = hint;
   }
 
   _clearHint() {
+    if (!this._hintElement.textContent)
+      return;
     this._lastHintText = '';
     this._hintElement.textContent = '';
     if (this._hintMarker)
@@ -293,7 +302,7 @@ WebInspector.TextEditorAutocompleteController = class {
   }
 
   /**
-   * @param {!WebInspector.SuggestBox.Suggestions} suggestions
+   * @param {!UI.SuggestBox.Suggestions} suggestions
    */
   _onSuggestionsShownForTest(suggestions) {
   }
@@ -306,7 +315,7 @@ WebInspector.TextEditorAutocompleteController = class {
       return;
     this._suggestBox.hide();
     this._suggestBox = null;
-    this._prefixRange = null;
+    this._queryRange = null;
     this._anchorBox = null;
     this._clearHint();
     this._onSuggestionsHiddenForTest();
@@ -320,12 +329,12 @@ WebInspector.TextEditorAutocompleteController = class {
     if (!this._suggestBox)
       return false;
     switch (event.keyCode) {
-      case WebInspector.KeyboardShortcut.Keys.Tab.code:
+      case UI.KeyboardShortcut.Keys.Tab.code:
         this._suggestBox.acceptSuggestion();
         this.clearAutocomplete();
         return true;
-      case WebInspector.KeyboardShortcut.Keys.End.code:
-      case WebInspector.KeyboardShortcut.Keys.Right.code:
+      case UI.KeyboardShortcut.Keys.End.code:
+      case UI.KeyboardShortcut.Keys.Right.code:
         if (this._isCursorAtEndOfLine()) {
           this._suggestBox.acceptSuggestion();
           this.clearAutocomplete();
@@ -334,11 +343,11 @@ WebInspector.TextEditorAutocompleteController = class {
           this.clearAutocomplete();
           return false;
         }
-      case WebInspector.KeyboardShortcut.Keys.Left.code:
-      case WebInspector.KeyboardShortcut.Keys.Home.code:
+      case UI.KeyboardShortcut.Keys.Left.code:
+      case UI.KeyboardShortcut.Keys.Home.code:
         this.clearAutocomplete();
         return false;
-      case WebInspector.KeyboardShortcut.Keys.Esc.code:
+      case UI.KeyboardShortcut.Keys.Esc.code:
         this.clearAutocomplete();
         return true;
     }
@@ -367,14 +376,11 @@ WebInspector.TextEditorAutocompleteController = class {
    * @override
    */
   acceptSuggestion() {
-    if (this._prefixRange.endColumn - this._prefixRange.startColumn === this._currentSuggestion.length)
-      return;
-
     var selections = this._codeMirror.listSelections().slice();
-    var prefixLength = this._prefixRange.endColumn - this._prefixRange.startColumn;
+    var queryLength = this._queryRange.endColumn - this._queryRange.startColumn;
     for (var i = selections.length - 1; i >= 0; --i) {
       var start = selections[i].head;
-      var end = new CodeMirror.Pos(start.line, start.ch - prefixLength);
+      var end = new CodeMirror.Pos(start.line, start.ch - queryLength);
       this._codeMirror.replaceRange(this._currentSuggestion, start, end, '+autocomplete');
     }
   }
@@ -386,9 +392,9 @@ WebInspector.TextEditorAutocompleteController = class {
     var scrollInfo = this._codeMirror.getScrollInfo();
     var topmostLineNumber = this._codeMirror.lineAtHeight(scrollInfo.top, 'local');
     var bottomLine = this._codeMirror.lineAtHeight(scrollInfo.top + scrollInfo.clientHeight, 'local');
-    if (cursor.line < topmostLineNumber || cursor.line > bottomLine)
+    if (cursor.line < topmostLineNumber || cursor.line > bottomLine) {
       this.clearAutocomplete();
-    else {
+    } else {
       this._updateAnchorBox();
       this._suggestBox.setPosition(this._anchorBox);
     }
@@ -399,10 +405,10 @@ WebInspector.TextEditorAutocompleteController = class {
       return;
     var cursor = this._codeMirror.getCursor();
     var shouldCloseAutocomplete =
-        !(cursor.line === this._prefixRange.startLine && this._prefixRange.startColumn <= cursor.ch &&
-          cursor.ch <= this._prefixRange.endColumn);
+        !(cursor.line === this._queryRange.startLine && this._queryRange.startColumn <= cursor.ch &&
+          cursor.ch <= this._queryRange.endColumn);
     // Try not to hide autocomplete when user types in.
-    if (cursor.line === this._prefixRange.startLine && cursor.ch === this._prefixRange.endColumn + 1) {
+    if (cursor.line === this._queryRange.startLine && cursor.ch === this._queryRange.endColumn + 1) {
       var line = this._codeMirror.getLine(cursor.line);
       shouldCloseAutocomplete = this._config.isWordChar ? !this._config.isWordChar(line.charAt(cursor.ch - 1)) : false;
     }
@@ -415,11 +421,11 @@ WebInspector.TextEditorAutocompleteController = class {
   }
 
   _updateAnchorBox() {
-    var line = this._prefixRange.startLine;
-    var column = this._prefixRange.startColumn;
+    var line = this._queryRange.startLine;
+    var column = this._queryRange.startColumn;
     var metrics = this._textEditor.cursorPositionToCoordinates(line, column);
     this._anchorBox = metrics ? new AnchorBox(metrics.x, metrics.y, 0, metrics.height) : null;
   }
 };
 
-WebInspector.TextEditorAutocompleteController.HintBookmark = Symbol('hint');
+TextEditor.TextEditorAutocompleteController.HintBookmark = Symbol('hint');

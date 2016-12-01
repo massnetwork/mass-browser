@@ -21,8 +21,10 @@
 #include "base/strings/string16.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/waitable_event.h"
+#include "base/task_scheduler/task_scheduler.h"
 #include "base/threading/sequenced_worker_pool.h"
 #include "base/threading/thread_task_runner_handle.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/common/chrome_constants.h"
@@ -157,6 +159,13 @@ bool ServiceProcess::Initialize(base::MessageLoopForUI* message_loop,
     Teardown();
     return false;
   }
+
+  // Initialize TaskScheduler and redirect SequencedWorkerPool tasks to it.
+  constexpr int kMaxTaskSchedulerThreads = 3;
+  base::TaskScheduler::CreateAndSetSimpleTaskScheduler(
+      kMaxTaskSchedulerThreads);
+  base::SequencedWorkerPool::EnableWithRedirectionToTaskSchedulerForProcess();
+
   blocking_pool_ = new base::SequencedWorkerPool(
       3, "ServiceBlocking", base::TaskPriority::USER_VISIBLE);
 
@@ -237,6 +246,11 @@ bool ServiceProcess::Teardown() {
 
   mojo_ipc_support_.reset();
   ipc_server_.reset();
+
+  // On POSIX, this must be called before joining |io_thread_| because it posts
+  // a DeleteSoon() task to that thread.
+  service_process_state_->SignalStopped();
+
   // Signal this event before shutting down the service process. That way all
   // background threads can cleanup.
   shutdown_event_.Signal();
@@ -253,11 +267,13 @@ bool ServiceProcess::Teardown() {
     blocking_pool_ = NULL;
   }
 
+  if (base::TaskScheduler::GetInstance())
+    base::TaskScheduler::GetInstance()->Shutdown();
+
   // The NetworkChangeNotifier must be destroyed after all other threads that
   // might use it have been shut down.
   network_change_notifier_.reset();
 
-  service_process_state_->SignalStopped();
   return true;
 }
 

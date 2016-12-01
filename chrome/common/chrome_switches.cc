@@ -7,6 +7,8 @@
 #include "base/base_switches.h"
 #include "base/command_line.h"
 #include "build/build_config.h"
+#include "ppapi/features/features.h"
+#include "printing/features/features.h"
 
 namespace switches {
 
@@ -189,10 +191,6 @@ const char kDisableBundledPpapiFlash[]      = "disable-bundled-ppapi-flash";
 const char kDisableCastStreamingHWEncoding[] =
     "disable-cast-streaming-hw-encoding";
 
-// Disables detection of child accounts.
-const char kDisableChildAccountDetection[] =
-    "disable-child-account-detection";
-
 // Disables data volume counters in the Clear Browsing Data dialog.
 const char kDisableClearBrowsingDataCounters[] =
     "disable-clear-browsing-data-counters";
@@ -237,9 +235,6 @@ const char kDisableExtensionsFileAccessCheck[] =
 // requests originating from extensions.
 const char kDisableExtensionsHttpThrottling[] =
     "disable-extensions-http-throttling";
-
-// Disable field trial tests configured in fieldtrial_testing_config.json.
-const char kDisableFieldTrialTestingConfig[] = "disable-field-trial-config";
 
 // Disables the HTTP/2 protocol.
 const char kDisableHttp2[] = "disable-http2";
@@ -296,10 +291,6 @@ const char kDisableQuicPortSelection[] = "disable-quic-port-selection";
 // (see SettingsWindowEnabled() below).
 const char kDisableSettingsWindow[]          = "disable-settings-window";
 
-// Disables the Site Engagement service, which records interaction with sites
-// and allocates certain resources accordingly.
-const char kDisableSiteEngagementService[] = "disable-site-engagement-service";
-
 // Disables Web Notification custom layouts.
 const char kDisableWebNotificationCustomLayouts[] =
     "disable-web-notification-custom-layouts";
@@ -347,10 +338,6 @@ const char kEnableBenchmarking[]            = "enable-benchmarking";
 
 // Enables the multi-level undo system for bookmarks.
 const char kEnableBookmarkUndo[]            = "enable-bookmark-undo";
-
-// Enables detection of child accounts.
-const char kEnableChildAccountDetection[] =
-    "enable-child-account-detection";
 
 // Enables data volume counters in the Clear Browsing Data dialog.
 const char kEnableClearBrowsingDataCounters[] =
@@ -470,10 +457,6 @@ const char kEnableSiteEngagementAppBanner[] =
 const char kEnableSiteEngagementEvictionPolicy[] =
     "enable-site-engagement-eviction-policy";
 
-// Enable the Site Engagement service, which records interaction with sites and
-// allocates certain resources accordingly.
-const char kEnableSiteEngagementService[]   = "enable-site-engagement-service";
-
 // Enables the site settings all sites list and site details pages in the Chrome
 // settings UI.
 const char kEnableSiteSettings[] = "enable-site-settings";
@@ -531,19 +514,13 @@ const char kExtensionsUpdateFrequency[]     = "extensions-update-frequency";
 // loaded. It is useful to tell the difference for tracking purposes.
 const char kFastStart[]            = "fast-start";
 
+// Forces Android application mode. This hides certain system UI elements and
+// forces the app to be installed if it hasn't been already.
+const char kForceAndroidAppMode[] = "force-android-app-mode";
+
 // Forces application mode. This hides certain system UI elements and forces
 // the app to be installed if it hasn't been already.
 const char kForceAppMode[]                  = "force-app-mode";
-
-// This option can be used to force parameters of field trials when testing
-// changes locally. The argument is a param list of (key, value) pairs prefixed
-// by an associated (trial, group) pair. You specify the param list for multiple
-// (trial, group) pairs with a comma separator.
-// Example:
-//   "Trial1.Group1:k1/v1/k2/v2,Trial2.Group2:k3/v3/k4/v4"
-// Trial names, groups names, parameter names, and value should all be URL
-// escaped for all non-alphanumeric characters.
-const char kForceFieldTrialParams[] = "force-fieldtrial-params";
 
 // Displays the First Run experience when the browser is started, regardless of
 // whether or not it's actually the First Run (this overrides kNoFirstRun).
@@ -778,6 +755,9 @@ const char kPrerenderModeSwitchValueDisabled[] = "disabled";
 const char kPrerenderModeSwitchValueEnabled[] = "enabled";
 //   prefetch: NoState Prefetch experiment.
 const char kPrerenderModeSwitchValuePrefetch[] = "prefetch";
+//   simple-load: experiment with prerendering disabled but metrics reporting
+//                enabled, to use as a reference for comparisons.
+const char kPrerenderModeSwitchValueSimpleLoad[] = "simple-load";
 
 // Use IPv6 only for privet HTTP.
 const char kPrivetIPv6Only[]                   = "privet-ipv6-only";
@@ -1031,9 +1011,6 @@ const char kDisableAppLink[] = "disable-app-link";
 // Disables Contextual Search.
 const char kDisableContextualSearch[] = "disable-contextual-search";
 
-// Disable VR UI if supported.
-const char kDisableVrShell[] = "disable-vr-shell";
-
 // Enable the accessibility tab switcher.
 const char kEnableAccessibilityTabSwitcher[] =
     "enable-accessibility-tab-switcher";
@@ -1055,11 +1032,8 @@ const char kEnableHostedMode[] = "enable-hosted-mode";
 // unresponsive web content.
 const char kEnableHungRendererInfoBar[] = "enable-hung-renderer-infobar";
 
-// Enable VR UI if supported.
-const char kEnableVrShell[] = "enable-vr-shell";
-
 // Enables "Add to Home screen" in the app menu to generate WebAPKs.
-const char kEnableWebApk[] = "enable-webapk";
+const char kEnableWebApk[] = "enable-improved-a2hs";
 
 // Forces the update menu badge to show.
 const char kForceShowUpdateMenuBadge[] = "force-show-update-menu-badge";
@@ -1201,7 +1175,7 @@ const char kMakeChromeDefault[] = "make-chrome-default";
 
 #if defined(OS_WIN)
 // Disables using GDI to print text as simply text. Fallback to printing text
-// as paths.
+// as paths. Overrides --enable-gdi-text-printing.
 const char kDisableGDITextPrinting[] = "disable-gdi-text-printing";
 
 // Disables per monitor DPI for supported Windows versions.
@@ -1210,6 +1184,9 @@ const char kDisablePerMonitorDpi[]          = "disable-per-monitor-dpi";
 
 // Fallback to XPS. By default connector uses CDD.
 const char kEnableCloudPrintXps[]           = "enable-cloud-print-xps";
+
+// Enables using GDI to print text as simply text.
+const char kEnableGDITextPrinting[] = "enable-gdi-text-printing";
 
 // Enables per monitor DPI for supported Windows versions.
 const char kEnablePerMonitorDpi[]           = "enable-per-monitor-dpi";
@@ -1258,12 +1235,12 @@ const char kWindows10CustomTitlebar[]       = "windows10-custom-titlebar";
 const char kWindows8Search[]                = "windows8-search";
 #endif  // defined(OS_WIN)
 
-#if defined(ENABLE_PRINT_PREVIEW) && !defined(OFFICIAL_BUILD)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW) && !defined(OFFICIAL_BUILD)
 // Enables support to debug printing subsystem.
 const char kDebugPrint[] = "debug-print";
 #endif
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
 // Specifies comma-separated list of extension ids or hosts to grant
 // access to CRX file system APIs.
 const char kAllowNaClCrxFsAPI[]             = "allow-nacl-crxfs-api";
@@ -1322,6 +1299,15 @@ bool SettingsWindowEnabled() {
 bool PowerOverlayEnabled() {
   return base::CommandLine::ForCurrentProcess()->HasSwitch(
       ::switches::kEnablePowerOverlay);
+}
+#endif
+
+#if defined(OS_WIN)
+bool GDITextPrintingEnabled() {
+  const auto& command_line = *base::CommandLine::ForCurrentProcess();
+  if (command_line.HasSwitch(kDisableGDITextPrinting))
+    return false;
+  return command_line.HasSwitch(kEnableGDITextPrinting);
 }
 #endif
 

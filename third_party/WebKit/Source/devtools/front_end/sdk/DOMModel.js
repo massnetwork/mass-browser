@@ -32,9 +32,9 @@
 /**
  * @unrestricted
  */
-WebInspector.DOMNode = class extends WebInspector.SDKObject {
+SDK.DOMNode = class extends SDK.SDKObject {
   /**
-   * @param {!WebInspector.DOMModel} domModel
+   * @param {!SDK.DOMModel} domModel
    */
   constructor(domModel) {
     super(domModel.target());
@@ -42,22 +42,22 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {!WebInspector.DOMModel} domModel
-   * @param {?WebInspector.DOMDocument} doc
+   * @param {!SDK.DOMModel} domModel
+   * @param {?SDK.DOMDocument} doc
    * @param {boolean} isInShadowTree
-   * @param {!DOMAgent.Node} payload
-   * @return {!WebInspector.DOMNode}
+   * @param {!Protocol.DOM.Node} payload
+   * @return {!SDK.DOMNode}
    */
   static create(domModel, doc, isInShadowTree, payload) {
-    var node = new WebInspector.DOMNode(domModel);
+    var node = new SDK.DOMNode(domModel);
     node._init(doc, isInShadowTree, payload);
     return node;
   }
 
   /**
-   * @param {?WebInspector.DOMDocument} doc
+   * @param {?SDK.DOMDocument} doc
    * @param {boolean} isInShadowTree
-   * @param {!DOMAgent.Node} payload
+   * @param {!Protocol.DOM.Node} payload
    */
   _init(doc, isInShadowTree, payload) {
     this._agent = this._domModel._agent;
@@ -65,6 +65,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
     this._isInShadowTree = isInShadowTree;
 
     this.id = payload.nodeId;
+    this._backendNodeId = payload.backendNodeId;
     this._domModel._idToDOMNode[this.id] = this;
     this._nodeType = payload.nodeType;
     this._nodeName = payload.nodeName;
@@ -98,21 +99,19 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
     if (payload.shadowRoots) {
       for (var i = 0; i < payload.shadowRoots.length; ++i) {
         var root = payload.shadowRoots[i];
-        var node = WebInspector.DOMNode.create(this._domModel, this.ownerDocument, true, root);
+        var node = SDK.DOMNode.create(this._domModel, this.ownerDocument, true, root);
         this._shadowRoots.push(node);
         node.parentNode = this;
       }
     }
 
     if (payload.templateContent) {
-      this._templateContent =
-          WebInspector.DOMNode.create(this._domModel, this.ownerDocument, true, payload.templateContent);
+      this._templateContent = SDK.DOMNode.create(this._domModel, this.ownerDocument, true, payload.templateContent);
       this._templateContent.parentNode = this;
     }
 
     if (payload.importedDocument) {
-      this._importedDocument =
-          WebInspector.DOMNode.create(this._domModel, this.ownerDocument, true, payload.importedDocument);
+      this._importedDocument = SDK.DOMNode.create(this._domModel, this.ownerDocument, true, payload.importedDocument);
       this._importedDocument.parentNode = this;
     }
 
@@ -125,7 +124,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
     this._setPseudoElements(payload.pseudoElements);
 
     if (payload.contentDocument) {
-      this._contentDocument = new WebInspector.DOMDocument(this._domModel, payload.contentDocument);
+      this._contentDocument = new SDK.DOMDocument(this._domModel, payload.contentDocument);
       this._children = [this._contentDocument];
       this._renumber();
     }
@@ -147,14 +146,21 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {!WebInspector.DOMModel}
+   * @return {!SDK.DOMModel}
    */
   domModel() {
     return this._domModel;
   }
 
   /**
-   * @return {?Array.<!WebInspector.DOMNode>}
+   * @return {number}
+   */
+  backendNodeId() {
+    return this._backendNodeId;
+  }
+
+  /**
+   * @return {?Array.<!SDK.DOMNode>}
    */
   children() {
     return this._children ? this._children.slice() : null;
@@ -182,21 +188,21 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {!Array.<!WebInspector.DOMNode>}
+   * @return {!Array.<!SDK.DOMNode>}
    */
   shadowRoots() {
     return this._shadowRoots.slice();
   }
 
   /**
-   * @return {?WebInspector.DOMNode}
+   * @return {?SDK.DOMNode}
    */
   templateContent() {
     return this._templateContent || null;
   }
 
   /**
-   * @return {?WebInspector.DOMNode}
+   * @return {?SDK.DOMNode}
    */
   importedDocument() {
     return this._importedDocument || null;
@@ -231,28 +237,28 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {!Map<string, !WebInspector.DOMNode>}
+   * @return {!Map<string, !SDK.DOMNode>}
    */
   pseudoElements() {
     return this._pseudoElements;
   }
 
   /**
-   * @return {?WebInspector.DOMNode}
+   * @return {?SDK.DOMNode}
    */
   beforePseudoElement() {
     if (!this._pseudoElements)
       return null;
-    return this._pseudoElements.get(WebInspector.DOMNode.PseudoElementNames.Before);
+    return this._pseudoElements.get(SDK.DOMNode.PseudoElementNames.Before);
   }
 
   /**
-   * @return {?WebInspector.DOMNode}
+   * @return {?SDK.DOMNode}
    */
   afterPseudoElement() {
     if (!this._pseudoElements)
       return null;
-    return this._pseudoElements.get(WebInspector.DOMNode.PseudoElementNames.After);
+    return this._pseudoElements.get(SDK.DOMNode.PseudoElementNames.After);
   }
 
   /**
@@ -264,7 +270,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {!Array.<!WebInspector.DOMNodeShortcut>}
+   * @return {!Array.<!SDK.DOMNodeShortcut>}
    */
   distributedNodes() {
     return this._distributedNodes || [];
@@ -278,7 +284,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {?WebInspector.DOMNode}
+   * @return {?SDK.DOMNode}
    */
   ancestorShadowHost() {
     var ancestorShadowRoot = this.ancestorShadowRoot();
@@ -286,7 +292,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {?WebInspector.DOMNode}
+   * @return {?SDK.DOMNode}
    */
   ancestorShadowRoot() {
     if (!this._isInShadowTree)
@@ -299,14 +305,13 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {?WebInspector.DOMNode}
+   * @return {?SDK.DOMNode}
    */
   ancestorUserAgentShadowRoot() {
     var ancestorShadowRoot = this.ancestorShadowRoot();
     if (!ancestorShadowRoot)
       return null;
-    return ancestorShadowRoot.shadowRootType() === WebInspector.DOMNode.ShadowRootTypes.UserAgent ? ancestorShadowRoot :
-                                                                                                    null;
+    return ancestorShadowRoot.shadowRootType() === SDK.DOMNode.ShadowRootTypes.UserAgent ? ancestorShadowRoot : null;
   }
 
   /**
@@ -401,7 +406,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {!Array<!WebInspector.DOMNode.Attribute>}
+   * @return {!Array<!SDK.DOMNode.Attribute>}
    */
   attributes() {
     return this._attributes;
@@ -414,7 +419,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   removeAttribute(name, callback) {
     /**
      * @param {?Protocol.Error} error
-     * @this {WebInspector.DOMNode}
+     * @this {SDK.DOMNode}
      */
     function mycallback(error) {
       if (!error) {
@@ -433,7 +438,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {function(?Array.<!WebInspector.DOMNode>)=} callback
+   * @param {function(?Array.<!SDK.DOMNode>)=} callback
    */
   getChildNodes(callback) {
     if (this._children) {
@@ -443,7 +448,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
     }
 
     /**
-     * @this {WebInspector.DOMNode}
+     * @this {SDK.DOMNode}
      * @param {?Protocol.Error} error
      */
     function mycallback(error) {
@@ -456,11 +461,11 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
 
   /**
    * @param {number} depth
-   * @param {function(?Array.<!WebInspector.DOMNode>)=} callback
+   * @param {function(?Array.<!SDK.DOMNode>)=} callback
    */
   getSubtree(depth, callback) {
     /**
-     * @this {WebInspector.DOMNode}
+     * @this {SDK.DOMNode}
      * @param {?Protocol.Error} error
      */
     function mycallback(error) {
@@ -487,7 +492,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {function(?Protocol.Error, !DOMAgent.NodeId=)=} callback
+   * @param {function(?Protocol.Error, !Protocol.DOM.NodeId=)=} callback
    */
   removeNode(callback) {
     this._agent.removeNode(this.id, this._domModel._markRevision(this, callback));
@@ -511,7 +516,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
    */
   path() {
     /**
-     * @param {?WebInspector.DOMNode} node
+     * @param {?SDK.DOMNode} node
      */
     function canPush(node) {
       return node && ('index' in node || (node.isShadowRoot() && node.parentNode)) && node._nodeName.length;
@@ -522,7 +527,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
     while (canPush(node)) {
       var index = typeof node.index === 'number' ?
           node.index :
-          (node.shadowRootType() === WebInspector.DOMNode.ShadowRootTypes.UserAgent ? 'u' : 'a');
+          (node.shadowRootType() === SDK.DOMNode.ShadowRootTypes.UserAgent ? 'u' : 'a');
       path.push([index, node._nodeName]);
       node = node.parentNode;
     }
@@ -531,7 +536,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {!WebInspector.DOMNode} node
+   * @param {!SDK.DOMNode} node
    * @return {boolean}
    */
   isAncestor(node) {
@@ -548,7 +553,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {!WebInspector.DOMNode} descendant
+   * @param {!SDK.DOMNode} descendant
    * @return {boolean}
    */
   isDescendant(descendant) {
@@ -556,7 +561,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {?PageAgent.FrameId}
+   * @return {?Protocol.Page.FrameId}
    */
   frameId() {
     var node = this.parentNode || this;
@@ -591,19 +596,19 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {!WebInspector.DOMNode} prev
-   * @param {!DOMAgent.Node} payload
-   * @return {!WebInspector.DOMNode}
+   * @param {!SDK.DOMNode} prev
+   * @param {!Protocol.DOM.Node} payload
+   * @return {!SDK.DOMNode}
    */
   _insertChild(prev, payload) {
-    var node = WebInspector.DOMNode.create(this._domModel, this.ownerDocument, this._isInShadowTree, payload);
+    var node = SDK.DOMNode.create(this._domModel, this.ownerDocument, this._isInShadowTree, payload);
     this._children.splice(this._children.indexOf(prev) + 1, 0, node);
     this._renumber();
     return node;
   }
 
   /**
-   * @param {!WebInspector.DOMNode} node
+   * @param {!SDK.DOMNode} node
    */
   _removeChild(node) {
     if (node.pseudoType()) {
@@ -620,12 +625,12 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
     node.parentNode = null;
     this._subtreeMarkerCount -= node._subtreeMarkerCount;
     if (node._subtreeMarkerCount)
-      this._domModel.dispatchEventToListeners(WebInspector.DOMModel.Events.MarkersChanged, this);
+      this._domModel.dispatchEventToListeners(SDK.DOMModel.Events.MarkersChanged, this);
     this._renumber();
   }
 
   /**
-   * @param {!Array.<!DOMAgent.Node>} payloads
+   * @param {!Array.<!Protocol.DOM.Node>} payloads
    */
   _setChildrenPayload(payloads) {
     // We set children in the constructor.
@@ -635,14 +640,14 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
     this._children = [];
     for (var i = 0; i < payloads.length; ++i) {
       var payload = payloads[i];
-      var node = WebInspector.DOMNode.create(this._domModel, this.ownerDocument, this._isInShadowTree, payload);
+      var node = SDK.DOMNode.create(this._domModel, this.ownerDocument, this._isInShadowTree, payload);
       this._children.push(node);
     }
     this._renumber();
   }
 
   /**
-   * @param {!Array.<!DOMAgent.Node>|undefined} payloads
+   * @param {!Array.<!Protocol.DOM.Node>|undefined} payloads
    */
   _setPseudoElements(payloads) {
     this._pseudoElements = new Map();
@@ -650,20 +655,21 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
       return;
 
     for (var i = 0; i < payloads.length; ++i) {
-      var node = WebInspector.DOMNode.create(this._domModel, this.ownerDocument, this._isInShadowTree, payloads[i]);
+      var node = SDK.DOMNode.create(this._domModel, this.ownerDocument, this._isInShadowTree, payloads[i]);
       node.parentNode = this;
       this._pseudoElements.set(node.pseudoType(), node);
     }
   }
 
   /**
-   * @param {!Array.<!DOMAgent.BackendNode>} payloads
+   * @param {!Array.<!Protocol.DOM.BackendNode>} payloads
    */
   _setDistributedNodePayloads(payloads) {
     this._distributedNodes = [];
-    for (var payload of payloads)
-      this._distributedNodes.push(new WebInspector.DOMNodeShortcut(
-          this._domModel.target(), payload.backendNodeId, payload.nodeType, payload.nodeName));
+    for (var payload of payloads) {
+      this._distributedNodes.push(
+          new SDK.DOMNodeShortcut(this._domModel.target(), payload.backendNodeId, payload.nodeType, payload.nodeName));
+    }
   }
 
   _renumber() {
@@ -718,9 +724,9 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {!WebInspector.DOMNode} targetNode
-   * @param {?WebInspector.DOMNode} anchorNode
-   * @param {function(?Protocol.Error, !DOMAgent.NodeId=)=} callback
+   * @param {!SDK.DOMNode} targetNode
+   * @param {?SDK.DOMNode} anchorNode
+   * @param {function(?Protocol.Error, !Protocol.DOM.NodeId=)=} callback
    */
   copyTo(targetNode, anchorNode, callback) {
     this._agent.copyTo(
@@ -728,9 +734,9 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {!WebInspector.DOMNode} targetNode
-   * @param {?WebInspector.DOMNode} anchorNode
-   * @param {function(?Protocol.Error, !DOMAgent.NodeId=)=} callback
+   * @param {!SDK.DOMNode} targetNode
+   * @param {?SDK.DOMNode} anchorNode
+   * @param {function(?Protocol.Error, !Protocol.DOM.NodeId=)=} callback
    */
   moveTo(targetNode, anchorNode, callback) {
     this._agent.moveTo(
@@ -757,7 +763,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
       for (var node = this; node; node = node.parentNode)
         --node._subtreeMarkerCount;
       for (var node = this; node; node = node.parentNode)
-        this._domModel.dispatchEventToListeners(WebInspector.DOMModel.Events.MarkersChanged, node);
+        this._domModel.dispatchEventToListeners(SDK.DOMModel.Events.MarkersChanged, node);
       return;
     }
 
@@ -767,7 +773,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
     }
     this._markers.set(name, value);
     for (var node = this; node; node = node.parentNode)
-      this._domModel.dispatchEventToListeners(WebInspector.DOMModel.Events.MarkersChanged, node);
+      this._domModel.dispatchEventToListeners(SDK.DOMModel.Events.MarkersChanged, node);
   }
 
   /**
@@ -780,11 +786,11 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {function(!WebInspector.DOMNode, string)} visitor
+   * @param {function(!SDK.DOMNode, string)} visitor
    */
   traverseMarkers(visitor) {
     /**
-     * @param {!WebInspector.DOMNode} node
+     * @param {!SDK.DOMNode} node
      */
     function traverse(node) {
       if (!node._subtreeMarkerCount)
@@ -808,14 +814,14 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
       return url;
     for (var frameOwnerCandidate = this; frameOwnerCandidate; frameOwnerCandidate = frameOwnerCandidate.parentNode) {
       if (frameOwnerCandidate.baseURL)
-        return WebInspector.ParsedURL.completeURL(frameOwnerCandidate.baseURL, url);
+        return Common.ParsedURL.completeURL(frameOwnerCandidate.baseURL, url);
     }
     return null;
   }
 
   /**
    * @param {string=} mode
-   * @param {!RuntimeAgent.RemoteObjectId=} objectId
+   * @param {!Protocol.Runtime.RemoteObjectId=} objectId
    */
   highlight(mode, objectId) {
     this._domModel.highlightDOMNode(this.id, mode, undefined, objectId);
@@ -827,15 +833,15 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
 
   /**
    * @param {string=} objectGroup
-   * @param {function(?WebInspector.RemoteObject)=} callback
+   * @param {function(?SDK.RemoteObject)=} callback
    */
   resolveToObject(objectGroup, callback) {
     this._agent.resolveNode(this.id, objectGroup, mycallback.bind(this));
 
     /**
      * @param {?Protocol.Error} error
-     * @param {!RuntimeAgent.RemoteObject} object
-     * @this {WebInspector.DOMNode}
+     * @param {!Protocol.Runtime.RemoteObject} object
+     * @this {SDK.DOMNode}
      */
     function mycallback(error, object) {
       if (!callback)
@@ -850,14 +856,14 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
 
   /**
    * @param {string=} objectGroup
-   * @return {!Promise<!WebInspector.RemoteObject>}
+   * @return {!Promise<!SDK.RemoteObject>}
    */
   resolveToObjectPromise(objectGroup) {
     return new Promise(resolveToObject.bind(this));
     /**
      * @param {function(?)} fulfill
      * @param {function(*)} reject
-     * @this {WebInspector.DOMNode}
+     * @this {SDK.DOMNode}
      */
     function resolveToObject(fulfill, reject) {
       this.resolveToObject(objectGroup, mycallback);
@@ -871,7 +877,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {function(?DOMAgent.BoxModel)} callback
+   * @param {function(?Protocol.DOM.BoxModel)} callback
    */
   boxModel(callback) {
     this._agent.getBoxModel(this.id, this._domModel._wrapClientCallback(callback));
@@ -893,7 +899,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
   }
 
   /**
-   *  @return {?WebInspector.DOMNode}
+   *  @return {?SDK.DOMNode}
    */
   enclosingElementOrSelf() {
     var node = this;
@@ -909,7 +915,7 @@ WebInspector.DOMNode = class extends WebInspector.SDKObject {
 /**
  * @enum {string}
  */
-WebInspector.DOMNode.PseudoElementNames = {
+SDK.DOMNode.PseudoElementNames = {
   Before: 'before',
   After: 'after'
 };
@@ -917,30 +923,30 @@ WebInspector.DOMNode.PseudoElementNames = {
 /**
  * @enum {string}
  */
-WebInspector.DOMNode.ShadowRootTypes = {
+SDK.DOMNode.ShadowRootTypes = {
   UserAgent: 'user-agent',
   Open: 'open',
   Closed: 'closed'
 };
 
-/** @typedef {{name: string, value: string, _node: WebInspector.DOMNode}} */
-WebInspector.DOMNode.Attribute;
+/** @typedef {{name: string, value: string, _node: SDK.DOMNode}} */
+SDK.DOMNode.Attribute;
 
 /**
  * @unrestricted
  */
-WebInspector.DeferredDOMNode = class {
+SDK.DeferredDOMNode = class {
   /**
-   * @param {!WebInspector.Target} target
+   * @param {!SDK.Target} target
    * @param {number} backendNodeId
    */
   constructor(target, backendNodeId) {
-    this._domModel = WebInspector.DOMModel.fromTarget(target);
+    this._domModel = SDK.DOMModel.fromTarget(target);
     this._backendNodeId = backendNodeId;
   }
 
   /**
-   * @param {function(?WebInspector.DOMNode)} callback
+   * @param {function(?SDK.DOMNode)} callback
    */
   resolve(callback) {
     if (!this._domModel) {
@@ -951,8 +957,8 @@ WebInspector.DeferredDOMNode = class {
     this._domModel.pushNodesByBackendIdsToFrontend(new Set([this._backendNodeId]), onGotNode.bind(this));
 
     /**
-     * @param {?Map<number, ?WebInspector.DOMNode>} nodeIds
-     * @this {WebInspector.DeferredDOMNode}
+     * @param {?Map<number, ?SDK.DOMNode>} nodeIds
+     * @this {SDK.DeferredDOMNode}
      */
     function onGotNode(nodeIds) {
       callback(nodeIds && (nodeIds.get(this._backendNodeId) || null));
@@ -960,17 +966,17 @@ WebInspector.DeferredDOMNode = class {
   }
 
   /**
-   * @return {!Promise.<!WebInspector.DOMNode>}
+   * @return {!Promise.<!SDK.DOMNode>}
    */
   resolvePromise() {
     /**
      * @param {function(?)} fulfill
      * @param {function(*)} reject
-     * @this {WebInspector.DeferredDOMNode}
+     * @this {SDK.DeferredDOMNode}
      */
     function resolveNode(fulfill, reject) {
       /**
-       * @param {?WebInspector.DOMNode} node
+       * @param {?SDK.DOMNode} node
        */
       function mycallback(node) {
         fulfill(node);
@@ -996,9 +1002,9 @@ WebInspector.DeferredDOMNode = class {
 /**
  * @unrestricted
  */
-WebInspector.DOMNodeShortcut = class {
+SDK.DOMNodeShortcut = class {
   /**
-   * @param {!WebInspector.Target} target
+   * @param {!SDK.Target} target
    * @param {number} backendNodeId
    * @param {number} nodeType
    * @param {string} nodeName
@@ -1006,17 +1012,17 @@ WebInspector.DOMNodeShortcut = class {
   constructor(target, backendNodeId, nodeType, nodeName) {
     this.nodeType = nodeType;
     this.nodeName = nodeName;
-    this.deferredNode = new WebInspector.DeferredDOMNode(target, backendNodeId);
+    this.deferredNode = new SDK.DeferredDOMNode(target, backendNodeId);
   }
 };
 
 /**
  * @unrestricted
  */
-WebInspector.DOMDocument = class extends WebInspector.DOMNode {
+SDK.DOMDocument = class extends SDK.DOMNode {
   /**
-   * @param {!WebInspector.DOMModel} domModel
-   * @param {!DOMAgent.Node} payload
+   * @param {!SDK.DOMModel} domModel
+   * @param {!Protocol.DOM.Node} payload
    */
   constructor(domModel, payload) {
     super(domModel);
@@ -1030,47 +1036,47 @@ WebInspector.DOMDocument = class extends WebInspector.DOMNode {
 /**
  * @unrestricted
  */
-WebInspector.DOMModel = class extends WebInspector.SDKModel {
+SDK.DOMModel = class extends SDK.SDKModel {
   /**
-   * @param {!WebInspector.Target} target
+   * @param {!SDK.Target} target
    */
   constructor(target) {
-    super(WebInspector.DOMModel, target);
+    super(SDK.DOMModel, target);
 
     this._agent = target.domAgent();
 
-    /** @type {!Object.<number, !WebInspector.DOMNode>} */
+    /** @type {!Object.<number, !SDK.DOMNode>} */
     this._idToDOMNode = {};
-    /** @type {?WebInspector.DOMDocument} */
+    /** @type {?SDK.DOMDocument} */
     this._document = null;
     /** @type {!Object.<number, boolean>} */
     this._attributeLoadNodeIds = {};
-    target.registerDOMDispatcher(new WebInspector.DOMDispatcher(this));
+    target.registerDOMDispatcher(new SDK.DOMDispatcher(this));
 
     this._inspectModeEnabled = false;
 
-    this._defaultHighlighter = new WebInspector.DefaultDOMNodeHighlighter(this._agent);
+    this._defaultHighlighter = new SDK.DefaultDOMNodeHighlighter(this._agent);
     this._highlighter = this._defaultHighlighter;
 
     this._agent.enable();
   }
 
   /**
-   * @param {!WebInspector.RemoteObject} object
+   * @param {!SDK.RemoteObject} object
    */
   static highlightObjectAsDOMNode(object) {
-    var domModel = WebInspector.DOMModel.fromTarget(object.target());
+    var domModel = SDK.DOMModel.fromTarget(object.target());
     if (domModel)
       domModel.highlightDOMNode(undefined, undefined, undefined, object.objectId);
   }
 
   /**
-   * @return {!Array<!WebInspector.DOMModel>}
+   * @return {!Array<!SDK.DOMModel>}
    */
   static instances() {
     var result = [];
-    for (var target of WebInspector.targetManager.targets()) {
-      var domModel = WebInspector.DOMModel.fromTarget(target);
+    for (var target of SDK.targetManager.targets()) {
+      var domModel = SDK.DOMModel.fromTarget(target);
       if (domModel)
         result.push(domModel);
     }
@@ -1078,57 +1084,57 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   static hideDOMNodeHighlight() {
-    for (var domModel of WebInspector.DOMModel.instances())
+    for (var domModel of SDK.DOMModel.instances())
       domModel.highlightDOMNode(0);
   }
 
   static muteHighlight() {
-    WebInspector.DOMModel.hideDOMNodeHighlight();
-    WebInspector.DOMModel._highlightDisabled = true;
+    SDK.DOMModel.hideDOMNodeHighlight();
+    SDK.DOMModel._highlightDisabled = true;
   }
 
   static unmuteHighlight() {
-    WebInspector.DOMModel._highlightDisabled = false;
+    SDK.DOMModel._highlightDisabled = false;
   }
 
   static cancelSearch() {
-    for (var domModel of WebInspector.DOMModel.instances())
+    for (var domModel of SDK.DOMModel.instances())
       domModel._cancelSearch();
   }
 
   /**
-   * @param {!WebInspector.Target} target
-   * @return {?WebInspector.DOMModel}
+   * @param {!SDK.Target} target
+   * @return {?SDK.DOMModel}
    */
   static fromTarget(target) {
-    return /** @type {?WebInspector.DOMModel} */ (target.model(WebInspector.DOMModel));
+    return /** @type {?SDK.DOMModel} */ (target.model(SDK.DOMModel));
   }
 
   /**
-   * @param {!WebInspector.DOMNode} node
+   * @param {!SDK.DOMNode} node
    */
   _scheduleMutationEvent(node) {
-    if (!this.hasEventListeners(WebInspector.DOMModel.Events.DOMMutated))
+    if (!this.hasEventListeners(SDK.DOMModel.Events.DOMMutated))
       return;
 
     this._lastMutationId = (this._lastMutationId || 0) + 1;
     Promise.resolve().then(callObserve.bind(this, node, this._lastMutationId));
 
     /**
-     * @this {WebInspector.DOMModel}
-     * @param {!WebInspector.DOMNode} node
+     * @this {SDK.DOMModel}
+     * @param {!SDK.DOMNode} node
      * @param {number} mutationId
      */
     function callObserve(node, mutationId) {
-      if (!this.hasEventListeners(WebInspector.DOMModel.Events.DOMMutated) || this._lastMutationId !== mutationId)
+      if (!this.hasEventListeners(SDK.DOMModel.Events.DOMMutated) || this._lastMutationId !== mutationId)
         return;
 
-      this.dispatchEventToListeners(WebInspector.DOMModel.Events.DOMMutated, node);
+      this.dispatchEventToListeners(SDK.DOMModel.Events.DOMMutated, node);
     }
   }
 
   /**
-   * @param {function(!WebInspector.DOMDocument)=} callback
+   * @param {function(!SDK.DOMDocument)=} callback
    */
   requestDocument(callback) {
     if (this._document) {
@@ -1145,9 +1151,9 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
     this._pendingDocumentRequestCallbacks = [callback];
 
     /**
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      * @param {?Protocol.Error} error
-     * @param {!DOMAgent.Node} root
+     * @param {!Protocol.DOM.Node} root
      */
     function onDocumentAvailable(error, root) {
       if (!error)
@@ -1165,20 +1171,20 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @return {?WebInspector.DOMDocument}
+   * @return {?SDK.DOMDocument}
    */
   existingDocument() {
     return this._document;
   }
 
   /**
-   * @param {!RuntimeAgent.RemoteObjectId} objectId
-   * @param {function(?WebInspector.DOMNode)=} callback
+   * @param {!Protocol.Runtime.RemoteObjectId} objectId
+   * @param {function(?SDK.DOMNode)=} callback
    */
   pushNodeToFrontend(objectId, callback) {
     /**
-     * @param {?DOMAgent.NodeId} nodeId
-     * @this {!WebInspector.DOMModel}
+     * @param {?Protocol.DOM.NodeId} nodeId
+     * @this {!SDK.DOMModel}
      */
     function mycallback(nodeId) {
       callback(nodeId ? this.nodeForId(nodeId) : null);
@@ -1196,20 +1202,20 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
 
   /**
    * @param {!Set<number>} backendNodeIds
-   * @param {function(?Map<number, ?WebInspector.DOMNode>)} callback
+   * @param {function(?Map<number, ?SDK.DOMNode>)} callback
    */
   pushNodesByBackendIdsToFrontend(backendNodeIds, callback) {
     var backendNodeIdsArray = backendNodeIds.valuesArray();
     /**
-     * @param {?Array<!DOMAgent.NodeId>} nodeIds
-     * @this {!WebInspector.DOMModel}
+     * @param {?Array<!Protocol.DOM.NodeId>} nodeIds
+     * @this {!SDK.DOMModel}
      */
     function mycallback(nodeIds) {
       if (!nodeIds) {
         callback(null);
         return;
       }
-      /** @type {!Map<number, ?WebInspector.DOMNode>} */
+      /** @type {!Map<number, ?SDK.DOMNode>} */
       var map = new Map();
       for (var i = 0; i < nodeIds.length; ++i) {
         if (nodeIds[i])
@@ -1250,12 +1256,12 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
     var callbackWrapper = this._wrapClientCallback(callback);
 
     /**
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function onDocumentAvailable() {
-      if (this._document)
+      if (this._document) {
         func(callbackWrapper);
-      else {
+      } else {
         if (callbackWrapper)
           callbackWrapper('No document');
       }
@@ -1264,7 +1270,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {string} name
    * @param {string} value
    */
@@ -1274,12 +1280,12 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
       return;
 
     node._setAttribute(name, value);
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.AttrModified, {node: node, name: name});
+    this.dispatchEventToListeners(SDK.DOMModel.Events.AttrModified, {node: node, name: name});
     this._scheduleMutationEvent(node);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {string} name
    */
   _attributeRemoved(nodeId, name) {
@@ -1287,12 +1293,12 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
     if (!node)
       return;
     node._removeAttribute(name);
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.AttrRemoved, {node: node, name: name});
+    this.dispatchEventToListeners(SDK.DOMModel.Events.AttrRemoved, {node: node, name: name});
     this._scheduleMutationEvent(node);
   }
 
   /**
-   * @param {!Array.<!DOMAgent.NodeId>} nodeIds
+   * @param {!Array.<!Protocol.DOM.NodeId>} nodeIds
    */
   _inlineStyleInvalidated(nodeIds) {
     for (var i = 0; i < nodeIds.length; ++i)
@@ -1304,8 +1310,8 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
 
   _loadNodeAttributes() {
     /**
-     * @this {WebInspector.DOMModel}
-     * @param {!DOMAgent.NodeId} nodeId
+     * @this {SDK.DOMModel}
+     * @param {!Protocol.DOM.NodeId} nodeId
      * @param {?Protocol.Error} error
      * @param {!Array.<string>} attributes
      */
@@ -1317,7 +1323,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
       var node = this._idToDOMNode[nodeId];
       if (node) {
         if (node._setAttributesPayload(attributes)) {
-          this.dispatchEventToListeners(WebInspector.DOMModel.Events.AttrModified, {node: node, name: 'style'});
+          this.dispatchEventToListeners(SDK.DOMModel.Events.AttrModified, {node: node, name: 'style'});
           this._scheduleMutationEvent(node);
         }
       }
@@ -1333,19 +1339,19 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {string} newValue
    */
   _characterDataModified(nodeId, newValue) {
     var node = this._idToDOMNode[nodeId];
     node._nodeValue = newValue;
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.CharacterDataModified, node);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.CharacterDataModified, node);
     this._scheduleMutationEvent(node);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
-   * @return {?WebInspector.DOMNode}
+   * @param {!Protocol.DOM.NodeId} nodeId
+   * @return {?SDK.DOMNode}
    */
   nodeForId(nodeId) {
     return this._idToDOMNode[nodeId] || null;
@@ -1356,30 +1362,30 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {?DOMAgent.Node} payload
+   * @param {?Protocol.DOM.Node} payload
    */
   _setDocument(payload) {
     this._idToDOMNode = {};
     if (payload && 'nodeId' in payload)
-      this._document = new WebInspector.DOMDocument(this, payload);
+      this._document = new SDK.DOMDocument(this, payload);
     else
       this._document = null;
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.DocumentUpdated, this._document);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.DocumentUpdated, this._document);
   }
 
   /**
-   * @param {!DOMAgent.Node} payload
+   * @param {!Protocol.DOM.Node} payload
    */
   _setDetachedRoot(payload) {
     if (payload.nodeName === '#document')
-      new WebInspector.DOMDocument(this, payload);
+      new SDK.DOMDocument(this, payload);
     else
-      WebInspector.DOMNode.create(this, null, false, payload);
+      SDK.DOMNode.create(this, null, false, payload);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} parentId
-   * @param {!Array.<!DOMAgent.Node>} payloads
+   * @param {!Protocol.DOM.NodeId} parentId
+   * @param {!Array.<!Protocol.DOM.Node>} payloads
    */
   _setChildNodes(parentId, payloads) {
     if (!parentId && payloads.length) {
@@ -1392,62 +1398,62 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {number} newValue
    */
   _childNodeCountUpdated(nodeId, newValue) {
     var node = this._idToDOMNode[nodeId];
     node._childNodeCount = newValue;
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.ChildNodeCountUpdated, node);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.ChildNodeCountUpdated, node);
     this._scheduleMutationEvent(node);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} parentId
-   * @param {!DOMAgent.NodeId} prevId
-   * @param {!DOMAgent.Node} payload
+   * @param {!Protocol.DOM.NodeId} parentId
+   * @param {!Protocol.DOM.NodeId} prevId
+   * @param {!Protocol.DOM.Node} payload
    */
   _childNodeInserted(parentId, prevId, payload) {
     var parent = this._idToDOMNode[parentId];
     var prev = this._idToDOMNode[prevId];
     var node = parent._insertChild(prev, payload);
     this._idToDOMNode[node.id] = node;
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.NodeInserted, node);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.NodeInserted, node);
     this._scheduleMutationEvent(node);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} parentId
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} parentId
+   * @param {!Protocol.DOM.NodeId} nodeId
    */
   _childNodeRemoved(parentId, nodeId) {
     var parent = this._idToDOMNode[parentId];
     var node = this._idToDOMNode[nodeId];
     parent._removeChild(node);
     this._unbind(node);
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.NodeRemoved, {node: node, parent: parent});
+    this.dispatchEventToListeners(SDK.DOMModel.Events.NodeRemoved, {node: node, parent: parent});
     this._scheduleMutationEvent(node);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} hostId
-   * @param {!DOMAgent.Node} root
+   * @param {!Protocol.DOM.NodeId} hostId
+   * @param {!Protocol.DOM.Node} root
    */
   _shadowRootPushed(hostId, root) {
     var host = this._idToDOMNode[hostId];
     if (!host)
       return;
-    var node = WebInspector.DOMNode.create(this, host.ownerDocument, true, root);
+    var node = SDK.DOMNode.create(this, host.ownerDocument, true, root);
     node.parentNode = host;
     this._idToDOMNode[node.id] = node;
     host._shadowRoots.unshift(node);
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.NodeInserted, node);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.NodeInserted, node);
     this._scheduleMutationEvent(node);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} hostId
-   * @param {!DOMAgent.NodeId} rootId
+   * @param {!Protocol.DOM.NodeId} hostId
+   * @param {!Protocol.DOM.NodeId} rootId
    */
   _shadowRootPopped(hostId, rootId) {
     var host = this._idToDOMNode[hostId];
@@ -1458,30 +1464,30 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
       return;
     host._removeChild(root);
     this._unbind(root);
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.NodeRemoved, {node: root, parent: host});
+    this.dispatchEventToListeners(SDK.DOMModel.Events.NodeRemoved, {node: root, parent: host});
     this._scheduleMutationEvent(root);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} parentId
-   * @param {!DOMAgent.Node} pseudoElement
+   * @param {!Protocol.DOM.NodeId} parentId
+   * @param {!Protocol.DOM.Node} pseudoElement
    */
   _pseudoElementAdded(parentId, pseudoElement) {
     var parent = this._idToDOMNode[parentId];
     if (!parent)
       return;
-    var node = WebInspector.DOMNode.create(this, parent.ownerDocument, false, pseudoElement);
+    var node = SDK.DOMNode.create(this, parent.ownerDocument, false, pseudoElement);
     node.parentNode = parent;
     this._idToDOMNode[node.id] = node;
     console.assert(!parent._pseudoElements.get(node.pseudoType()));
     parent._pseudoElements.set(node.pseudoType(), node);
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.NodeInserted, node);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.NodeInserted, node);
     this._scheduleMutationEvent(node);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} parentId
-   * @param {!DOMAgent.NodeId} pseudoElementId
+   * @param {!Protocol.DOM.NodeId} parentId
+   * @param {!Protocol.DOM.NodeId} pseudoElementId
    */
   _pseudoElementRemoved(parentId, pseudoElementId) {
     var parent = this._idToDOMNode[parentId];
@@ -1492,25 +1498,25 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
       return;
     parent._removeChild(pseudoElement);
     this._unbind(pseudoElement);
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.NodeRemoved, {node: pseudoElement, parent: parent});
+    this.dispatchEventToListeners(SDK.DOMModel.Events.NodeRemoved, {node: pseudoElement, parent: parent});
     this._scheduleMutationEvent(pseudoElement);
   }
 
   /**
-   * @param {!DOMAgent.NodeId} insertionPointId
-   * @param {!Array.<!DOMAgent.BackendNode>} distributedNodes
+   * @param {!Protocol.DOM.NodeId} insertionPointId
+   * @param {!Array.<!Protocol.DOM.BackendNode>} distributedNodes
    */
   _distributedNodesUpdated(insertionPointId, distributedNodes) {
     var insertionPoint = this._idToDOMNode[insertionPointId];
     if (!insertionPoint)
       return;
     insertionPoint._setDistributedNodePayloads(distributedNodes);
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.DistributedNodesChanged, insertionPoint);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.DistributedNodesChanged, insertionPoint);
     this._scheduleMutationEvent(insertionPoint);
   }
 
   /**
-   * @param {!WebInspector.DOMNode} node
+   * @param {!SDK.DOMNode} node
    */
   _unbind(node) {
     delete this._idToDOMNode[node.id];
@@ -1526,11 +1532,11 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {!DOMAgent.BackendNodeId} backendNodeId
+   * @param {!Protocol.DOM.BackendNodeId} backendNodeId
    */
   _inspectNodeRequested(backendNodeId) {
-    var deferredNode = new WebInspector.DeferredDOMNode(this.target(), backendNodeId);
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.NodeInspected, deferredNode);
+    var deferredNode = new SDK.DeferredDOMNode(this.target(), backendNodeId);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.NodeInspected, deferredNode);
   }
 
   /**
@@ -1539,13 +1545,13 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
    * @param {function(number)} searchCallback
    */
   performSearch(query, includeUserAgentShadowDOM, searchCallback) {
-    WebInspector.DOMModel.cancelSearch();
+    SDK.DOMModel.cancelSearch();
 
     /**
      * @param {?Protocol.Error} error
      * @param {string} searchId
      * @param {number} resultsCount
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function callback(error, searchId, resultsCount) {
       this._searchId = searchId;
@@ -1564,7 +1570,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
 
     /**
      * @param {function(number)} resolve
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function performSearch(resolve) {
       this._agent.performSearch(query, includeUserAgentShadowDOM, callback.bind(this));
@@ -1573,7 +1579,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
        * @param {?Protocol.Error} error
        * @param {string} searchId
        * @param {number} resultsCount
-       * @this {WebInspector.DOMModel}
+       * @this {SDK.DOMModel}
        */
       function callback(error, searchId, resultsCount) {
         if (!error)
@@ -1585,7 +1591,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
 
   /**
    * @param {number} index
-   * @param {?function(?WebInspector.DOMNode)} callback
+   * @param {?function(?SDK.DOMNode)} callback
    */
   searchResult(index, callback) {
     if (this._searchId)
@@ -1596,7 +1602,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
     /**
      * @param {?Protocol.Error} error
      * @param {!Array.<number>} nodeIds
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function searchResultsCallback(error, nodeIds) {
       if (error) {
@@ -1619,7 +1625,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @return {!Promise<!Array<string>>}
    */
   classNamesPromise(nodeId) {
@@ -1627,7 +1633,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
 
     /**
      * @param {function(!Array<string>)} fulfill
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function promiseBody(fulfill) {
       this._agent.collectClassNamesFromSubtree(nodeId, classNamesCallback);
@@ -1646,41 +1652,41 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {string} selectors
-   * @param {function(?DOMAgent.NodeId)=} callback
+   * @param {function(?Protocol.DOM.NodeId)=} callback
    */
   querySelector(nodeId, selectors, callback) {
     this._agent.querySelector(nodeId, selectors, this._wrapClientCallback(callback));
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {string} selectors
-   * @param {function(!Array.<!DOMAgent.NodeId>=)=} callback
+   * @param {function(!Array.<!Protocol.DOM.NodeId>=)=} callback
    */
   querySelectorAll(nodeId, selectors, callback) {
     this._agent.querySelectorAll(nodeId, selectors, this._wrapClientCallback(callback));
   }
 
   /**
-   * @param {!DOMAgent.NodeId=} nodeId
+   * @param {!Protocol.DOM.NodeId=} nodeId
    * @param {string=} mode
-   * @param {!DOMAgent.BackendNodeId=} backendNodeId
-   * @param {!RuntimeAgent.RemoteObjectId=} objectId
+   * @param {!Protocol.DOM.BackendNodeId=} backendNodeId
+   * @param {!Protocol.Runtime.RemoteObjectId=} objectId
    */
   highlightDOMNode(nodeId, mode, backendNodeId, objectId) {
     this.highlightDOMNodeWithConfig(nodeId, {mode: mode}, backendNodeId, objectId);
   }
 
   /**
-   * @param {!DOMAgent.NodeId=} nodeId
+   * @param {!Protocol.DOM.NodeId=} nodeId
    * @param {!{mode: (string|undefined), showInfo: (boolean|undefined), selectors: (string|undefined)}=} config
-   * @param {!DOMAgent.BackendNodeId=} backendNodeId
-   * @param {!RuntimeAgent.RemoteObjectId=} objectId
+   * @param {!Protocol.DOM.BackendNodeId=} backendNodeId
+   * @param {!Protocol.Runtime.RemoteObjectId=} objectId
    */
   highlightDOMNodeWithConfig(nodeId, config, backendNodeId, objectId) {
-    if (WebInspector.DOMModel._highlightDisabled)
+    if (SDK.DOMModel._highlightDisabled)
       return;
     config = config || {mode: 'all', showInfo: undefined, selectors: undefined};
     if (this._hideDOMNodeHighlightTimeout) {
@@ -1696,34 +1702,33 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    */
   highlightDOMNodeForTwoSeconds(nodeId) {
     this.highlightDOMNode(nodeId);
-    this._hideDOMNodeHighlightTimeout =
-        setTimeout(WebInspector.DOMModel.hideDOMNodeHighlight.bind(WebInspector.DOMModel), 2000);
+    this._hideDOMNodeHighlightTimeout = setTimeout(SDK.DOMModel.hideDOMNodeHighlight.bind(SDK.DOMModel), 2000);
   }
 
   /**
-   * @param {!PageAgent.FrameId} frameId
+   * @param {!Protocol.Page.FrameId} frameId
    */
   highlightFrame(frameId) {
-    if (WebInspector.DOMModel._highlightDisabled)
+    if (SDK.DOMModel._highlightDisabled)
       return;
     this._highlighter.highlightFrame(frameId);
   }
 
   /**
-   * @param {!DOMAgent.InspectMode} mode
+   * @param {!Protocol.DOM.InspectMode} mode
    * @param {function(?Protocol.Error)=} callback
    */
   setInspectMode(mode, callback) {
     /**
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function onDocumentAvailable() {
-      this._inspectModeEnabled = mode !== DOMAgent.InspectMode.None;
-      this.dispatchEventToListeners(WebInspector.DOMModel.Events.InspectModeWillBeToggled, this._inspectModeEnabled);
+      this._inspectModeEnabled = mode !== Protocol.DOM.InspectMode.None;
+      this.dispatchEventToListeners(SDK.DOMModel.Events.InspectModeWillBeToggled, this._inspectModeEnabled);
       this._highlighter.setInspectMode(mode, this._buildHighlightConfig(), callback);
     }
     this.requestDocument(onDocumentAvailable.bind(this));
@@ -1738,35 +1743,35 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
 
   /**
    * @param {string=} mode
-   * @return {!DOMAgent.HighlightConfig}
+   * @return {!Protocol.DOM.HighlightConfig}
    */
   _buildHighlightConfig(mode) {
     mode = mode || 'all';
-    var showRulers = WebInspector.moduleSetting('showMetricsRulers').get();
+    var showRulers = Common.moduleSetting('showMetricsRulers').get();
     var highlightConfig = {showInfo: mode === 'all', showRulers: showRulers, showExtensionLines: showRulers};
     if (mode === 'all' || mode === 'content')
-      highlightConfig.contentColor = WebInspector.Color.PageHighlight.Content.toProtocolRGBA();
+      highlightConfig.contentColor = Common.Color.PageHighlight.Content.toProtocolRGBA();
 
     if (mode === 'all' || mode === 'padding')
-      highlightConfig.paddingColor = WebInspector.Color.PageHighlight.Padding.toProtocolRGBA();
+      highlightConfig.paddingColor = Common.Color.PageHighlight.Padding.toProtocolRGBA();
 
     if (mode === 'all' || mode === 'border')
-      highlightConfig.borderColor = WebInspector.Color.PageHighlight.Border.toProtocolRGBA();
+      highlightConfig.borderColor = Common.Color.PageHighlight.Border.toProtocolRGBA();
 
     if (mode === 'all' || mode === 'margin')
-      highlightConfig.marginColor = WebInspector.Color.PageHighlight.Margin.toProtocolRGBA();
+      highlightConfig.marginColor = Common.Color.PageHighlight.Margin.toProtocolRGBA();
 
     if (mode === 'all') {
-      highlightConfig.eventTargetColor = WebInspector.Color.PageHighlight.EventTarget.toProtocolRGBA();
-      highlightConfig.shapeColor = WebInspector.Color.PageHighlight.Shape.toProtocolRGBA();
-      highlightConfig.shapeMarginColor = WebInspector.Color.PageHighlight.ShapeMargin.toProtocolRGBA();
+      highlightConfig.eventTargetColor = Common.Color.PageHighlight.EventTarget.toProtocolRGBA();
+      highlightConfig.shapeColor = Common.Color.PageHighlight.Shape.toProtocolRGBA();
+      highlightConfig.shapeMarginColor = Common.Color.PageHighlight.ShapeMargin.toProtocolRGBA();
       highlightConfig.displayAsMaterial = Runtime.experiments.isEnabled('inspectTooltip');
     }
     return highlightConfig;
   }
 
   /**
-   * @param {!WebInspector.DOMNode} node
+   * @param {!SDK.DOMNode} node
    * @param {function(?Protocol.Error, ...)=} callback
    * @return {function(...)}
    * @template T
@@ -1774,7 +1779,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   _markRevision(node, callback) {
     /**
      * @param {?Protocol.Error} error
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function wrapperFunction(error) {
       if (!error)
@@ -1796,14 +1801,14 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   undo(callback) {
     /**
      * @param {?Protocol.Error} error
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function mycallback(error) {
-      this.dispatchEventToListeners(WebInspector.DOMModel.Events.UndoRedoCompleted);
+      this.dispatchEventToListeners(SDK.DOMModel.Events.UndoRedoCompleted);
       callback(error);
     }
 
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.UndoRedoRequested);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.UndoRedoRequested);
     this._agent.undo(callback);
   }
 
@@ -1813,19 +1818,19 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   redo(callback) {
     /**
      * @param {?Protocol.Error} error
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function mycallback(error) {
-      this.dispatchEventToListeners(WebInspector.DOMModel.Events.UndoRedoCompleted);
+      this.dispatchEventToListeners(SDK.DOMModel.Events.UndoRedoCompleted);
       callback(error);
     }
 
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.UndoRedoRequested);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.UndoRedoRequested);
     this._agent.redo(callback);
   }
 
   /**
-   * @param {?WebInspector.DOMNodeHighlighter} highlighter
+   * @param {?SDK.DOMNodeHighlighter} highlighter
    */
   setHighlighter(highlighter) {
     this._highlighter = highlighter || this._defaultHighlighter;
@@ -1834,7 +1839,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   /**
    * @param {number} x
    * @param {number} y
-   * @param {function(?WebInspector.DOMNode)} callback
+   * @param {function(?SDK.DOMNode)} callback
    */
   nodeForLocation(x, y, callback) {
     this._agent.getNodeForLocation(x, y, mycallback.bind(this));
@@ -1842,7 +1847,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
     /**
      * @param {?Protocol.Error} error
      * @param {number} nodeId
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function mycallback(error, nodeId) {
       if (error) {
@@ -1854,8 +1859,8 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {!WebInspector.RemoteObject} object
-   * @param {function(?WebInspector.DOMNode)} callback
+   * @param {!SDK.RemoteObject} object
+   * @param {function(?SDK.DOMNode)} callback
    */
   pushObjectAsNodeToFrontend(object, callback) {
     if (object.isNode())
@@ -1873,13 +1878,13 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
 
     /**
      * @param {function()} fulfill
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function promiseBody(fulfill) {
       this._agent.disable(callback.bind(this));
 
       /**
-       * @this {WebInspector.DOMModel}
+       * @this {SDK.DOMModel}
        */
       function callback() {
         this._setDocument(null);
@@ -1897,7 +1902,7 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
 
     /**
      * @param {function()} fulfill
-     * @this {WebInspector.DOMModel}
+     * @this {SDK.DOMModel}
      */
     function promiseBody(fulfill) {
       this._agent.enable(fulfill);
@@ -1905,19 +1910,19 @@ WebInspector.DOMModel = class extends WebInspector.SDKModel {
   }
 
   /**
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    */
   nodeHighlightRequested(nodeId) {
     var node = this.nodeForId(nodeId);
     if (!node)
       return;
 
-    this.dispatchEventToListeners(WebInspector.DOMModel.Events.NodeHighlightedInOverlay, node);
+    this.dispatchEventToListeners(SDK.DOMModel.Events.NodeHighlightedInOverlay, node);
   }
 };
 
 /** @enum {symbol} */
-WebInspector.DOMModel.Events = {
+SDK.DOMModel.Events = {
   AttrModified: Symbol('AttrModified'),
   AttrRemoved: Symbol('AttrRemoved'),
   CharacterDataModified: Symbol('CharacterDataModified'),
@@ -1938,12 +1943,12 @@ WebInspector.DOMModel.Events = {
 
 
 /**
- * @implements {DOMAgent.Dispatcher}
+ * @implements {Protocol.DOMDispatcher}
  * @unrestricted
  */
-WebInspector.DOMDispatcher = class {
+SDK.DOMDispatcher = class {
   /**
-   * @param {!WebInspector.DOMModel} domModel
+   * @param {!SDK.DOMModel} domModel
    */
   constructor(domModel) {
     this._domModel = domModel;
@@ -1958,7 +1963,7 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    */
   inspectNodeRequested(nodeId) {
     this._domModel._inspectNodeRequested(nodeId);
@@ -1966,7 +1971,7 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {string} name
    * @param {string} value
    */
@@ -1976,7 +1981,7 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {string} name
    */
   attributeRemoved(nodeId, name) {
@@ -1985,7 +1990,7 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!Array.<!DOMAgent.NodeId>} nodeIds
+   * @param {!Array.<!Protocol.DOM.NodeId>} nodeIds
    */
   inlineStyleInvalidated(nodeIds) {
     this._domModel._inlineStyleInvalidated(nodeIds);
@@ -1993,7 +1998,7 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {string} characterData
    */
   characterDataModified(nodeId, characterData) {
@@ -2002,8 +2007,8 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} parentId
-   * @param {!Array.<!DOMAgent.Node>} payloads
+   * @param {!Protocol.DOM.NodeId} parentId
+   * @param {!Array.<!Protocol.DOM.Node>} payloads
    */
   setChildNodes(parentId, payloads) {
     this._domModel._setChildNodes(parentId, payloads);
@@ -2011,7 +2016,7 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    * @param {number} childNodeCount
    */
   childNodeCountUpdated(nodeId, childNodeCount) {
@@ -2020,9 +2025,9 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} parentNodeId
-   * @param {!DOMAgent.NodeId} previousNodeId
-   * @param {!DOMAgent.Node} payload
+   * @param {!Protocol.DOM.NodeId} parentNodeId
+   * @param {!Protocol.DOM.NodeId} previousNodeId
+   * @param {!Protocol.DOM.Node} payload
    */
   childNodeInserted(parentNodeId, previousNodeId, payload) {
     this._domModel._childNodeInserted(parentNodeId, previousNodeId, payload);
@@ -2030,8 +2035,8 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} parentNodeId
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} parentNodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    */
   childNodeRemoved(parentNodeId, nodeId) {
     this._domModel._childNodeRemoved(parentNodeId, nodeId);
@@ -2039,8 +2044,8 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} hostId
-   * @param {!DOMAgent.Node} root
+   * @param {!Protocol.DOM.NodeId} hostId
+   * @param {!Protocol.DOM.Node} root
    */
   shadowRootPushed(hostId, root) {
     this._domModel._shadowRootPushed(hostId, root);
@@ -2048,8 +2053,8 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} hostId
-   * @param {!DOMAgent.NodeId} rootId
+   * @param {!Protocol.DOM.NodeId} hostId
+   * @param {!Protocol.DOM.NodeId} rootId
    */
   shadowRootPopped(hostId, rootId) {
     this._domModel._shadowRootPopped(hostId, rootId);
@@ -2057,8 +2062,8 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} parentId
-   * @param {!DOMAgent.Node} pseudoElement
+   * @param {!Protocol.DOM.NodeId} parentId
+   * @param {!Protocol.DOM.Node} pseudoElement
    */
   pseudoElementAdded(parentId, pseudoElement) {
     this._domModel._pseudoElementAdded(parentId, pseudoElement);
@@ -2066,8 +2071,8 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} parentId
-   * @param {!DOMAgent.NodeId} pseudoElementId
+   * @param {!Protocol.DOM.NodeId} parentId
+   * @param {!Protocol.DOM.NodeId} pseudoElementId
    */
   pseudoElementRemoved(parentId, pseudoElementId) {
     this._domModel._pseudoElementRemoved(parentId, pseudoElementId);
@@ -2075,8 +2080,8 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} insertionPointId
-   * @param {!Array.<!DOMAgent.BackendNode>} distributedNodes
+   * @param {!Protocol.DOM.NodeId} insertionPointId
+   * @param {!Array.<!Protocol.DOM.BackendNode>} distributedNodes
    */
   distributedNodesUpdated(insertionPointId, distributedNodes) {
     this._domModel._distributedNodesUpdated(insertionPointId, distributedNodes);
@@ -2084,7 +2089,7 @@ WebInspector.DOMDispatcher = class {
 
   /**
    * @override
-   * @param {!DOMAgent.NodeId} nodeId
+   * @param {!Protocol.DOM.NodeId} nodeId
    */
   nodeHighlightRequested(nodeId) {
     this._domModel.nodeHighlightRequested(nodeId);
@@ -2094,35 +2099,35 @@ WebInspector.DOMDispatcher = class {
 /**
  * @interface
  */
-WebInspector.DOMNodeHighlighter = function() {};
+SDK.DOMNodeHighlighter = function() {};
 
-WebInspector.DOMNodeHighlighter.prototype = {
+SDK.DOMNodeHighlighter.prototype = {
   /**
-   * @param {?WebInspector.DOMNode} node
-   * @param {!DOMAgent.HighlightConfig} config
-   * @param {!DOMAgent.BackendNodeId=} backendNodeId
-   * @param {!RuntimeAgent.RemoteObjectId=} objectId
+   * @param {?SDK.DOMNode} node
+   * @param {!Protocol.DOM.HighlightConfig} config
+   * @param {!Protocol.DOM.BackendNodeId=} backendNodeId
+   * @param {!Protocol.Runtime.RemoteObjectId=} objectId
    */
-  highlightDOMNode: function(node, config, backendNodeId, objectId) {},
+  highlightDOMNode(node, config, backendNodeId, objectId) {},
 
   /**
-   * @param {!DOMAgent.InspectMode} mode
-   * @param {!DOMAgent.HighlightConfig} config
+   * @param {!Protocol.DOM.InspectMode} mode
+   * @param {!Protocol.DOM.HighlightConfig} config
    * @param {function(?Protocol.Error)=} callback
    */
-  setInspectMode: function(mode, config, callback) {},
+  setInspectMode(mode, config, callback) {},
 
   /**
-   * @param {!PageAgent.FrameId} frameId
+   * @param {!Protocol.Page.FrameId} frameId
    */
-  highlightFrame: function(frameId) {}
+  highlightFrame(frameId) {}
 };
 
 /**
- * @implements {WebInspector.DOMNodeHighlighter}
+ * @implements {SDK.DOMNodeHighlighter}
  * @unrestricted
  */
-WebInspector.DefaultDOMNodeHighlighter = class {
+SDK.DefaultDOMNodeHighlighter = class {
   /**
    * @param {!Protocol.DOMAgent} agent
    */
@@ -2132,10 +2137,10 @@ WebInspector.DefaultDOMNodeHighlighter = class {
 
   /**
    * @override
-   * @param {?WebInspector.DOMNode} node
-   * @param {!DOMAgent.HighlightConfig} config
-   * @param {!DOMAgent.BackendNodeId=} backendNodeId
-   * @param {!RuntimeAgent.RemoteObjectId=} objectId
+   * @param {?SDK.DOMNode} node
+   * @param {!Protocol.DOM.HighlightConfig} config
+   * @param {!Protocol.DOM.BackendNodeId=} backendNodeId
+   * @param {!Protocol.Runtime.RemoteObjectId=} objectId
    */
   highlightDOMNode(node, config, backendNodeId, objectId) {
     if (objectId || node || backendNodeId)
@@ -2146,8 +2151,8 @@ WebInspector.DefaultDOMNodeHighlighter = class {
 
   /**
    * @override
-   * @param {!DOMAgent.InspectMode} mode
-   * @param {!DOMAgent.HighlightConfig} config
+   * @param {!Protocol.DOM.InspectMode} mode
+   * @param {!Protocol.DOM.HighlightConfig} config
    * @param {function(?Protocol.Error)=} callback
    */
   setInspectMode(mode, config, callback) {
@@ -2156,11 +2161,11 @@ WebInspector.DefaultDOMNodeHighlighter = class {
 
   /**
    * @override
-   * @param {!PageAgent.FrameId} frameId
+   * @param {!Protocol.Page.FrameId} frameId
    */
   highlightFrame(frameId) {
     this._agent.highlightFrame(
-        frameId, WebInspector.Color.PageHighlight.Content.toProtocolRGBA(),
-        WebInspector.Color.PageHighlight.ContentOutline.toProtocolRGBA());
+        frameId, Common.Color.PageHighlight.Content.toProtocolRGBA(),
+        Common.Color.PageHighlight.ContentOutline.toProtocolRGBA());
   }
 };

@@ -314,8 +314,6 @@ class CORE_EXPORT Element : public ContainerNode {
   Element* cloneElementWithChildren();
   Element* cloneElementWithoutChildren();
 
-  void scheduleSVGFilterLayerUpdateHack();
-
   void setBooleanAttribute(const QualifiedName&, bool);
 
   virtual const StylePropertySet* additionalPresentationAttributeStyle() {
@@ -399,7 +397,7 @@ class CORE_EXPORT Element : public ContainerNode {
 
   virtual LayoutObject* createLayoutObject(const ComputedStyle&);
   virtual bool layoutObjectIsNeeded(const ComputedStyle&);
-  void recalcStyle(StyleRecalcChange);
+  void recalcStyle(StyleRecalcChange, Text* nextTextSibling = nullptr);
   StyleRecalcChange rebuildLayoutTree();
   void pseudoStateChanged(CSSSelector::PseudoType);
   void setAnimationStyleChange(bool);
@@ -538,7 +536,7 @@ class CORE_EXPORT Element : public ContainerNode {
   String outerText();
   String innerHTML() const;
   String outerHTML() const;
-  void setInnerHTML(const String&, ExceptionState&);
+  void setInnerHTML(const String&, ExceptionState& = ASSERT_NO_EXCEPTION);
   void setOuterHTML(const String&, ExceptionState&);
 
   Element* insertAdjacentElement(const String& where,
@@ -616,7 +614,7 @@ class CORE_EXPORT Element : public ContainerNode {
 
   virtual bool isFormControlElement() const { return false; }
   virtual bool isSpinButtonElement() const { return false; }
-  virtual bool isTextFormControl() const { return false; }
+  virtual bool isTextControl() const { return false; }
   virtual bool isOptionalFormControl() const { return false; }
   virtual bool isRequiredFormControl() const { return false; }
   virtual bool willValidate() const { return false; }
@@ -685,7 +683,7 @@ class CORE_EXPORT Element : public ContainerNode {
   void clearMutableInlineStyleIfEmpty();
 
   void setTabIndex(int);
-  short tabIndex() const override;
+  int tabIndex() const override;
 
   // A compositor proxy is a very limited wrapper around an element. It
   // exposes only those properties that are requested at the time the proxy is
@@ -765,7 +763,7 @@ class CORE_EXPORT Element : public ContainerNode {
   bool supportsSpatialNavigationFocus() const;
 
   void clearTabIndexExplicitlyIfNeeded();
-  void setTabIndexExplicitly(short);
+  void setTabIndexExplicitly();
   // Subclasses may override this method to affect focusability. This method
   // must be called on an up-to-date ComputedStyle, so it may use existence of
   // layoutObject and the LayoutObject::style() to reason about focusability.
@@ -822,7 +820,7 @@ class CORE_EXPORT Element : public ContainerNode {
   // and returns the new style. Otherwise, returns null.
   PassRefPtr<ComputedStyle> propagateInheritedProperties(StyleRecalcChange);
 
-  StyleRecalcChange recalcOwnStyle(StyleRecalcChange);
+  StyleRecalcChange recalcOwnStyle(StyleRecalcChange, Text*);
   inline void checkForEmptyStyleChange();
 
   void updatePseudoElement(PseudoId, StyleRecalcChange);

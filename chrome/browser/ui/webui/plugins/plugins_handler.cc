@@ -42,11 +42,6 @@ using PluginGroups =
 
 namespace {
 
-// Callback function to process result of EnablePlugin method.
-void AssertPluginEnabled(bool did_enable) {
-  DCHECK(did_enable);
-}
-
 base::string16 PluginTypeToString(int type) {
   // The type is stored as an |int|, but doing the switch on the right
   // enumeration type gives us better build-time error checking (if someone adds
@@ -85,16 +80,15 @@ base::string16 GetPluginDescription(const WebPluginInfo& plugin) {
   return desc;
 }
 
-mojo::Array<mojom::MimeTypePtr> GeneratePluginMimeTypes(
+std::vector<mojom::MimeTypePtr> GeneratePluginMimeTypes(
     const WebPluginInfo& plugin) {
-  mojo::Array<mojom::MimeTypePtr> mime_types;
+  std::vector<mojom::MimeTypePtr> mime_types;
+  mime_types.reserve(plugin.mime_types.size());
   for (const auto& plugin_mime_type : plugin.mime_types) {
     mojom::MimeTypePtr mime_type(mojom::MimeType::New());
-    mime_type->description = mojo::String::From(plugin_mime_type.description);
-
-    mime_type->mime_type = mojo::String::From(plugin_mime_type.mime_type);
-    mime_type->file_extensions =
-        mojo::Array<mojo::String>::From(plugin_mime_type.file_extensions);
+    mime_type->description = base::UTF16ToUTF8(plugin_mime_type.description);
+    mime_type->mime_type = plugin_mime_type.mime_type;
+    mime_type->file_extensions = plugin_mime_type.file_extensions;
     mime_types.push_back(std::move(mime_type));
   }
 
@@ -119,36 +113,6 @@ PluginsPageHandler::PluginsPageHandler(
 
 PluginsPageHandler::~PluginsPageHandler() {}
 
-void PluginsPageHandler::SetPluginEnabled(const mojo::String& plugin_path,
-                                          bool enable) {
-  Profile* profile = Profile::FromWebUI(web_ui_);
-  PluginPrefs* plugin_prefs = PluginPrefs::GetForProfile(profile).get();
-  plugin_prefs->EnablePlugin(
-      enable, base::FilePath(plugin_path.To<base::FilePath::StringType>()),
-      base::Bind(&AssertPluginEnabled));
-}
-
-void PluginsPageHandler::SetPluginGroupEnabled(const mojo::String& group_name,
-                                               bool enable) {
-  Profile* profile = Profile::FromWebUI(web_ui_);
-  PluginPrefs* plugin_prefs = PluginPrefs::GetForProfile(profile).get();
-  base::string16 group_name_as_string16 = group_name.To<base::string16>();
-  plugin_prefs->EnablePluginGroup(enable, group_name_as_string16);
-  if (!enable) {
-    return;
-  }
-
-  // See http://crbug.com/50105 for background.
-  base::string16 adobereader =
-      base::ASCIIToUTF16(PluginMetadata::kAdobeReaderGroupName);
-  base::string16 internalpdf =
-      base::ASCIIToUTF16(ChromeContentClient::kPDFPluginName);
-  if (group_name_as_string16 == adobereader)
-    plugin_prefs->EnablePluginGroup(false, internalpdf);
-  else if (group_name_as_string16 == internalpdf)
-    plugin_prefs->EnablePluginGroup(false, adobereader);
-}
-
 void PluginsPageHandler::GetShowDetails(
     const GetShowDetailsCallback& callback) {
   callback.Run(show_details_.GetValue());
@@ -158,21 +122,20 @@ void PluginsPageHandler::SaveShowDetailsToPrefs(bool details_mode) {
   show_details_.SetValue(details_mode);
 }
 
-void PluginsPageHandler::SetPluginAlwaysAllowed(const mojo::String& plugin,
+void PluginsPageHandler::SetPluginAlwaysAllowed(const std::string& plugin,
                                                 bool allowed) {
   Profile* profile = Profile::FromWebUI(web_ui_);
   HostContentSettingsMapFactory::GetForProfile(profile)
       ->SetContentSettingCustomScope(
           ContentSettingsPattern::Wildcard(),
           ContentSettingsPattern::Wildcard(), CONTENT_SETTINGS_TYPE_PLUGINS,
-          plugin.get(),
-          allowed ? CONTENT_SETTING_ALLOW : CONTENT_SETTING_DEFAULT);
+          plugin, allowed ? CONTENT_SETTING_ALLOW : CONTENT_SETTING_DEFAULT);
 
   // Keep track of the whitelist separately, so that we can distinguish plugins
   // whitelisted by the user from automatically whitelisted ones.
   DictionaryPrefUpdate update(profile->GetPrefs(),
                               prefs::kContentSettingsPluginWhitelist);
-  update->SetBoolean(plugin.get(), allowed);
+  update->SetBoolean(plugin, allowed);
 }
 
 void PluginsPageHandler::GetPluginsData(
@@ -214,7 +177,7 @@ void PluginsPageHandler::NotifyWithPluginsData(
     page_->OnPluginsUpdated(GeneratePluginsData(plugins));
 }
 
-mojo::Array<mojom::PluginDataPtr> PluginsPageHandler::GeneratePluginsData(
+std::vector<mojom::PluginDataPtr> PluginsPageHandler::GeneratePluginsData(
     const std::vector<WebPluginInfo>& plugins) {
   Profile* profile = Profile::FromWebUI(web_ui_);
   PluginPrefs* plugin_prefs = PluginPrefs::GetForProfile(profile).get();
@@ -229,8 +192,8 @@ mojo::Array<mojom::PluginDataPtr> PluginsPageHandler::GeneratePluginsData(
     groups[plugin->identifier()].push_back(&plugins[i]);
   }
 
-  mojo::Array<mojom::PluginDataPtr> plugins_data;
-
+  std::vector<mojom::PluginDataPtr> plugins_data;
+  plugins_data.reserve(groups.size());
   for (PluginGroups::const_iterator it = groups.begin(); it != groups.end();
        ++it) {
     mojom::PluginDataPtr plugin_data(mojom::PluginData::New());
@@ -239,12 +202,13 @@ mojo::Array<mojom::PluginDataPtr> PluginsPageHandler::GeneratePluginsData(
     std::unique_ptr<PluginMetadata> plugin_metadata(
         plugin_finder->GetPluginMetadata(*group_plugins[0]));
     std::string group_identifier = plugin_metadata->identifier();
-    plugin_data->id = mojo::String::From(group_identifier);
+    plugin_data->id = group_identifier;
 
     const WebPluginInfo* active_plugin = nullptr;
     bool group_enabled = false;
 
-    mojo::Array<mojom::PluginFilePtr> plugin_files;
+    std::vector<mojom::PluginFilePtr> plugin_files;
+    plugin_files.reserve(group_plugins.size());
     for (const auto* group_plugin : group_plugins) {
       bool plugin_enabled = plugin_prefs->IsPluginEnabled(*group_plugin);
 
@@ -257,8 +221,8 @@ mojo::Array<mojom::PluginDataPtr> PluginsPageHandler::GeneratePluginsData(
       group_enabled = plugin_enabled || group_enabled;
     }
 
-    plugin_data->enabled_mode = mojo::String::From(
-        GetPluginGroupEnabledMode(plugin_files, group_enabled));
+    plugin_data->enabled_mode =
+        GetPluginGroupEnabledMode(plugin_files, group_enabled);
 
     plugin_data->always_allowed = false;
     plugin_data->trusted = false;
@@ -286,10 +250,10 @@ mojo::Array<mojom::PluginDataPtr> PluginsPageHandler::GeneratePluginsData(
     plugin_data->update_url = plugin_metadata->plugin_url().spec();
 #endif
 
-    plugin_data->description = mojo::String::From(active_plugin->desc);
+    plugin_data->description = base::UTF16ToUTF8(active_plugin->desc);
     plugin_data->name = base::UTF16ToUTF8(plugin_metadata->name());
     plugin_data->plugin_files = std::move(plugin_files);
-    plugin_data->version = mojo::String::From(active_plugin->version);
+    plugin_data->version = base::UTF16ToUTF8(active_plugin->version);
     plugins_data.push_back(std::move(plugin_data));
   }
 
@@ -311,13 +275,13 @@ mojom::PluginFilePtr PluginsPageHandler::GeneratePluginFile(
     const base::string16& group_name,
     bool plugin_enabled) const {
   mojom::PluginFilePtr plugin_file(mojom::PluginFile::New());
-  plugin_file->description = mojo::String::From(GetPluginDescription(plugin));
-  plugin_file->enabled_mode = mojo::String::From(
-      GetPluginEnabledMode(plugin.name, group_name, plugin_enabled));
-  plugin_file->name = mojo::String::From(plugin.name);
+  plugin_file->description = base::UTF16ToUTF8(GetPluginDescription(plugin));
+  plugin_file->enabled_mode =
+      GetPluginEnabledMode(plugin.name, group_name, plugin_enabled);
+  plugin_file->name = base::UTF16ToUTF8(plugin.name);
   plugin_file->path = mojo::String::From(plugin.path.value());
-  plugin_file->type = mojo::String::From(PluginTypeToString(plugin.type));
-  plugin_file->version = mojo::String::From(plugin.version);
+  plugin_file->type = base::UTF16ToUTF8(PluginTypeToString(plugin.type));
+  plugin_file->version = base::UTF16ToUTF8(plugin.version);
   plugin_file->mime_types = GeneratePluginMimeTypes(plugin);
 
   return plugin_file;
@@ -346,7 +310,7 @@ std::string PluginsPageHandler::GetPluginEnabledMode(
 }
 
 std::string PluginsPageHandler::GetPluginGroupEnabledMode(
-    const mojo::Array<mojom::PluginFilePtr>& plugin_files,
+    const std::vector<mojom::PluginFilePtr>& plugin_files,
     bool group_enabled) const {
   bool plugins_enabled_by_policy = true;
   bool plugins_disabled_by_policy = true;

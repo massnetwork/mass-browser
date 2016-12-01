@@ -5,7 +5,7 @@
 (function() {
 
 /**
- * Names of the radio buttons which allow the user to choose his encryption
+ * Names of the radio buttons which allow the user to choose their encryption
  * mechanism.
  * @enum {string}
  */
@@ -91,7 +91,7 @@ Polymer({
     /**
      * Whether the "create passphrase" inputs should be shown. These inputs
      * give the user the opportunity to use a custom passphrase instead of
-     * authenticating with his Google credentials.
+     * authenticating with their Google credentials.
      * @private
      */
     creatingNewPassphrase_: {
@@ -165,9 +165,6 @@ Polymer({
 
   /** @protected */
   currentRouteChanged: function() {
-    if (!this.isAttached)
-      return;
-
     if (settings.getCurrentRoute() == settings.Route.SYNC)
       this.onNavigateToPage_();
     else
@@ -185,8 +182,6 @@ Polymer({
 
   /** @private */
   onNavigateToPage_: function() {
-    // The element is not ready for C++ interaction until it is attached.
-    assert(this.isAttached);
     assert(settings.getCurrentRoute() == settings.Route.SYNC);
 
     if (this.unloadCallback_)
@@ -425,6 +420,16 @@ Polymer({
 
     return !emptyPassphrase && !mismatchedPassphrase;
   },
+
+  /**
+   * @param {!Event} event
+   * @private
+   */
+  onLearnMoreTap_: function(event) {
+    // Stop the propagation of events, so that clicking on links inside
+    // checkbox labels won't change the checkbox value.
+    event.stopPropagation();
+  }
 });
 
 })();

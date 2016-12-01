@@ -6,6 +6,8 @@
 #include "content/public/test/render_view_test.h"
 #include "content/renderer/render_view_impl.h"
 #include "content/renderer/render_widget.h"
+#include "third_party/WebKit/public/web/WebFrameWidget.h"
+#include "third_party/WebKit/public/web/WebInputMethodController.h"
 
 namespace content {
 
@@ -109,7 +111,9 @@ TEST_F(RenderWidgetTest, GetCompositionRangeValidComposition) {
       "<div contenteditable>EDITABLE</div>"
       "<script> document.querySelector('div').focus(); </script>");
   blink::WebVector<blink::WebCompositionUnderline> emptyUnderlines;
-  widget()->GetWebWidget()->setComposition("hello", emptyUnderlines, 3, 3);
+  DCHECK(widget()->GetInputMethodController());
+  widget()->GetInputMethodController()->setComposition("hello", emptyUnderlines,
+                                                       3, 3);
   gfx::Range range;
   GetCompositionRange(&range);
   EXPECT_TRUE(range.IsValid());
@@ -117,15 +121,14 @@ TEST_F(RenderWidgetTest, GetCompositionRangeValidComposition) {
   EXPECT_EQ(5U, range.end());
 }
 
-TEST_F(RenderWidgetTest, GetCompositionRangeValidSelection) {
+TEST_F(RenderWidgetTest, GetCompositionRangeForSelection) {
   LoadHTML(
       "<div>NOT EDITABLE</div>"
       "<script> document.execCommand('selectAll'); </script>");
   gfx::Range range;
   GetCompositionRange(&range);
-  EXPECT_TRUE(range.IsValid());
-  EXPECT_EQ(0U, range.start());
-  EXPECT_EQ(12U, range.end());
+  // Selection range should not be treated as composition range.
+  EXPECT_FALSE(range.IsValid());
 }
 
 TEST_F(RenderWidgetTest, GetCompositionRangeInvalid) {

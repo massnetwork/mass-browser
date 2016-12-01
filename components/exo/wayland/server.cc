@@ -60,10 +60,10 @@
 #include "components/exo/touch.h"
 #include "components/exo/touch_delegate.h"
 #include "components/exo/wm_helper.h"
-#include "ipc/unix_domain_socket_util.h"
 #include "third_party/skia/include/core/SkRegion.h"
 #include "ui/aura/window_property.h"
 #include "ui/base/hit_test.h"
+#include "ui/base/ui_features.h"
 #include "ui/compositor/compositor_vsync_manager.h"
 #include "ui/display/display_observer.h"
 #include "ui/display/manager/managed_display_info.h"
@@ -80,7 +80,7 @@
 #include <wayland-drm-server-protocol.h>
 #endif
 
-#if defined(USE_XKBCOMMON)
+#if BUILDFLAG(USE_XKBCOMMON)
 #include <xkbcommon/xkbcommon.h>
 #include "ui/events/keycodes/scoped_xkb.h"  // nogncheck
 #endif
@@ -2172,7 +2172,7 @@ void pointer_release(wl_client* client, wl_resource* resource) {
 const struct wl_pointer_interface pointer_implementation = {pointer_set_cursor,
                                                             pointer_release};
 
-#if defined(USE_XKBCOMMON)
+#if BUILDFLAG(USE_XKBCOMMON)
 
 ////////////////////////////////////////////////////////////////////////////////
 // wl_keyboard_interface:
@@ -2407,7 +2407,7 @@ void seat_get_pointer(wl_client* client, wl_resource* resource, uint32_t id) {
 }
 
 void seat_get_keyboard(wl_client* client, wl_resource* resource, uint32_t id) {
-#if defined(USE_XKBCOMMON)
+#if BUILDFLAG(USE_XKBCOMMON)
   uint32_t version = wl_resource_get_version(resource);
   wl_resource* keyboard_resource =
       wl_resource_create(client, &wl_keyboard_interface, version, id);
@@ -2452,7 +2452,7 @@ void bind_seat(wl_client* client, void* data, uint32_t version, uint32_t id) {
     wl_seat_send_name(resource, "default");
 
   uint32_t capabilities = WL_SEAT_CAPABILITY_POINTER | WL_SEAT_CAPABILITY_TOUCH;
-#if defined(USE_XKBCOMMON)
+#if BUILDFLAG(USE_XKBCOMMON)
   capabilities |= WL_SEAT_CAPABILITY_KEYBOARD;
 #endif
   wl_seat_send_capabilities(resource, capabilities);
@@ -2697,13 +2697,13 @@ class Blending : public SurfaceObserver {
   ~Blending() override {
     if (surface_) {
       surface_->RemoveSurfaceObserver(this);
-      surface_->SetBlendMode(SkXfermode::kSrcOver_Mode);
+      surface_->SetBlendMode(SkBlendMode::kSrcOver);
       surface_->SetAlpha(1.0f);
       surface_->SetProperty(kSurfaceHasBlendingKey, false);
     }
   }
 
-  void SetBlendMode(SkXfermode::Mode blend_mode) {
+  void SetBlendMode(SkBlendMode blend_mode) {
     if (surface_)
       surface_->SetBlendMode(blend_mode);
   }
@@ -2734,11 +2734,10 @@ void blending_set_blending(wl_client* client,
                            uint32_t equation) {
   switch (equation) {
     case ZCR_BLENDING_V1_BLENDING_EQUATION_NONE:
-      GetUserDataAs<Blending>(resource)->SetBlendMode(SkXfermode::kSrc_Mode);
+      GetUserDataAs<Blending>(resource)->SetBlendMode(SkBlendMode::kSrc);
       break;
     case ZCR_BLENDING_V1_BLENDING_EQUATION_PREMULT:
-      GetUserDataAs<Blending>(resource)->SetBlendMode(
-          SkXfermode::kSrcOver_Mode);
+      GetUserDataAs<Blending>(resource)->SetBlendMode(SkBlendMode::kSrcOver);
       break;
     case ZCR_BLENDING_V1_BLENDING_EQUATION_COVERAGE:
       NOTIMPLEMENTED();

@@ -4,13 +4,13 @@
 /**
  * @unrestricted
  */
-WebInspector.CPUProfileNode = class extends WebInspector.ProfileNode {
+SDK.CPUProfileNode = class extends SDK.ProfileNode {
   /**
-   * @param {!ProfilerAgent.ProfileNode} node
+   * @param {!Protocol.Profiler.ProfileNode} node
    * @param {number} sampleTime
    */
   constructor(node, sampleTime) {
-    var callFrame = node.callFrame || /** @type {!RuntimeAgent.CallFrame} */ ({
+    var callFrame = node.callFrame || /** @type {!Protocol.Runtime.CallFrame} */ ({
                       // Backward compatibility for old SamplingHeapProfileNode format.
                       functionName: node['functionName'],
                       scriptId: node['scriptId'],
@@ -30,9 +30,9 @@ WebInspector.CPUProfileNode = class extends WebInspector.ProfileNode {
 /**
  * @unrestricted
  */
-WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
+SDK.CPUProfileDataModel = class extends SDK.ProfileTreeModel {
   /**
-   * @param {!ProfilerAgent.Profile} profile
+   * @param {!Protocol.Profiler.Profile} profile
    */
   constructor(profile) {
     super();
@@ -62,29 +62,29 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
   }
 
   /**
-   * @param {!ProfilerAgent.Profile} profile
+   * @param {!Protocol.Profiler.Profile} profile
    */
   _compatibilityConversionHeadToNodes(profile) {
     if (!profile.head || profile.nodes)
       return;
-    /** @type {!Array<!ProfilerAgent.ProfileNode>} */
+    /** @type {!Array<!Protocol.Profiler.ProfileNode>} */
     var nodes = [];
     convertNodesTree(profile.head);
     profile.nodes = nodes;
     delete profile.head;
     /**
-     * @param {!ProfilerAgent.ProfileNode} node
+     * @param {!Protocol.Profiler.ProfileNode} node
      * @return {number}
      */
     function convertNodesTree(node) {
       nodes.push(node);
-      node.children = (/** @type {!Array<!ProfilerAgent.ProfileNode>} */ (node.children)).map(convertNodesTree);
+      node.children = (/** @type {!Array<!Protocol.Profiler.ProfileNode>} */ (node.children)).map(convertNodesTree);
       return node.id;
     }
   }
 
   /**
-   * @param {!ProfilerAgent.Profile} profile
+   * @param {!Protocol.Profiler.Profile} profile
    * @return {?Array<number>}
    */
   _convertTimeDeltas(profile) {
@@ -100,21 +100,21 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
   }
 
   /**
-   * @param {!Array<!ProfilerAgent.ProfileNode>} nodes
-   * @return {!WebInspector.CPUProfileNode}
+   * @param {!Array<!Protocol.Profiler.ProfileNode>} nodes
+   * @return {!SDK.CPUProfileNode}
    */
   _translateProfileTree(nodes) {
     /**
-     * @param {!ProfilerAgent.ProfileNode} node
+     * @param {!Protocol.Profiler.ProfileNode} node
      * @return {boolean}
      */
     function isNativeNode(node) {
       if (node.callFrame)
         return !!node.callFrame.url && node.callFrame.url.startsWith('native ');
-      return !!node.url && node.url.startsWith('native ');
+      return !!node['url'] && node['url'].startsWith('native ');
     }
     /**
-     * @param {!Array<!ProfilerAgent.ProfileNode>} nodes
+     * @param {!Array<!Protocol.Profiler.ProfileNode>} nodes
      */
     function buildChildrenFromParents(nodes) {
       if (nodes[0].children)
@@ -129,7 +129,7 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
           parentNode.children = [node.id];
       }
     }
-    /** @type {!Map<number, !ProfilerAgent.ProfileNode>} */
+    /** @type {!Map<number, !Protocol.Profiler.ProfileNode>} */
     var nodeByIdMap = new Map();
     for (var i = 0; i < nodes.length; ++i) {
       var node = nodes[i];
@@ -138,11 +138,11 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
     buildChildrenFromParents(nodes);
     this.totalHitCount = nodes.reduce((acc, node) => acc + node.hitCount, 0);
     var sampleTime = (this.profileEndTime - this.profileStartTime) / this.totalHitCount;
-    var keepNatives = !!WebInspector.moduleSetting('showNativeFunctionsInJSProfile').get();
+    var keepNatives = !!Common.moduleSetting('showNativeFunctionsInJSProfile').get();
     var root = nodes[0];
     /** @type {!Map<number, number>} */
     var idMap = new Map([[root.id, root.id]]);
-    var resultRoot = new WebInspector.CPUProfileNode(root, sampleTime);
+    var resultRoot = new SDK.CPUProfileNode(root, sampleTime);
     var parentNodeStack = root.children.map(() => resultRoot);
     var sourceNodeStack = root.children.map(id => nodeByIdMap.get(id));
     while (sourceNodeStack.length) {
@@ -150,7 +150,7 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
       var sourceNode = sourceNodeStack.pop();
       if (!sourceNode.children)
         sourceNode.children = [];
-      var targetNode = new WebInspector.CPUProfileNode(sourceNode, sampleTime);
+      var targetNode = new SDK.CPUProfileNode(sourceNode, sampleTime);
       if (keepNatives || !isNativeNode(sourceNode)) {
         parentNode.children.push(targetNode);
         parentNode = targetNode;
@@ -218,7 +218,7 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
   }
 
   _buildIdToNodeMap() {
-    /** @type {!Map<number, !WebInspector.CPUProfileNode>} */
+    /** @type {!Map<number, !SDK.CPUProfileNode>} */
     this._idToNode = new Map();
     var idToNode = this._idToNode;
     var stack = [this.profileHead];
@@ -243,8 +243,8 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
   }
 
   /**
-   * @param {function(number, !WebInspector.CPUProfileNode, number)} openFrameCallback
-   * @param {function(number, !WebInspector.CPUProfileNode, number, number, number)} closeFrameCallback
+   * @param {function(number, !SDK.CPUProfileNode, number)} openFrameCallback
+   * @param {function(number, !SDK.CPUProfileNode, number, number, number)} closeFrameCallback
    * @param {number=} startTime
    * @param {number=} stopTime
    */
@@ -315,7 +315,7 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
         var duration = sampleTime - start;
         stackChildrenDuration[stackTop - 1] += duration;
         closeFrameCallback(
-            prevNode.depth, /** @type {!WebInspector.CPUProfileNode} */ (prevNode), start, duration,
+            prevNode.depth, /** @type {!SDK.CPUProfileNode} */ (prevNode), start, duration,
             duration - stackChildrenDuration[stackTop]);
         --stackTop;
         if (node.depth === prevNode.depth) {
@@ -349,7 +349,7 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
       var duration = sampleTime - start;
       stackChildrenDuration[stackTop - 1] += duration;
       closeFrameCallback(
-          node.depth, /** @type {!WebInspector.CPUProfileNode} */ (node), start, duration,
+          node.depth, /** @type {!SDK.CPUProfileNode} */ (node), start, duration,
           duration - stackChildrenDuration[stackTop]);
       --stackTop;
     }
@@ -357,7 +357,7 @@ WebInspector.CPUProfileDataModel = class extends WebInspector.ProfileTreeModel {
 
   /**
    * @param {number} index
-   * @return {?WebInspector.CPUProfileNode}
+   * @return {?SDK.CPUProfileNode}
    */
   nodeByIndex(index) {
     return this._idToNode.get(this.samples[index]) || null;

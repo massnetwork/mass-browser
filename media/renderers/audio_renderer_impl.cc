@@ -21,8 +21,8 @@
 #include "media/base/audio_buffer.h"
 #include "media/base/audio_buffer_converter.h"
 #include "media/base/audio_latency.h"
-#include "media/base/audio_splicer.h"
 #include "media/base/bind_to_current_loop.h"
+#include "media/base/channel_mixing_matrix.h"
 #include "media/base/demuxer_stream.h"
 #include "media/base/media_log.h"
 #include "media/base/media_switches.h"
@@ -57,10 +57,7 @@ AudioRendererImpl::AudioRendererImpl(
       received_end_of_stream_(false),
       rendered_end_of_stream_(false),
       is_suspending_(false),
-      last_reported_media_time_(kNoTimestamp),
       weak_factory_(this) {
-  audio_buffer_stream_->set_splice_observer(base::Bind(
-      &AudioRendererImpl::OnNewSpliceBuffer, weak_factory_.GetWeakPtr()));
   audio_buffer_stream_->set_config_change_observer(base::Bind(
       &AudioRendererImpl::OnConfigChange, weak_factory_.GetWeakPtr()));
 
@@ -176,26 +173,10 @@ void AudioRendererImpl::SetMediaTime(base::TimeDelta time) {
   last_render_time_ = stop_rendering_time_ = base::TimeTicks();
   first_packet_timestamp_ = kNoTimestamp;
   audio_clock_.reset(new AudioClock(time, audio_parameters_.sample_rate()));
-  last_reported_media_time_ = kNoTimestamp;
 }
 
 base::TimeDelta AudioRendererImpl::CurrentMediaTime() {
   base::AutoLock auto_lock(lock_);
-
-  // Re-use last reported time if rendering has stopped to avoid confusing blink
-  // layer (avoid currentTime advancing after signaling buffer underflow).
-  // TODO(chcunningham): Do this in blink instead. Patching it here for now
-  // because HTMLMediaElement's currentTime is a mess.
-  if (!rendering_ && last_reported_media_time_ != kNoTimestamp) {
-    // If rendering stops, be sure to at least report the front time of the most
-    // recently rendered audio buffer.
-    if (last_reported_media_time_ < audio_clock_->front_timestamp())
-      last_reported_media_time_ = audio_clock_->front_timestamp();
-
-    DVLOG(3) << __func__ << " Returning cached time while rendering stopped:"
-             << last_reported_media_time_.InMicroseconds();
-    return last_reported_media_time_;
-  }
 
   // Return the current time based on the known extents of the rendered audio
   // data plus an estimate based on the last time those values were calculated.
@@ -207,7 +188,6 @@ base::TimeDelta AudioRendererImpl::CurrentMediaTime() {
       current_media_time = audio_clock_->back_timestamp();
   }
 
-  last_reported_media_time_ = current_media_time;
   return current_media_time;
 }
 
@@ -319,7 +299,6 @@ void AudioRendererImpl::ResetDecoderDone() {
     if (buffering_state_ != BUFFERING_HAVE_NOTHING)
       SetBufferingState_Locked(BUFFERING_HAVE_NOTHING);
 
-    splicer_->Reset();
     if (buffer_converter_)
       buffer_converter_->Reset();
     algorithm_->FlushBuffers();
@@ -448,11 +427,27 @@ void AudioRendererImpl::Initialize(DemuxerStream* stream,
                             sample_rate, hw_params.bits_per_sample(),
                             media::AudioLatency::GetHighLatencyBufferSize(
                                 sample_rate, preferred_buffer_size));
+
+    // Figure out if there are muted channels that we should ignore when
+    // playback rate adapatation is requested (it's expensive).
+    if (stream_channel_count < audio_parameters_.channels()) {
+      std::vector<std::vector<float>> matrix;
+      ChannelMixingMatrix(
+          stream->audio_decoder_config().channel_layout(), stream_channel_count,
+          audio_parameters_.channel_layout(), audio_parameters_.channels())
+          .CreateTransformationMatrix(&matrix);
+
+      // All channels with a zero mix are muted and can be ignored.
+      channel_mask_ = std::vector<bool>(audio_parameters_.channels(), false);
+      for (size_t ch = 0; ch < matrix.size(); ++ch) {
+        channel_mask_[ch] = std::any_of(matrix[ch].begin(), matrix[ch].end(),
+                                        [](float mix) { return !!mix; });
+      }
+    }
   }
 
   audio_clock_.reset(
       new AudioClock(base::TimeDelta(), audio_parameters_.sample_rate()));
-  last_reported_media_time_ = kNoTimestamp;
 
   audio_buffer_stream_->Initialize(
       stream, base::Bind(&AudioRendererImpl::OnAudioBufferStreamInitialized,
@@ -485,12 +480,11 @@ void AudioRendererImpl::OnAudioBufferStreamInitialized(bool success) {
 
   if (expecting_config_changes_)
     buffer_converter_.reset(new AudioBufferConverter(audio_parameters_));
-  splicer_.reset(new AudioSplicer(audio_parameters_.sample_rate(), media_log_));
 
   // We're all good! Continue initializing the rest of the audio renderer
   // based on the decoder format.
   algorithm_.reset(new AudioRendererAlgorithm());
-  algorithm_->Initialize(audio_parameters_);
+  algorithm_->Initialize(audio_parameters_, channel_mask_);
 
   ChangeState_Locked(kFlushed);
 
@@ -580,6 +574,8 @@ void AudioRendererImpl::DecodedAudioReady(
     return;
   }
 
+  bool need_another_buffer = true;
+
   if (expecting_config_changes_) {
     if (last_decoded_sample_rate_ &&
         buffer->sample_rate() != last_decoded_sample_rate_) {
@@ -593,11 +589,10 @@ void AudioRendererImpl::DecodedAudioReady(
 
     DCHECK(buffer_converter_);
     buffer_converter_->AddInput(buffer);
+
     while (buffer_converter_->HasNextBuffer()) {
-      if (!splicer_->AddInput(buffer_converter_->GetNextBuffer())) {
-        HandleAbortedReadOrDecodeError(AUDIO_RENDERER_ERROR_SPLICE_FAILED);
-        return;
-      }
+      need_another_buffer =
+          HandleDecodedBuffer_Locked(buffer_converter_->GetNextBuffer());
     }
   } else {
     // TODO(chcunningham, tguilbert): Figure out if we want to support implicit
@@ -620,20 +615,8 @@ void AudioRendererImpl::DecodedAudioReady(
       return;
     }
 
-    if (!splicer_->AddInput(buffer)) {
-      HandleAbortedReadOrDecodeError(AUDIO_RENDERER_ERROR_SPLICE_FAILED);
-      return;
-    }
+    need_another_buffer = HandleDecodedBuffer_Locked(buffer);
   }
-
-  if (!splicer_->HasNextBuffer()) {
-    AttemptRead_Locked();
-    return;
-  }
-
-  bool need_another_buffer = false;
-  while (splicer_->HasNextBuffer())
-    need_another_buffer = HandleSplicerBuffer_Locked(splicer_->GetNextBuffer());
 
   if (!need_another_buffer && !CanRead_Locked())
     return;
@@ -641,7 +624,7 @@ void AudioRendererImpl::DecodedAudioReady(
   AttemptRead_Locked();
 }
 
-bool AudioRendererImpl::HandleSplicerBuffer_Locked(
+bool AudioRendererImpl::HandleDecodedBuffer_Locked(
     const scoped_refptr<AudioBuffer>& buffer) {
   lock_.AssertAcquired();
   if (buffer->end_of_stream()) {
@@ -954,20 +937,10 @@ void AudioRendererImpl::ChangeState_Locked(State new_state) {
   state_ = new_state;
 }
 
-void AudioRendererImpl::OnNewSpliceBuffer(base::TimeDelta splice_timestamp) {
-  DCHECK(task_runner_->BelongsToCurrentThread());
-  splicer_->SetSpliceTimestamp(splice_timestamp);
-}
-
 void AudioRendererImpl::OnConfigChange() {
   DCHECK(task_runner_->BelongsToCurrentThread());
   DCHECK(expecting_config_changes_);
   buffer_converter_->ResetTimestampState();
-  // Drain flushed buffers from the converter so the AudioSplicer receives all
-  // data ahead of any OnNewSpliceBuffer() calls.  Since discontinuities should
-  // only appear after config changes, AddInput() should never fail here.
-  while (buffer_converter_->HasNextBuffer())
-    CHECK(splicer_->AddInput(buffer_converter_->GetNextBuffer()));
 }
 
 void AudioRendererImpl::SetBufferingState_Locked(

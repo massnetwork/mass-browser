@@ -2,17 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "core/dom/ClientRect.h"
 #include "core/frame/BrowserControls.h"
 #include "core/frame/FrameHost.h"
 #include "core/frame/FrameView.h"
 #include "core/frame/RootFrameViewport.h"
+#include "core/frame/VisualViewport.h"
 #include "core/html/HTMLFrameOwnerElement.h"
 #include "core/layout/LayoutBox.h"
 #include "core/layout/api/LayoutViewItem.h"
+#include "core/layout/compositing/CompositedLayerMapping.h"
 #include "core/layout/compositing/PaintLayerCompositor.h"
 #include "core/page/Page.h"
 #include "core/page/scrolling/RootScrollerController.h"
 #include "core/page/scrolling/TopDocumentRootScrollerController.h"
+#include "core/paint/PaintLayer.h"
 #include "core/paint/PaintLayerScrollableArea.h"
 #include "platform/testing/URLTestHelpers.h"
 #include "platform/testing/UnitTestHelpers.h"
@@ -41,6 +45,7 @@ class RootScrollerTest : public ::testing::Test {
   RootScrollerTest() : m_baseURL("http://www.test.com/") {
     registerMockedHttpURLLoad("overflow-scrolling.html");
     registerMockedHttpURLLoad("root-scroller.html");
+    registerMockedHttpURLLoad("root-scroller-rotation.html");
     registerMockedHttpURLLoad("root-scroller-iframe.html");
     registerMockedHttpURLLoad("root-scroller-child.html");
   }
@@ -89,8 +94,12 @@ class RootScrollerTest : public ::testing::Test {
   }
 
   void executeScript(const WebString& code) {
-    mainWebFrame()->executeScript(WebScriptSource(code));
-    mainWebFrame()->view()->updateAllLifecyclePhases();
+    executeScript(code, *mainWebFrame());
+  }
+
+  void executeScript(const WebString& code, WebLocalFrame& frame) {
+    frame.executeScript(WebScriptSource(code));
+    frame.view()->updateAllLifecyclePhases();
     runPendingTasks();
   }
 
@@ -879,6 +888,128 @@ TEST_F(RootScrollerTest, RemoveClippingOnCompositorLayers) {
   }
 }
 
+// Tests that the clipping layer is resized on the root scroller element even
+// if the layout height doesn't change.
+TEST_F(RootScrollerTest, BrowserControlsResizeClippingLayer) {
+  bool oldInertTopControls = RuntimeEnabledFeatures::inertTopControlsEnabled();
+  RuntimeEnabledFeatures::setInertTopControlsEnabled(true);
+
+  initialize("root-scroller.html");
+  Element* container = mainFrame()->document()->getElementById("container");
+
+  {
+    NonThrowableExceptionState exceptionState;
+    mainFrame()->document()->setRootScroller(container, exceptionState);
+
+    mainFrameView()->updateAllLifecyclePhases();
+    ASSERT_EQ(toLayoutBox(container->layoutObject())->clientHeight(), 400);
+
+    GraphicsLayer* clipLayer = toLayoutBox(container->layoutObject())
+                                   ->layer()
+                                   ->compositedLayerMapping()
+                                   ->scrollingLayer();
+    ASSERT_EQ(clipLayer->size().height(), 400);
+  }
+
+  {
+    webViewImpl()->handleInputEvent(
+        generateTouchGestureEvent(WebInputEvent::GestureScrollBegin));
+
+    // Scrolling over the #container DIV should cause the browser controls to
+    // hide.
+    EXPECT_FLOAT_EQ(1, browserControls().shownRatio());
+    webViewImpl()->handleInputEvent(generateTouchGestureEvent(
+        WebInputEvent::GestureScrollUpdate, 0, -browserControls().height()));
+    EXPECT_FLOAT_EQ(0, browserControls().shownRatio());
+
+    webViewImpl()->handleInputEvent(
+        generateTouchGestureEvent(WebInputEvent::GestureScrollEnd));
+
+    webViewImpl()->resizeWithBrowserControls(IntSize(400, 450), 50, false);
+
+    EXPECT_FALSE(container->layoutObject()->needsLayout());
+
+    mainFrameView()->updateAllLifecyclePhases();
+
+    // Since inert top controls are enabled, the container should not have
+    // resized, however, the clip layer should.
+    EXPECT_EQ(toLayoutBox(container->layoutObject())->clientHeight(), 400);
+    GraphicsLayer* clipLayer = toLayoutBox(container->layoutObject())
+                                   ->layer()
+                                   ->compositedLayerMapping()
+                                   ->scrollingLayer();
+    EXPECT_EQ(clipLayer->size().height(), 450);
+  }
+
+  RuntimeEnabledFeatures::setInertTopControlsEnabled(oldInertTopControls);
+}
+
+// Tests that the clipping layer is resized on the root scroller element when
+// it's an iframe and even if the layout height doesn't change.
+TEST_F(RootScrollerTest, BrowserControlsResizeClippingLayerIFrame) {
+  bool oldInertTopControls = RuntimeEnabledFeatures::inertTopControlsEnabled();
+  RuntimeEnabledFeatures::setInertTopControlsEnabled(true);
+
+  initialize("root-scroller-iframe.html");
+
+  Element* iframe = mainFrame()->document()->getElementById("iframe");
+  LocalFrame* childFrame =
+      toLocalFrame(toHTMLFrameOwnerElement(iframe)->contentFrame());
+
+  PaintLayerCompositor* childPLC =
+      childFrame->view()->layoutViewItem().compositor();
+
+  // Give the iframe itself scrollable content and make it the root scroller.
+  {
+    NonThrowableExceptionState nonThrow;
+    mainFrame()->document()->setRootScroller(iframe, nonThrow);
+
+    WebLocalFrame* childWebFrame =
+        mainWebFrame()->firstChild()->toWebLocalFrame();
+    executeScript(
+        "document.getElementById('container').style.width = '300%';"
+        "document.getElementById('container').style.height = '300%';",
+        *childWebFrame);
+
+    mainFrameView()->updateAllLifecyclePhases();
+
+    // Some sanity checks to make sure the test is setup correctly.
+    ASSERT_EQ(childFrame->view()->visibleContentSize().height(), 400);
+    ASSERT_EQ(childPLC->containerLayer()->size().height(), 400);
+    ASSERT_EQ(childPLC->rootGraphicsLayer()->size().height(), 400);
+  }
+
+  {
+    webViewImpl()->handleInputEvent(
+        generateTouchGestureEvent(WebInputEvent::GestureScrollBegin));
+
+    // Scrolling over the #container DIV should cause the browser controls to
+    // hide.
+    EXPECT_FLOAT_EQ(1, browserControls().shownRatio());
+    webViewImpl()->handleInputEvent(generateTouchGestureEvent(
+        WebInputEvent::GestureScrollUpdate, 0, -browserControls().height()));
+    EXPECT_FLOAT_EQ(0, browserControls().shownRatio());
+
+    webViewImpl()->handleInputEvent(
+        generateTouchGestureEvent(WebInputEvent::GestureScrollEnd));
+
+    webViewImpl()->resizeWithBrowserControls(IntSize(400, 450), 50, false);
+
+    EXPECT_FALSE(childFrame->view()->needsLayout());
+
+    mainFrameView()->updateAllLifecyclePhases();
+
+    // Since inert top controls are enabled, the iframe element should not have
+    // resized, however, its clip layer should resize to reveal content as the
+    // browser controls hide.
+    EXPECT_EQ(childFrame->view()->visibleContentSize().height(), 400);
+    EXPECT_EQ(childPLC->containerLayer()->size().height(), 450);
+    EXPECT_EQ(childPLC->rootGraphicsLayer()->size().height(), 450);
+  }
+
+  RuntimeEnabledFeatures::setInertTopControlsEnabled(oldInertTopControls);
+}
+
 // Tests that removing the root scroller element from the DOM resets the
 // effective root scroller without waiting for any lifecycle events.
 TEST_F(RootScrollerTest, RemoveRootScrollerFromDom) {
@@ -929,6 +1060,112 @@ TEST_F(RootScrollerTest, DocumentElementHasNoLayoutObject) {
   EXPECT_EQ(
       mainFrameView()->layoutViewportScrollableArea()->layerForScrolling(),
       globalController.rootScrollerLayer());
+}
+
+// On Android, the main scrollbars are owned by the visual viewport and the
+// FrameView's disabled. This functionality should extend to a rootScroller
+// that isn't the main FrameView.
+TEST_F(RootScrollerTest, UseVisualViewportScrollbars) {
+  initialize("root-scroller.html");
+
+  Element* container = mainFrame()->document()->getElementById("container");
+  NonThrowableExceptionState nonThrow;
+  mainFrame()->document()->setRootScroller(container, nonThrow);
+  mainFrameView()->updateAllLifecyclePhases();
+
+  ScrollableArea* containerScroller =
+      static_cast<PaintInvalidationCapableScrollableArea*>(
+          toLayoutBox(container->layoutObject())->getScrollableArea());
+
+  EXPECT_FALSE(containerScroller->horizontalScrollbar());
+  EXPECT_FALSE(containerScroller->verticalScrollbar());
+  EXPECT_GT(containerScroller->maximumScrollOffset().width(), 0);
+  EXPECT_GT(containerScroller->maximumScrollOffset().height(), 0);
+}
+
+// On Android, the main scrollbars are owned by the visual viewport and the
+// FrameView's disabled. This functionality should extend to a rootScroller
+// that's a nested iframe.
+TEST_F(RootScrollerTest, UseVisualViewportScrollbarsIframe) {
+  initialize("root-scroller-iframe.html");
+
+  Element* iframe = mainFrame()->document()->getElementById("iframe");
+  LocalFrame* childFrame =
+      toLocalFrame(toHTMLFrameOwnerElement(iframe)->contentFrame());
+
+  NonThrowableExceptionState nonThrow;
+  mainFrame()->document()->setRootScroller(iframe, nonThrow);
+
+  WebLocalFrame* childWebFrame =
+      mainWebFrame()->firstChild()->toWebLocalFrame();
+  executeScript(
+      "document.getElementById('container').style.width = '200%';"
+      "document.getElementById('container').style.height = '200%';",
+      *childWebFrame);
+
+  mainFrameView()->updateAllLifecyclePhases();
+
+  ScrollableArea* containerScroller = childFrame->view();
+
+  EXPECT_FALSE(containerScroller->horizontalScrollbar());
+  EXPECT_FALSE(containerScroller->verticalScrollbar());
+  EXPECT_GT(containerScroller->maximumScrollOffset().width(), 0);
+  EXPECT_GT(containerScroller->maximumScrollOffset().height(), 0);
+}
+
+TEST_F(RootScrollerTest, RotationAnchoring) {
+  initialize("root-scroller-rotation.html");
+
+  ScrollableArea* containerScroller;
+
+  {
+    webViewImpl()->resizeWithBrowserControls(IntSize(250, 1000), 0, true);
+    mainFrameView()->updateAllLifecyclePhases();
+
+    Element* container = mainFrame()->document()->getElementById("container");
+    NonThrowableExceptionState nonThrow;
+    mainFrame()->document()->setRootScroller(container, nonThrow);
+    mainFrameView()->updateAllLifecyclePhases();
+
+    containerScroller = static_cast<PaintInvalidationCapableScrollableArea*>(
+        toLayoutBox(container->layoutObject())->getScrollableArea());
+  }
+
+  Element* target = mainFrame()->document()->getElementById("target");
+
+  // Zoom in and scroll the viewport so that the target is fully in the
+  // viewport and the visual viewport is fully scrolled within the layout
+  // viepwort.
+  {
+    int scrollX = 250 * 4;
+    int scrollY = 1000 * 4;
+
+    webViewImpl()->setPageScaleFactor(2);
+    webViewImpl()->handleInputEvent(
+        generateTouchGestureEvent(WebInputEvent::GestureScrollBegin));
+    webViewImpl()->handleInputEvent(generateTouchGestureEvent(
+        WebInputEvent::GestureScrollUpdate, -scrollX, -scrollY));
+    webViewImpl()->handleInputEvent(
+        generateTouchGestureEvent(WebInputEvent::GestureScrollEnd));
+
+    // The visual viewport should be 1.5 screens scrolled so that the target
+    // occupies the bottom quadrant of the layout viewport.
+    ASSERT_EQ((250 * 3) / 2, containerScroller->scrollOffset().width());
+    ASSERT_EQ((1000 * 3) / 2, containerScroller->scrollOffset().height());
+
+    // The visual viewport should have scrolled the last half layout viewport.
+    ASSERT_EQ((250) / 2, visualViewport().scrollOffset().width());
+    ASSERT_EQ((1000) / 2, visualViewport().scrollOffset().height());
+  }
+
+  // Now do a rotation resize.
+  webViewImpl()->resizeWithBrowserControls(IntSize(1000, 250), 50, false);
+  mainFrameView()->updateAllLifecyclePhases();
+
+  // The visual viewport should remain fully filled by the target.
+  ClientRect* rect = target->getBoundingClientRect();
+  EXPECT_EQ(rect->left(), visualViewport().scrollOffset().width());
+  EXPECT_EQ(rect->top(), visualViewport().scrollOffset().height());
 }
 
 }  // namespace

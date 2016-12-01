@@ -22,6 +22,7 @@
 #include "ui/aura/test/test_window_parenting_client.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_event_dispatcher.h"
+#include "ui/aura/window_port_local.h"
 #include "ui/base/ime/input_method_factory.h"
 #include "ui/base/ime/input_method_initializer.h"
 #include "ui/compositor/compositor.h"
@@ -39,10 +40,8 @@ namespace aura {
 namespace test {
 
 AuraTestHelper::AuraTestHelper(base::MessageLoopForUI* message_loop)
-    : setup_called_(false),
-      teardown_called_(false) {
+    : setup_called_(false), teardown_called_(false) {
   DCHECK(message_loop);
-  message_loop_ = message_loop;
   // Disable animations during tests.
   zero_duration_mode_.reset(new ui::ScopedAnimationDurationScaleMode(
       ui::ScopedAnimationDurationScaleMode::ZERO_DURATION));
@@ -59,32 +58,50 @@ AuraTestHelper::~AuraTestHelper() {
       << "AuraTestHelper::TearDown() never called.";
 }
 
-void AuraTestHelper::EnableMus(WindowTreeClientDelegate* window_tree_delegate,
-                               WindowManagerDelegate* window_manager_delegate) {
+void AuraTestHelper::EnableMusWithTestWindowTree(
+    WindowTreeClientDelegate* window_tree_delegate,
+    WindowManagerDelegate* window_manager_delegate) {
   DCHECK(!setup_called_);
-  use_mus_ = true;
+  DCHECK_EQ(Mode::LOCAL, mode_);
+  mode_ = Mode::MUS_CREATE_WINDOW_TREE_CLIENT;
   window_tree_delegate_ = window_tree_delegate;
   window_manager_delegate_ = window_manager_delegate;
+}
+
+void AuraTestHelper::EnableMusWithWindowTreeClient(
+    WindowTreeClient* window_tree_client) {
+  DCHECK(!setup_called_);
+  DCHECK_EQ(Mode::LOCAL, mode_);
+  mode_ = Mode::MUS;
+  window_tree_client_ = window_tree_client;
 }
 
 void AuraTestHelper::SetUp(ui::ContextFactory* context_factory) {
   setup_called_ = true;
 
-  wm_state_ = base::MakeUnique<wm::WMState>();
+  if (mode_ != Mode::MUS) {
+    // Assume if an explicit WindowTreeClient was created then a WmState was
+    // already created.
+    wm_state_ = base::MakeUnique<wm::WMState>();
+  }
   // Needs to be before creating WindowTreeClient.
   focus_client_ = base::MakeUnique<TestFocusClient>();
   capture_client_ = base::MakeUnique<client::DefaultCaptureClient>();
-  Env::WindowPortFactory window_impl_factory;
-  if (use_mus_)
-    window_impl_factory = InitMus();
+  const Env::Mode env_mode =
+      (mode_ == Mode::LOCAL) ? Env::Mode::LOCAL : Env::Mode::MUS;
+  if (mode_ == Mode::MUS_CREATE_WINDOW_TREE_CLIENT)
+    InitWindowTreeClient();
   if (!Env::GetInstanceDontCreate())
-    env_ = aura::Env::CreateInstance(window_impl_factory);
-  else if (use_mus_)
-    EnvTestHelper(Env::GetInstance()).SetWindowPortFactory(window_impl_factory);
+    env_ = Env::CreateInstance(env_mode);
+  EnvTestHelper env_helper;
+  // Always reset the mode. This really only matters for if Env was created
+  // above.
+  env_helper.SetMode(env_mode);
+  env_helper.SetWindowTreeClient(window_tree_client_);
+  Env::GetInstance()->SetActiveFocusClient(focus_client_.get(), nullptr);
   Env::GetInstance()->set_context_factory(context_factory);
   // Unit tests generally don't want to query the system, rather use the state
   // from RootWindow.
-  EnvTestHelper env_helper(Env::GetInstance());
   env_helper.SetInputStateLookup(nullptr);
   env_helper.ResetEventState();
 
@@ -107,7 +124,7 @@ void AuraTestHelper::SetUp(ui::ContextFactory* context_factory) {
   // Ensure width != height so tests won't confuse them.
   host()->SetBounds(gfx::Rect(host_size));
 
-  if (use_mus_)
+  if (mode_ == Mode::MUS_CREATE_WINDOW_TREE_CLIENT)
     window_tree()->AckAllChanges();
 }
 
@@ -122,22 +139,17 @@ void AuraTestHelper::TearDown() {
     display::Screen::SetScreenInstance(nullptr);
   test_screen_.reset();
 
-#if defined(USE_X11)
-  ui::test::ResetXCursorCache();
-#endif
-
+  Env::GetInstance()->SetActiveFocusClient(nullptr, nullptr);
   window_tree_client_setup_.reset();
   focus_client_.reset();
   capture_client_.reset();
 
   ui::ShutdownInputMethodForTesting();
 
-  if (env_) {
+  if (env_)
     env_.reset();
-  } else if (use_mus_) {
-    EnvTestHelper(Env::GetInstance())
-        .SetWindowPortFactory(Env::WindowPortFactory());
-  }
+  else
+    EnvTestHelper().SetWindowTreeClient(nullptr);
   wm_state_.reset();
 }
 
@@ -153,25 +165,18 @@ TestWindowTree* AuraTestHelper::window_tree() {
 }
 
 WindowTreeClient* AuraTestHelper::window_tree_client() {
-  return window_tree_client_setup_->window_tree_client();
+  return window_tree_client_;
 }
 
 client::CaptureClient* AuraTestHelper::capture_client() {
   return capture_client_.get();
 }
 
-Env::WindowPortFactory AuraTestHelper::InitMus() {
+void AuraTestHelper::InitWindowTreeClient() {
   window_tree_client_setup_ = base::MakeUnique<TestWindowTreeClientSetup>();
   window_tree_client_setup_->InitForWindowManager(window_tree_delegate_,
                                                   window_manager_delegate_);
-  return base::Bind(&AuraTestHelper::CreateWindowPortMus,
-                    base::Unretained(this));
-}
-
-std::unique_ptr<WindowPort> AuraTestHelper::CreateWindowPortMus(
-    Window* window) {
-  return base::MakeUnique<WindowPortMus>(window_tree_client(),
-                                         WindowMusType::LOCAL);
+  window_tree_client_ = window_tree_client_setup_->window_tree_client();
 }
 
 }  // namespace test

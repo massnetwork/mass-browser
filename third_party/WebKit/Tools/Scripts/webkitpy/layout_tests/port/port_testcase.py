@@ -36,7 +36,6 @@ import unittest
 
 from webkitpy.common.system.executive_mock import MockExecutive, MockExecutive2
 from webkitpy.common.system.outputcapture import OutputCapture
-from webkitpy.common.system.platforminfo_mock import MockPlatformInfo
 from webkitpy.common.system.systemhost import SystemHost
 from webkitpy.common.system.systemhost_mock import MockSystemHost
 from webkitpy.layout_tests.models import test_run_results
@@ -361,7 +360,7 @@ class PortTestCase(unittest.TestCase):
         del port.host.environ['WEBKIT_HTTP_SERVER_CONF_PATH']
         self.assertEqual(
             port.path_to_apache_config_file(),
-            port.host.filesystem.join(port.layout_tests_dir(), 'http/conf/httpd.conf'))
+            port.host.filesystem.join(port.apache_config_directory(), 'httpd.conf'))
 
         # Check that even if we mock out _apache_config_file_name, the environment variable takes precedence.
         port.host.environ['WEBKIT_HTTP_SERVER_CONF_PATH'] = '/existing/httpd.conf'

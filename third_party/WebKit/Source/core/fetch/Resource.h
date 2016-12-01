@@ -35,7 +35,6 @@
 #include "platform/network/ResourceLoadPriority.h"
 #include "platform/network/ResourceRequest.h"
 #include "platform/network/ResourceResponse.h"
-#include "platform/scheduler/CancellableTaskFactory.h"
 #include "platform/tracing/web_process_memory_dump.h"
 #include "public/platform/WebDataConsumerHandle.h"
 #include "wtf/Allocator.h"
@@ -301,6 +300,9 @@ class CORE_EXPORT Resource : public GarbageCollectedFinalized<Resource>,
 
   double loadFinishTime() const { return m_loadFinishTime; }
 
+  void setEncodedDataLength(int64_t value) {
+    m_response.setEncodedDataLength(value);
+  }
   void addToEncodedBodyLength(int value) {
     m_response.addToEncodedBodyLength(value);
   }
@@ -309,6 +311,19 @@ class CORE_EXPORT Resource : public GarbageCollectedFinalized<Resource>,
   }
 
   virtual bool canReuse(const ResourceRequest&) const { return true; }
+
+  // If cache-aware loading is activated, this callback is called when the first
+  // disk-cache-only request failed due to cache miss. After this callback,
+  // cache-aware loading is deactivated and a reload with original request will
+  // be triggered right away in ResourceLoader.
+  virtual void willReloadAfterDiskCacheMiss() {}
+
+  // TODO(shaochuan): This is for saving back the actual ResourceRequest sent
+  // in ResourceFetcher::startLoad() for retry in cache-aware loading, remove
+  // once ResourceRequest is not modified in startLoad(). crbug.com/632580
+  void setResourceRequest(const ResourceRequest& resourceRequest) {
+    m_resourceRequest = resourceRequest;
+  }
 
   // Used by the MemoryCache to reduce the memory consumption of the entry.
   void prune();
@@ -334,9 +349,7 @@ class CORE_EXPORT Resource : public GarbageCollectedFinalized<Resource>,
   virtual void destroyDecodedDataForFailedRevalidation() {}
 
   void setEncodedSize(size_t);
-  void setEncodedSizeMemoryUsage(size_t);
   void setDecodedSize(size_t);
-  void didAccessDecodedData();
 
   void finishPendingClients();
 
@@ -382,7 +395,7 @@ class CORE_EXPORT Resource : public GarbageCollectedFinalized<Resource>,
   void clearRangeRequestHeader();
 
   SharedBuffer* data() const { return m_data.get(); }
-  void clearData() { m_data.clear(); }
+  void clearData();
 
   class ProhibitAddRemoveClientInScope : public AutoReset<bool> {
    public:

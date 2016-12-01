@@ -4,24 +4,24 @@
 <link rel="import" href="chrome://resources/html/icon.html">
 <link rel="import" href="chrome://resources/polymer/v1_0/paper-icon-button/paper-icon-button.html">
 <link rel="import" href="/search_engines_page/search_engine_dialog.html">
+<link rel="import" href="/search_engines_page/search_engine_entry_css.html">
 <link rel="import" href="/search_engines_page/search_engines_browser_proxy.html">
 <link rel="import" href="/settings_shared_css.html">
 
 <dom-module id="settings-search-engine-entry">
-  <link rel="import" type="css" href="/search_engines_page/search_engine_entry.css">
   <template>
-    <style include="settings-shared"></style>
-    <style>
+    <style include="settings-shared search-engine-entry">
       :host([is-default]) {
         font-weight: 500;
       }
 
-      .name-column,
-      .keyword-column {
+      .column {
+        -webkit-margin-end: 8px;
         flex: 3;
+        word-break: break-word;
       }
 
-      .url-column {
+      #url-column {
         flex: 4;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -34,13 +34,11 @@
       </settings-search-engine-dialog>
     </template>
     <div class="list-item">
-      <div class="name-column">
-        <span class="favicon-image"
-            style="background-image: [[getIconSet_(engine.iconURL)]]"></span>
-        <span class="name">[[engine.displayName]]</span>
-      </div>
-      <div class="keyword-column">[[engine.keyword]]</div>
-      <div class="url-column">[[engine.url]]</div>
+      <div class="favicon-image"
+          style="background-image: [[getIconSet_(engine.iconURL)]]"></div>
+      <div class="column">[[engine.displayName]]</div>
+      <div class="column">[[engine.keyword]]</div>
+      <div id="url-column">[[engine.url]]</div>
       <paper-icon-button icon="cr:more-vert" tabindex$="[[tabindex]]"
           on-tap="onDotsTap_">
       </paper-icon-button>

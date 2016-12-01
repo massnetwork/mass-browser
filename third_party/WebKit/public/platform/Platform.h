@@ -55,6 +55,7 @@
 #include "WebVector.h"
 #include "base/metrics/user_metrics_action.h"
 #include "cc/resources/shared_bitmap.h"
+#include "cc/surfaces/frame_sink_id.h"
 
 class GrContext;
 
@@ -98,7 +99,6 @@ class WebMediaStreamCenter;
 class WebMediaStreamCenterClient;
 class WebMediaStreamTrack;
 class WebMessagePortChannel;
-class WebMimeRegistry;
 class WebNotificationManager;
 class WebPluginListBuilder;
 class WebPrescientNetworking;
@@ -153,9 +153,6 @@ class BLINK_PLATFORM_EXPORT Platform {
 
   // Must return non-null.
   virtual WebFileUtilities* fileUtilities() { return nullptr; }
-
-  // Must return non-null.
-  virtual WebMimeRegistry* mimeRegistry() { return nullptr; }
 
   // May return null if sandbox support is not necessary
   virtual WebSandboxSupport* sandboxSupport() { return nullptr; }
@@ -324,6 +321,9 @@ class BLINK_PLATFORM_EXPORT Platform {
   // Returns a unique identifier for a process. This may not necessarily be
   // the process's process ID.
   virtual uint32_t getUniqueIdForProcess() { return 0; }
+
+  // Returns a unique FrameSinkID for the current renderer process
+  virtual cc::FrameSinkId generateFrameSinkId() { return cc::FrameSinkId(); }
 
   // Message Ports -------------------------------------------------------
 

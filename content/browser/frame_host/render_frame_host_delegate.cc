@@ -24,7 +24,7 @@ const GURL& RenderFrameHostDelegate::GetMainFrameLastCommittedURL() const {
   return GURL::EmptyGURL();
 }
 
-bool RenderFrameHostDelegate::AddMessageToConsole(
+bool RenderFrameHostDelegate::DidAddMessageToConsole(
     int32_t level,
     const base::string16& message,
     int32_t line_no,
@@ -74,6 +74,11 @@ RenderFrameHostDelegate::GetGeolocationServiceContext() {
 
 device::WakeLockServiceContext*
 RenderFrameHostDelegate::GetWakeLockServiceContext() {
+  return nullptr;
+}
+
+ScreenOrientationProvider*
+RenderFrameHostDelegate::GetScreenOrientationProvider() {
   return nullptr;
 }
 

@@ -49,7 +49,7 @@ void WebURLLoaderMock::ServeAsynchronousRequest(
     return;
 
   if (error.reason) {
-    delegate->didFail(client_, this, error);
+    delegate->didFail(client_, this, error, data.size(), 0);
     return;
   }
   delegate->didReceiveData(client_, this, data.data(), data.size(),
@@ -57,7 +57,7 @@ void WebURLLoaderMock::ServeAsynchronousRequest(
   if (!self)
     return;
 
-  delegate->didFinishLoading(client_, this, 0, data.size());
+  delegate->didFinishLoading(client_, this, 0, data.size(), data.size());
 }
 
 WebURLRequest WebURLLoaderMock::ServeRedirect(
@@ -66,8 +66,7 @@ WebURLRequest WebURLLoaderMock::ServeRedirect(
   KURL redirectURL(
       ParsedURLString, redirectResponse.httpHeaderField("Location"));
 
-  WebURLRequest newRequest;
-  newRequest.setURL(redirectURL);
+  WebURLRequest newRequest(redirectURL);
   newRequest.setFirstPartyForCookies(redirectURL);
   newRequest.setDownloadToFile(request.downloadToFile());
   newRequest.setUseStreamOnResponse(request.useStreamOnResponse());
@@ -100,7 +99,8 @@ void WebURLLoaderMock::loadSynchronously(const WebURLRequest& request,
                                          WebURLResponse& response,
                                          WebURLError& error,
                                          WebData& data,
-                                         int64_t& encoded_data_length) {
+                                         int64_t& encoded_data_length,
+                                         int64_t& encoded_body_length) {
   if (factory_->IsMockedURL(request.url())) {
       factory_->LoadSynchronously(request, &response, &error, &data,
                                   &encoded_data_length);
@@ -111,7 +111,7 @@ void WebURLLoaderMock::loadSynchronously(const WebURLRequest& request,
       << request.url().string().utf8();
   using_default_loader_ = true;
   default_loader_->loadSynchronously(request, response, error, data,
-                                     encoded_data_length);
+                                     encoded_data_length, encoded_body_length);
 }
 
 void WebURLLoaderMock::loadAsynchronously(const WebURLRequest& request,
@@ -153,7 +153,8 @@ void WebURLLoaderMock::setDefersLoading(bool deferred) {
   NOTIMPLEMENTED();
 }
 
-void WebURLLoaderMock::setLoadingTaskRunner(WebTaskRunner* runner) {
+void WebURLLoaderMock::setLoadingTaskRunner(
+    base::SingleThreadTaskRunner* runner) {
   // In principle this is NOTIMPLEMENTED(), but if we put that here it floods
   // the console during webkit unit tests, so we leave the function empty.
   DCHECK(runner);

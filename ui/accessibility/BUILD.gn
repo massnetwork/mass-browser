@@ -5,9 +5,10 @@
 import("//build/config/linux/pkg_config.gni")
 import("//build/config/features.gni")
 import("//build/config/ui.gni")
-import("//build/json_schema_api.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//testing/test.gni")
+import("//tools/json_schema_compiler/json_schema_api.gni")
+
 if (is_android) {
   import("//build/config/android/rules.gni")
 }
@@ -39,8 +40,6 @@ component("accessibility") {
     "ax_tree_serializer.h",
     "ax_tree_source.h",
     "ax_tree_update.h",
-    "ax_view_state.cc",
-    "ax_view_state.h",
     "platform/ax_platform_node.cc",
     "platform/ax_platform_node.h",
     "platform/ax_platform_node_base.cc",

@@ -171,17 +171,13 @@ cr.define('settings_people_page', function() {
           assertTrue(!!disconnectConfirm);
           assertFalse(disconnectConfirm.hidden);
 
-          // Wait for exit of dialog route.
-          var dialogExitPromise = new Promise(function(resolve) {
-            window.addEventListener('popstate', function callback() {
-              window.removeEventListener('popstate', callback);
-              resolve();
-            });
+          var popstatePromise = new Promise(function(resolve) {
+            listenOnce(window, 'popstate', resolve);
           });
 
           MockInteractions.tap(disconnectConfirm);
 
-          return dialogExitPromise;
+          return popstatePromise;
         }).then(function() {
           return browserProxy.whenCalled('signOut');
         }).then(function(deleteProfile) {
@@ -206,11 +202,47 @@ cr.define('settings_people_page', function() {
           assertFalse(disconnectManagedProfileConfirm.hidden);
 
           browserProxy.resetResolver('signOut');
+
+          var popstatePromise = new Promise(function(resolve) {
+            listenOnce(window, 'popstate', resolve);
+          });
+
           MockInteractions.tap(disconnectManagedProfileConfirm);
 
+          return popstatePromise;
+        }).then(function() {
           return browserProxy.whenCalled('signOut');
         }).then(function(deleteProfile) {
           assertTrue(deleteProfile);
+        });
+      });
+
+      test('Signout dialog suppressed when not signed in', function() {
+        return browserProxy.whenCalled('getSyncStatus').then(function() {
+          Polymer.dom.flush();
+
+          settings.navigateTo(settings.Route.SIGN_OUT);
+          Polymer.dom.flush();
+
+          assertTrue(peoplePage.$.disconnectDialog.open);
+
+          var popstatePromise = new Promise(function(resolve) {
+            listenOnce(window, 'popstate', resolve);
+          });
+
+          cr.webUIListenerCallback('sync-status-changed', {
+            signedIn: false,
+          });
+
+          return popstatePromise;
+        }).then(function() {
+          var popstatePromise = new Promise(function(resolve) {
+            listenOnce(window, 'popstate', resolve);
+          });
+
+          settings.navigateTo(settings.Route.SIGN_OUT);
+
+          return popstatePromise;
         });
       });
 
@@ -230,8 +262,8 @@ cr.define('settings_people_page', function() {
         });
       });
 
-      test('CustomizeSyncDisabledForManagedSignin', function() {
-        assertFalse(!!peoplePage.$$('#customize-sync'));
+      test('syncStatusNotActionableForManagedAccounts', function() {
+        assertFalse(!!peoplePage.$$('#sync-status'));
 
         return browserProxy.whenCalled('getSyncStatus').then(function() {
           cr.webUIListenerCallback('sync-status-changed', {
@@ -240,9 +272,9 @@ cr.define('settings_people_page', function() {
           });
           Polymer.dom.flush();
 
-          var customizeSync = peoplePage.$$('#customize-sync');
-          assertTrue(!!customizeSync);
-          assertTrue(customizeSync.hasAttribute('actionable'));
+          var syncStatusContainer = peoplePage.$$('#sync-status');
+          assertTrue(!!syncStatusContainer);
+          assertTrue(syncStatusContainer.hasAttribute('actionable'));
 
           cr.webUIListenerCallback('sync-status-changed', {
             managed: true,
@@ -251,9 +283,39 @@ cr.define('settings_people_page', function() {
           });
           Polymer.dom.flush();
 
-          var customizeSync = peoplePage.$$('#customize-sync');
-          assertTrue(!!customizeSync);
-          assertFalse(customizeSync.hasAttribute('actionable'));
+          var syncStatusContainer = peoplePage.$$('#sync-status');
+          assertTrue(!!syncStatusContainer);
+          assertFalse(syncStatusContainer.hasAttribute('actionable'));
+        });
+      });
+
+      test('syncStatusNotActionableForPassiveErrors', function() {
+        assertFalse(!!peoplePage.$$('#sync-status'));
+
+        return browserProxy.whenCalled('getSyncStatus').then(function() {
+          cr.webUIListenerCallback('sync-status-changed', {
+            hasError: true,
+            statusAction: settings.StatusAction.NO_ACTION,
+            signedIn: true,
+            syncSystemEnabled: true,
+          });
+          Polymer.dom.flush();
+
+          var syncStatusContainer = peoplePage.$$('#sync-status');
+          assertTrue(!!syncStatusContainer);
+          assertFalse(syncStatusContainer.hasAttribute('actionable'));
+
+          cr.webUIListenerCallback('sync-status-changed', {
+            hasError: true,
+            statusAction: settings.StatusAction.UPGRADE_CLIENT,
+            signedIn: true,
+            syncSystemEnabled: true,
+          });
+          Polymer.dom.flush();
+
+          var syncStatusContainer = peoplePage.$$('#sync-status');
+          assertTrue(!!syncStatusContainer);
+          assertTrue(syncStatusContainer.hasAttribute('actionable'));
         });
       });
     });

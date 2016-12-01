@@ -29,7 +29,7 @@
 #include "base/auto_reset.h"
 #include "base/metrics/histogram.h"
 #include "grit/ash_strings.h"
-#include "ui/accessibility/ax_view_state.h"
+#include "ui/accessibility/ax_node_data.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/simple_menu_model.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -931,7 +931,7 @@ void ShelfView::CalculateIdealBounds(IdealBounds* bounds) const {
   }
 
   // Right aligned icons.
-  int end_position = available_size - button_spacing;
+  int end_position = available_size;
   x = wm_shelf_->PrimaryAxisValue(end_position, 0);
   y = wm_shelf_->PrimaryAxisValue(0, end_position);
   for (int i = view_model_->view_size() - 1; i >= first_panel_index; --i) {
@@ -947,7 +947,7 @@ void ShelfView::CalculateIdealBounds(IdealBounds* bounds) const {
       wm_shelf_->PrimaryAxisValue(
           view_model_->ideal_bounds(last_button_index).right(),
           view_model_->ideal_bounds(last_button_index).bottom()) +
-      button_size;
+      button_spacing;
   int reserved_icon_space = available_size * kReservedNonPanelIconProportion;
   if (last_icon_position < reserved_icon_space)
     end_position = last_icon_position;
@@ -958,7 +958,8 @@ void ShelfView::CalculateIdealBounds(IdealBounds* bounds) const {
       gfx::Size(wm_shelf_->PrimaryAxisValue(w, width()),
                 wm_shelf_->PrimaryAxisValue(height(), h)));
 
-  last_visible_index_ = DetermineLastVisibleIndex(end_position - button_size);
+  last_visible_index_ =
+      DetermineLastVisibleIndex(end_position - button_spacing);
   last_hidden_index_ = DetermineFirstVisiblePanelIndex(end_position) - 1;
   bool show_overflow = last_visible_index_ < last_button_index ||
                        last_hidden_index_ >= first_panel_index;
@@ -1010,14 +1011,17 @@ void ShelfView::CalculateIdealBounds(IdealBounds* bounds) const {
           view_model_->ideal_bounds(last_visible_index_).y(),
           view_model_->ideal_bounds(last_visible_index_).bottom());
     }
+
+    if (last_visible_index_ >= 0) {
+      // Add more space between last visible item and overflow button.
+      // Without this, two buttons look too close compared with other items.
+      x = wm_shelf_->PrimaryAxisValue(x + button_spacing, x);
+      y = wm_shelf_->PrimaryAxisValue(y, y + button_spacing);
+    }
+
     // Set all hidden panel icon positions to be on the overflow button.
     for (int i = first_panel_index; i <= last_hidden_index_; ++i)
       view_model_->set_ideal_bounds(i, gfx::Rect(x, y, w, h));
-
-    // Add more space between last visible item and overflow button.
-    // Without this, two buttons look too close compared with other items.
-    x = wm_shelf_->PrimaryAxisValue(x + button_spacing, x);
-    y = wm_shelf_->PrimaryAxisValue(y, y + button_spacing);
 
     bounds->overflow_bounds.set_x(x);
     bounds->overflow_bounds.set_y(y);
@@ -1043,9 +1047,9 @@ int ShelfView::DetermineLastVisibleIndex(int max_value) const {
 int ShelfView::DetermineFirstVisiblePanelIndex(int min_value) const {
   int index = model_->FirstPanelIndex();
   while (index < view_model_->view_size() &&
-         wm_shelf_->PrimaryAxisValue(
-             view_model_->ideal_bounds(index).right(),
-             view_model_->ideal_bounds(index).bottom()) < min_value) {
+         wm_shelf_->PrimaryAxisValue(view_model_->ideal_bounds(index).x(),
+                                     view_model_->ideal_bounds(index).y()) <
+             min_value) {
     ++index;
   }
   return index;
@@ -1060,7 +1064,7 @@ void ShelfView::AnimateToIdealBounds() {
     // Now that the item animation starts, we have to make sure that the
     // padding of the first gets properly transferred to the new first item.
     if (i && view->border())
-      view->SetBorder(views::Border::NullBorder());
+      view->SetBorder(views::NullBorder());
   }
   overflow_button_->SetBoundsRect(ideal_bounds.overflow_bounds);
 }
@@ -1556,8 +1560,13 @@ gfx::Size ShelfView::GetPreferredSize() const {
   CalculateIdealBounds(&ideal_bounds);
   const int shelf_size = GetShelfConstant(SHELF_SIZE);
 
-  int last_button_index =
-      is_overflow_mode() ? last_visible_index_ : view_model_->view_size() - 1;
+  int last_button_index = last_visible_index_;
+  if (!is_overflow_mode()) {
+    if (last_hidden_index_ < view_model_->view_size() - 1)
+      last_button_index = view_model_->view_size() - 1;
+    else if (overflow_button_ && overflow_button_->visible())
+      last_button_index++;
+  }
 
   // When an item is dragged off from the overflow bubble, it is moved to last
   // position and and changed to invisible. Overflow bubble size should be
@@ -1598,9 +1607,9 @@ views::FocusTraversable* ShelfView::GetPaneFocusTraversable() {
   return this;
 }
 
-void ShelfView::GetAccessibleState(ui::AXViewState* state) {
-  state->role = ui::AX_ROLE_TOOLBAR;
-  state->name = l10n_util::GetStringUTF16(IDS_ASH_SHELF_ACCESSIBLE_NAME);
+void ShelfView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
+  node_data->role = ui::AX_ROLE_TOOLBAR;
+  node_data->SetName(l10n_util::GetStringUTF8(IDS_ASH_SHELF_ACCESSIBLE_NAME));
 }
 
 void ShelfView::ViewHierarchyChanged(

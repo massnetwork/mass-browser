@@ -44,7 +44,7 @@ Polymer({
     },
 
     /**
-     * The site serving as the model for the currenly open action menu.
+     * The site serving as the model for the currently open action menu.
      * @private {?SiteException}
      */
     actionMenuSite_: Object,
@@ -127,7 +127,7 @@ Polymer({
   },
 
   observers: [
-    'configureWidget_(category, categorySubtype, categoryEnabled, allSites)'
+    'configureWidget_(category, categorySubtype)'
   ],
 
   ready: function() {
@@ -176,6 +176,12 @@ Polymer({
 
     this.setUpActionMenu_();
     this.populateList_();
+
+    // The Session permissions are only for cookies.
+    if (this.categorySubtype == settings.PermissionValues.SESSION_ONLY) {
+      this.$.category.hidden =
+          this.category != settings.ContentSettingsTypes.COOKIES;
+    }
   },
 
   /**
@@ -192,6 +198,15 @@ Polymer({
   },
 
   /**
+   * Whether there are any site exceptions added for this content setting.
+   * @return {boolean}
+   * @private
+   */
+  hasSites_: function() {
+    return !!this.sites.length;
+  },
+
+  /**
    * @param {string} source Where the setting came from.
    * @return {boolean}
    * @private
@@ -201,21 +216,13 @@ Polymer({
   },
 
   /**
-   * Makes sure the visibility is correct for this widget.
-   * @private
-   */
-  updateCategoryVisibility_: function() {
-    this.$.category.hidden =
-        !this.showSiteList_(this.sites, this.categoryEnabled);
-  },
-
-  /**
    * A handler for the Add Site button.
    * @private
    */
   onAddSiteTap_: function() {
     var dialog = document.createElement('add-site-dialog');
     dialog.category = this.category;
+    dialog.contentSetting = this.categorySubtype;
     this.shadowRoot.appendChild(dialog);
 
     dialog.open(this.categorySubtype);
@@ -253,7 +260,6 @@ Polymer({
     for (var i = 0; i < data.length; ++i)
       sites = this.appendSiteList_(sites, data[i]);
     this.sites = this.toSiteArray_(sites);
-    this.updateCategoryVisibility_();
   },
 
   /**
@@ -306,34 +312,39 @@ Polymer({
   },
 
   /**
-   * Converts an unordered site list to an ordered array, sorted by site name
-   * then protocol and de-duped (by origin).
-   * @param {!Array<SiteException>} sites A list of sites to sort and de-dupe.
-   * @return {!Array<SiteException>} Sorted and de-duped list.
+   * Converts a list of exceptions received from the C++ handler to
+   * full SiteException objects. If this site-list is used as an all sites
+   * view, the list is sorted by site name, then protocol and port and de-duped
+   * (by origin).
+   * @param {!Array<SiteException>} sites A list of sites to convert.
+   * @return {!Array<SiteException>} A list of full SiteExceptions. Sorted and
+   *    deduped if allSites is set.
    * @private
    */
   toSiteArray_: function(sites) {
     var self = this;
-    sites.sort(function(a, b) {
-      var url1 = self.toUrl(a.origin);
-      var url2 = self.toUrl(b.origin);
-      var comparison = url1.host.localeCompare(url2.host);
-      if (comparison == 0) {
-        comparison = url1.protocol.localeCompare(url2.protocol);
+    if (this.allSites) {
+      sites.sort(function(a, b) {
+        var url1 = self.toUrl(a.origin);
+        var url2 = self.toUrl(b.origin);
+        var comparison = url1.host.localeCompare(url2.host);
         if (comparison == 0) {
-          comparison = url1.port.localeCompare(url2.port);
+          comparison = url1.protocol.localeCompare(url2.protocol);
           if (comparison == 0) {
-            // Compare hosts for the embedding origins.
-            var host1 = self.toUrl(a.embeddingOrigin);
-            var host2 = self.toUrl(b.embeddingOrigin);
-            host1 = (host1 == null) ? '' : host1.host;
-            host2 = (host2 == null) ? '' : host2.host;
-            return host1.localeCompare(host2);
+            comparison = url1.port.localeCompare(url2.port);
+            if (comparison == 0) {
+              // Compare hosts for the embedding origins.
+              var host1 = self.toUrl(a.embeddingOrigin);
+              var host2 = self.toUrl(b.embeddingOrigin);
+              host1 = (host1 == null) ? '' : host1.host;
+              host2 = (host2 == null) ? '' : host2.host;
+              return host1.localeCompare(host2);
+            }
           }
         }
-      }
-      return comparison;
-    });
+        return comparison;
+      });
+    }
     var results = /** @type {!Array<SiteException>} */([]);
     var lastOrigin = '';
     var lastEmbeddingOrigin = '';
@@ -342,7 +353,7 @@ Polymer({
       var siteException = this.expandSiteException(sites[i]);
 
       // The All Sites category can contain duplicates (from other categories).
-      if (siteException.originForDisplay == lastOrigin &&
+      if (this.allSites && siteException.originForDisplay == lastOrigin &&
           siteException.embeddingOriginForDisplay == lastEmbeddingOrigin) {
         continue;
       }
@@ -355,7 +366,7 @@ Polymer({
   },
 
   /**
-   * Setup the values to use for the action menu.
+   * Set up the values to use for the action menu.
    * @private
    */
   setUpActionMenu_: function() {
@@ -455,42 +466,6 @@ Polymer({
     if (item.incognito)
       return loadTimeData.getString('incognitoSite');
     return item.embeddingOriginForDisplay;
-  },
-
-  /**
-   * Returns true if this widget is showing the Allow list.
-   * @private
-   */
-  isAllowList_: function() {
-    return this.categorySubtype == settings.PermissionValues.ALLOW;
-  },
-
-  /**
-   * Returns true if this widget is showing the Session Only list.
-   * @private
-   */
-  isSessionOnlyList_: function() {
-    return this.categorySubtype == settings.PermissionValues.SESSION_ONLY;
-  },
-
-  /**
-   * Returns whether to show the site list.
-   * @param {Array} siteList The list of all sites to display for this category
-   *     subtype.
-   * @param {boolean} toggleState The state of the global toggle for this
-   *     category.
-   * @private
-   */
-  showSiteList_: function(siteList, toggleState) {
-    // The Block list is only shown when the category is set to Allow since it
-    // is redundant to also list all the sites that are blocked.
-    if (this.isAllowList_())
-      return true;
-
-    if (this.isSessionOnlyList_())
-      return siteList.length > 0;
-
-    return toggleState;
   },
 
   /**

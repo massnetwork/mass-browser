@@ -161,16 +161,16 @@ VisibleSelection Editor::selectionForCommand(Event* event) {
     return selection;
   // If the target is a text control, and the current selection is outside of
   // its shadow tree, then use the saved selection for that text control.
-  HTMLTextFormControlElement* textFormControlOfSelectionStart =
-      enclosingTextFormControl(selection.start());
-  HTMLTextFormControlElement* textFromControlOfTarget =
-      isHTMLTextFormControlElement(*event->target()->toNode())
-          ? toHTMLTextFormControlElement(event->target()->toNode())
-          : 0;
-  if (textFromControlOfTarget &&
+  TextControlElement* textControlOfSelectionStart =
+      enclosingTextControl(selection.start());
+  TextControlElement* textControlOfTarget =
+      isTextControlElement(*event->target()->toNode())
+          ? toTextControlElement(event->target()->toNode())
+          : nullptr;
+  if (textControlOfTarget &&
       (selection.start().isNull() ||
-       textFromControlOfTarget != textFormControlOfSelectionStart)) {
-    if (Range* range = textFromControlOfTarget->selection()) {
+       textControlOfTarget != textControlOfSelectionStart)) {
+    if (Range* range = textControlOfTarget->selection()) {
       return createVisibleSelection(
           SelectionInDOMTree::Builder()
               .setBaseAndExtent(EphemeralRange(range))
@@ -212,13 +212,15 @@ bool Editor::handleTextEvent(TextEvent* event) {
   m_frame->document()->updateStyleAndLayoutIgnorePendingStylesheets();
 
   if (event->isPaste()) {
-    if (event->pastingFragment())
-      replaceSelectionWithFragment(event->pastingFragment(), false,
-                                   event->shouldSmartReplace(),
-                                   event->shouldMatchStyle());
-    else
+    if (event->pastingFragment()) {
+      replaceSelectionWithFragment(
+          event->pastingFragment(), false, event->shouldSmartReplace(),
+          event->shouldMatchStyle(), InputEvent::InputType::InsertFromPaste);
+    } else {
       replaceSelectionWithText(event->data(), false,
-                               event->shouldSmartReplace());
+                               event->shouldSmartReplace(),
+                               InputEvent::InputType::InsertFromPaste);
+    }
     return true;
   }
 
@@ -559,7 +561,8 @@ bool Editor::canSmartReplaceWithPasteboard(Pasteboard* pasteboard) {
 void Editor::replaceSelectionWithFragment(DocumentFragment* fragment,
                                           bool selectReplacement,
                                           bool smartReplace,
-                                          bool matchStyle) {
+                                          bool matchStyle,
+                                          InputEvent::InputType inputType) {
   DCHECK(!frame().document()->needsLayoutTreeUpdate());
   if (frame().selection().isNone() ||
       !frame().selection().isContentEditable() || !fragment)
@@ -576,16 +579,18 @@ void Editor::replaceSelectionWithFragment(DocumentFragment* fragment,
     options |= ReplaceSelectionCommand::MatchStyle;
   DCHECK(frame().document());
   ReplaceSelectionCommand::create(*frame().document(), fragment, options,
-                                  InputEvent::InputType::InsertFromPaste)
+                                  inputType)
       ->apply();
   revealSelectionAfterEditingOperation();
 }
 
 void Editor::replaceSelectionWithText(const String& text,
                                       bool selectReplacement,
-                                      bool smartReplace) {
+                                      bool smartReplace,
+                                      InputEvent::InputType inputType) {
   replaceSelectionWithFragment(createFragmentFromText(selectedRange(), text),
-                               selectReplacement, smartReplace, true);
+                               selectReplacement, smartReplace, true,
+                               inputType);
 }
 
 // TODO(xiaochengh): Merge it with |replaceSelectionWithFragment()|.
@@ -861,7 +866,7 @@ void Editor::unappliedEditing(EditCommandComposition* cmd) {
                                        cmd->endingRootEditableElement());
   dispatchInputEventEditableContentChanged(
       cmd->startingRootEditableElement(), cmd->endingRootEditableElement(),
-      InputEvent::InputType::Undo, nullAtom,
+      InputEvent::InputType::HistoryUndo, nullAtom,
       InputEvent::EventIsComposing::NotComposing);
 
   // TODO(editing-dev): The use of updateStyleAndLayoutIgnorePendingStylesheets
@@ -890,7 +895,7 @@ void Editor::reappliedEditing(EditCommandComposition* cmd) {
                                        cmd->endingRootEditableElement());
   dispatchInputEventEditableContentChanged(
       cmd->startingRootEditableElement(), cmd->endingRootEditableElement(),
-      InputEvent::InputType::Redo, nullAtom,
+      InputEvent::InputType::HistoryRedo, nullAtom,
       InputEvent::EventIsComposing::NotComposing);
 
   // TODO(yosin): Since |dispatchEditableContentChangedEvents()| and
@@ -1024,7 +1029,7 @@ void Editor::cut(EditorCommandSource source) {
   // TODO(yosin) We should use early return style here.
   if (canDeleteRange(selectedRange())) {
     spellChecker().updateMarkersForWordsAffectedByEditing(true);
-    if (enclosingTextFormControl(frame().selection().start())) {
+    if (enclosingTextControl(frame().selection().start())) {
       String plainText = frame().selectedTextForClipboard();
       Pasteboard::generalPasteboard()->writePlainText(
           plainText, canSmartCopyOrDelete() ? Pasteboard::CanSmartReplace
@@ -1061,7 +1066,7 @@ void Editor::copy() {
   // we need clean layout to obtain the selected content.
   frame().document()->updateStyleAndLayoutIgnorePendingStylesheets();
 
-  if (enclosingTextFormControl(frame().selection().start())) {
+  if (enclosingTextControl(frame().selection().start())) {
     Pasteboard::generalPasteboard()->writePlainText(
         frame().selectedTextForClipboard(),
         canSmartCopyOrDelete() ? Pasteboard::CanSmartReplace
@@ -1165,7 +1170,7 @@ static void countEditingEvent(ExecutionContext* executionContext,
     return;
   }
 
-  HTMLTextFormControlElement* control = enclosingTextFormControl(node);
+  TextControlElement* control = enclosingTextControl(node);
   if (isHTMLInputElement(control)) {
     UseCounter::count(executionContext, featureOnInput);
     return;
@@ -1235,7 +1240,7 @@ void Editor::redo() {
 
 void Editor::setBaseWritingDirection(WritingDirection direction) {
   Element* focusedElement = frame().document()->focusedElement();
-  if (isHTMLTextFormControlElement(focusedElement)) {
+  if (isTextControlElement(focusedElement)) {
     if (direction == NaturalWritingDirection)
       return;
     focusedElement->setAttribute(
@@ -1252,8 +1257,8 @@ void Editor::setBaseWritingDirection(WritingDirection direction) {
           ? "ltr"
           : direction == RightToLeftWritingDirection ? "rtl" : "inherit",
       false);
-  applyParagraphStyleToSelection(style,
-                                 InputEvent::InputType::SetWritingDirection);
+  applyParagraphStyleToSelection(
+      style, InputEvent::InputType::FormatSetBlockTextDirection);
 }
 
 void Editor::revealSelectionAfterEditingOperation(
@@ -1299,7 +1304,10 @@ void Editor::transpose() {
     frame().selection().setSelection(newSelection);
 
   // Insert the transposed characters.
-  replaceSelectionWithText(transposed, false, false);
+  // TODO(chongz): Once we add |InsertTranspose| in |InputEvent::InputType|, we
+  // should use it instead of |InsertFromPaste|.
+  replaceSelectionWithText(transposed, false, false,
+                           InputEvent::InputType::InsertFromPaste);
 }
 
 void Editor::addToKillRing(const EphemeralRange& range) {

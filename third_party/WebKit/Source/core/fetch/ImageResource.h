@@ -29,6 +29,7 @@
 #include "platform/geometry/IntRect.h"
 #include "platform/geometry/IntSizeHash.h"
 #include "platform/geometry/LayoutSize.h"
+#include "platform/graphics/Image.h"
 #include "platform/graphics/ImageObserver.h"
 #include "platform/graphics/ImageOrientation.h"
 #include "wtf/HashMap.h"
@@ -142,7 +143,6 @@ class CORE_EXPORT ImageResource final
 
   // ImageObserver
   void decodedSizeChangedTo(const blink::Image*, size_t newSize) override;
-  void didDraw(const blink::Image*) override;
 
   bool shouldPauseAnimation(const blink::Image*) override;
   void animationAdvanced(const blink::Image*) override;
@@ -157,6 +157,10 @@ class CORE_EXPORT ImageResource final
 
   bool shouldReloadBrokenPlaceholder() const {
     return m_isPlaceholder && willPaintBrokenImage();
+  }
+
+  void setNotRefetchableDataFromDiskCache() {
+    m_isRefetchableDataFromDiskCache = false;
   }
 
   DECLARE_VIRTUAL_TRACE();
@@ -200,6 +204,8 @@ class CORE_EXPORT ImageResource final
   void destroyDecodedDataIfPossible() override;
   void destroyDecodedDataForFailedRevalidation() override;
 
+  void flushImageIfNeeded(TimerBase*);
+
   float m_devicePixelRatioHeaderValue;
 
   Member<MultipartImageResourceParser> m_multipartParser;
@@ -217,6 +223,14 @@ class CORE_EXPORT ImageResource final
   // Indicates if this ImageResource is either attempting to load a placeholder
   // image, or is a (possibly broken) placeholder image.
   bool m_isPlaceholder;
+
+  Timer<ImageResource> m_flushTimer;
+  double m_lastFlushTime = 0.;
+  Image::SizeAvailability m_sizeAvailable = Image::SizeUnavailable;
+
+  // Indicates if this resource's encoded image data can be purged and refetched
+  // from disk cache to save memory usage. See crbug/664437.
+  bool m_isRefetchableDataFromDiskCache;
 };
 
 DEFINE_RESOURCE_TYPE_CASTS(Image);

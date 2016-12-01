@@ -30,8 +30,8 @@
 
 #include "core/loader/FrameLoadRequest.h"
 #include "core/page/Page.h"
+#include "public/platform/WebInputEvent.h"
 #include "public/web/WebFrameClient.h"
-#include "public/web/WebInputEvent.h"
 #include "public/web/WebLocalFrame.h"
 #include "public/web/WebView.h"
 #include "public/web/WebViewClient.h"
@@ -267,15 +267,15 @@ class CreateWindowTest : public testing::Test {
   Persistent<ChromeClientImpl> m_chromeClientImpl;
 };
 
-TEST_F(CreateWindowTest, CreateWindowFromDeferredPage) {
-  m_webView->page()->setDefersLoading(true);
+TEST_F(CreateWindowTest, CreateWindowFromSuspendedPage) {
+  m_webView->page()->setSuspended(true);
   LocalFrame* frame = toWebLocalFrameImpl(m_mainFrame)->frame();
   FrameLoadRequest request(frame->document());
   WindowFeatures features;
   EXPECT_EQ(nullptr,
             m_chromeClientImpl->createWindow(frame, request, features,
                                              NavigationPolicyNewForegroundTab));
-  m_webView->page()->setDefersLoading(false);
+  m_webView->page()->setSuspended(false);
 }
 
 }  // namespace blink

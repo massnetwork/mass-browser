@@ -13,6 +13,7 @@
 #include "services/service_manager/public/cpp/connection.h"
 #include "services/ui/ws/display.h"
 #include "services/ui/ws/display_manager.h"
+#include "services/ui/ws/frame_generator.h"
 #include "services/ui/ws/gpu_service_proxy.h"
 #include "services/ui/ws/operation.h"
 #include "services/ui/ws/server_window.h"
@@ -55,11 +56,10 @@ WindowServer::WindowServer(WindowServerDelegate* delegate)
       next_wm_change_id_(0),
       gpu_proxy_(new GpuServiceProxy(this)),
       window_manager_window_tree_factory_set_(this, &user_id_tracker_),
-      display_compositor_client_binding_(this),
-      display_compositor_(new DisplayCompositor(
-          display_compositor_client_binding_.CreateInterfacePtrAndBind())) {
+      display_compositor_client_binding_(this) {
   user_id_tracker_.AddObserver(this);
   OnUserIdAdded(user_id_tracker_.active_id());
+  display_compositor_request_ = mojo::GetProxy(&display_compositor_);
 }
 
 WindowServer::~WindowServer() {
@@ -214,13 +214,6 @@ ServerWindow* WindowServer::GetWindow(const WindowId& id) {
   return tree ? tree->GetWindow(id) : nullptr;
 }
 
-void WindowServer::SchedulePaint(ServerWindow* window,
-                                 const gfx::Rect& bounds) {
-  Display* display = display_manager_->GetDisplayContaining(window);
-  if (display)
-    display->SchedulePaint(window, bounds);
-}
-
 void WindowServer::OnTreeMessagedClient(ClientSpecificId id) {
   if (current_operation_)
     current_operation_->MarkTreeAsMessaged(id);
@@ -239,16 +232,6 @@ const WindowTree* WindowServer::GetTreeWithRoot(
       return pair.second.get();
   }
   return nullptr;
-}
-
-void WindowServer::OnFirstWindowManagerWindowTreeFactoryReady() {
-  if (display_manager_->has_active_or_pending_displays())
-    return;
-
-  // We've been supplied a WindowManagerFactory and no displays have been
-  // created yet. Treat this as a signal to create a Display.
-  // TODO(sky): we need a better way to determine this, most likely a switch.
-  delegate_->CreateDefaultDisplays();
 }
 
 UserActivityMonitor* WindowServer::GetUserActivityMonitorForUser(
@@ -296,15 +279,10 @@ bool WindowServer::IsActiveUserInHighContrastMode() const {
 }
 
 void WindowServer::SetHighContrastMode(const UserId& user, bool enabled) {
+  // TODO(fsamuel): This doesn't really seem like it's a window server concept?
   if (IsUserInHighContrastMode(user) == enabled)
     return;
   high_contrast_mode_[user] = enabled;
-  if (user_id_tracker_.active_id() != user)
-    return;
-  for (Display* display : display_manager_->displays()) {
-    display->SchedulePaint(display->root_window(),
-                           gfx::Rect(display->root_window()->bounds().size()));
-  }
 }
 
 uint32_t WindowServer::GenerateWindowManagerChangeId(
@@ -517,8 +495,6 @@ WindowTree* WindowServer::GetCurrentDragLoopInitiator() {
 }
 
 void WindowServer::OnDisplayReady(Display* display, bool is_first) {
-  if (gpu_channel_)
-    display->platform_display()->OnGpuChannelEstablished(gpu_channel_);
   if (is_first)
     delegate_->OnFirstDisplayReady();
 }
@@ -533,7 +509,7 @@ WindowManagerState* WindowServer::GetWindowManagerStateForUser(
       user_id);
 }
 
-ui::DisplayCompositor* WindowServer::GetDisplayCompositor() {
+cc::mojom::DisplayCompositor* WindowServer::GetDisplayCompositor() {
   return display_compositor_.get();
 }
 
@@ -612,18 +588,8 @@ bool WindowServer::IsUserInHighContrastMode(const UserId& user) const {
   return (iter == high_contrast_mode_.end()) ? false : iter->second;
 }
 
-void WindowServer::OnScheduleWindowPaint(ServerWindow* window) {
-  if (in_destructor_)
-    return;
-
-  SchedulePaint(window, gfx::Rect(window->bounds().size()));
-  if (!window_paint_callback_.is_null())
-    window_paint_callback_.Run(window);
-}
-
-const ServerWindow* WindowServer::GetRootWindow(
-    const ServerWindow* window) const {
-  const Display* display = display_manager_->GetDisplayContaining(window);
+ServerWindow* WindowServer::GetRootWindow(const ServerWindow* window) {
+  Display* display = display_manager_->GetDisplayContaining(window);
   return display ? display->root_window() : nullptr;
 }
 
@@ -654,12 +620,6 @@ void WindowServer::OnWindowHierarchyChanged(ServerWindow* window,
 
   ProcessWindowHierarchyChanged(window, new_parent, old_parent);
 
-  // TODO(beng): optimize.
-  if (old_parent)
-    SchedulePaint(old_parent, gfx::Rect(old_parent->bounds().size()));
-  if (new_parent)
-    SchedulePaint(new_parent, gfx::Rect(new_parent->bounds().size()));
-
   UpdateNativeCursorFromMouseLocation(window);
 }
 
@@ -672,9 +632,6 @@ void WindowServer::OnWindowBoundsChanged(ServerWindow* window,
   ProcessWindowBoundsChanged(window, old_bounds, new_bounds);
   if (!window->parent())
     return;
-
-  SchedulePaint(window->parent(), old_bounds);
-  SchedulePaint(window->parent(), new_bounds);
 
   UpdateNativeCursorFromMouseLocation(window);
 }
@@ -696,22 +653,12 @@ void WindowServer::OnWindowReordered(ServerWindow* window,
                                      ServerWindow* relative,
                                      mojom::OrderDirection direction) {
   ProcessWindowReorder(window, relative, direction);
-  if (!in_destructor_)
-    SchedulePaint(window, gfx::Rect(window->bounds().size()));
   UpdateNativeCursorFromMouseLocation(window);
 }
 
 void WindowServer::OnWillChangeWindowVisibility(ServerWindow* window) {
   if (in_destructor_)
     return;
-
-  // Need to repaint if the window was drawn (which means it's in the process of
-  // hiding) or the window is transitioning to drawn.
-  if (window->parent() &&
-      (window->IsDrawn() ||
-       (!window->visible() && window->parent()->IsDrawn()))) {
-    SchedulePaint(window->parent(), window->bounds());
-  }
 
   for (auto& pair : tree_map_) {
     pair.second->ProcessWillChangeWindowVisibility(
@@ -795,12 +742,25 @@ void WindowServer::OnTransientWindowRemoved(ServerWindow* window,
   }
 }
 
-void WindowServer::OnGpuChannelEstablished(
-    scoped_refptr<gpu::GpuChannelHost> gpu_channel) {
-  gpu_channel_ = std::move(gpu_channel);
-  const std::set<Display*>& displays = display_manager()->displays();
-  for (auto* display : displays)
-    display->platform_display()->OnGpuChannelEstablished(gpu_channel_);
+void WindowServer::OnGpuServiceInitialized() {
+  // TODO(fsamuel): Currently we: 1. create the gpu service, 2. we initialize
+  // GL and then 3. we request a display compositor interface after
+  // initialization. A display compositor interface can be created at any time,
+  // even prior to completing initialization. If initialization crashes the GPU
+  // process, then we will still get a connection error on the
+  // |display_compositor_client_binding_| binding. We should investigate doing
+  // this in parallel with initialization in the future.
+  // The display compositor gets its own thread in mus-gpu. The gpu service,
+  // where GL commands are processed resides on its own thread. Various
+  // components of the display compositor such as Display, ResourceProvider,
+  // and GLRenderer block on sync tokens from other command buffers. Thus,
+  // the gpu service must live on a separate thread.
+  gpu_proxy_->CreateDisplayCompositor(
+      std::move(display_compositor_request_),
+      display_compositor_client_binding_.CreateInterfacePtrAndBind());
+  // TODO(kylechar): When gpu channel is removed, this can instead happen
+  // earlier, after GpuServiceProxy::OnInitialized().
+  delegate_->StartDisplayInit();
 }
 
 void WindowServer::OnSurfaceCreated(const cc::SurfaceId& surface_id,
@@ -822,6 +782,18 @@ void WindowServer::OnSurfaceCreated(const cc::SurfaceId& surface_id,
   window->GetOrCreateCompositorFrameSinkManager()->SetLatestSurfaceInfo(
       compositor_frame_sink_type, surface_id, frame_size);
 
+  // FrameGenerator will add an appropriate reference for the new surface.
+  DCHECK(display_manager_->GetDisplayContaining(window));
+  display_manager_->GetDisplayContaining(window)
+      ->platform_display()
+      ->GetFrameGenerator()
+      ->OnSurfaceCreated(surface_id, window);
+
+  // This is only used for testing to observe that a window has a
+  // CompositorFrame.
+  if (!window_paint_callback_.is_null())
+    window_paint_callback_.Run(window);
+
   // We only care about propagating default surface IDs.
   // TODO(fsamuel, sadrul): we should get rid of CompositorFrameSinkTypes.
   if (compositor_frame_sink_type != mojom::CompositorFrameSinkType::DEFAULT ||
@@ -837,13 +809,6 @@ void WindowServer::OnSurfaceCreated(const cc::SurfaceId& surface_id,
 
 void WindowServer::OnActiveUserIdChanged(const UserId& previously_active_id,
                                          const UserId& active_id) {
-  if (IsUserInHighContrastMode(previously_active_id) ==
-      IsUserInHighContrastMode(active_id))
-    return;
-  for (Display* display : display_manager_->displays()) {
-    display->SchedulePaint(display->root_window(),
-                           gfx::Rect(display->root_window()->bounds().size()));
-  }
 }
 
 void WindowServer::OnUserIdAdded(const UserId& id) {

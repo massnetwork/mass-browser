@@ -33,7 +33,7 @@ int64_t GetServiceWorkerRegistrationId(
     blink::WebServiceWorkerRegistration* service_worker_registration) {
   return static_cast<WebServiceWorkerRegistrationImpl*>(
              service_worker_registration)
-      ->registration_id();
+      ->registrationId();
 }
 
 }  // namespace
@@ -45,6 +45,9 @@ blink::WebPushError PushRegistrationStatusToWebPushError(
   switch (status) {
     case PUSH_REGISTRATION_STATUS_PERMISSION_DENIED:
       error_type = blink::WebPushError::ErrorTypeNotAllowed;
+      break;
+    case PUSH_REGISTRATION_STATUS_SENDER_ID_MISMATCH:
+      error_type = blink::WebPushError::ErrorTypeInvalidState;
       break;
     case PUSH_REGISTRATION_STATUS_SUCCESS_FROM_PUSH_SERVICE:
     case PUSH_REGISTRATION_STATUS_NO_SERVICE_WORKER:

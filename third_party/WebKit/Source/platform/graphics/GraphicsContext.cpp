@@ -46,6 +46,7 @@
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "third_party/skia/include/effects/SkLumaColorFilter.h"
 #include "third_party/skia/include/effects/SkPictureImageFilter.h"
+#include "third_party/skia/include/pathops/SkPathOps.h"
 #include "third_party/skia/include/utils/SkNullCanvas.h"
 #include "wtf/Assertions.h"
 #include "wtf/MathExtras.h"
@@ -75,10 +76,10 @@ GraphicsContext::GraphicsContext(PaintController& paintController,
   // FIXME: Do some tests to determine how many states are typically used, and
   // allocate several here.
   m_paintStateStack.append(GraphicsContextState::create());
-  m_paintState = m_paintStateStack.last().get();
+  m_paintState = m_paintStateStack.back().get();
 
   if (contextDisabled()) {
-    DEFINE_STATIC_LOCAL(SkCanvas*, nullCanvas, (SkCreateNullCanvas()));
+    DEFINE_STATIC_LOCAL(SkCanvas*, nullCanvas, (SkMakeNullCanvas().release()));
     m_canvas = nullCanvas;
   }
 }
@@ -173,34 +174,30 @@ void GraphicsContext::setShadow(
   if (contextDisabled())
     return;
 
-  std::unique_ptr<DrawLooperBuilder> drawLooperBuilder =
-      DrawLooperBuilder::create();
+  DrawLooperBuilder drawLooperBuilder;
   if (!color.alpha()) {
     // When shadow-only but there is no shadow, we use an empty draw looper
     // to disable rendering of the source primitive.  When not shadow-only, we
     // clear the looper.
-    if (shadowMode != DrawShadowOnly)
-      drawLooperBuilder.reset();
-
-    setDrawLooper(std::move(drawLooperBuilder));
+    setDrawLooper(shadowMode != DrawShadowOnly
+                      ? nullptr
+                      : drawLooperBuilder.detachDrawLooper());
     return;
   }
 
-  drawLooperBuilder->addShadow(offset, blur, color, shadowTransformMode,
-                               shadowAlphaMode);
+  drawLooperBuilder.addShadow(offset, blur, color, shadowTransformMode,
+                              shadowAlphaMode);
   if (shadowMode == DrawShadowAndForeground) {
-    drawLooperBuilder->addUnmodifiedContent();
+    drawLooperBuilder.addUnmodifiedContent();
   }
-  setDrawLooper(std::move(drawLooperBuilder));
+  setDrawLooper(drawLooperBuilder.detachDrawLooper());
 }
 
-void GraphicsContext::setDrawLooper(
-    std::unique_ptr<DrawLooperBuilder> drawLooperBuilder) {
+void GraphicsContext::setDrawLooper(sk_sp<SkDrawLooper> drawLooper) {
   if (contextDisabled())
     return;
 
-  mutableState()->setDrawLooper(
-      drawLooperBuilder ? drawLooperBuilder->detachDrawLooper() : nullptr);
+  mutableState()->setDrawLooper(std::move(drawLooper));
 }
 
 SkColorFilter* GraphicsContext::getColorFilter() const {
@@ -236,7 +233,7 @@ void GraphicsContext::beginLayer(float opacity,
 
   SkPaint layerPaint;
   layerPaint.setAlpha(static_cast<unsigned char>(opacity * 255));
-  layerPaint.setBlendMode(static_cast<SkBlendMode>(xfermode));
+  layerPaint.setBlendMode(xfermode);
   layerPaint.setColorFilter(WebCoreColorFilterToSkiaColorFilter(colorFilter));
   layerPaint.setImageFilter(std::move(imageFilter));
 
@@ -258,7 +255,9 @@ void GraphicsContext::endLayer() {
 
   restoreLayer();
 
-  ASSERT(m_layerCount-- > 0);
+#if DCHECK_IS_ON()
+  DCHECK_GT(m_layerCount--, 0);
+#endif
 }
 
 void GraphicsContext::beginRecording(const FloatRect& bounds) {
@@ -311,7 +310,7 @@ void GraphicsContext::compositePicture(sk_sp<SkPicture> picture,
   ASSERT(m_canvas);
 
   SkPaint picturePaint;
-  picturePaint.setBlendMode(static_cast<SkBlendMode>(op));
+  picturePaint.setBlendMode(op);
   m_canvas->save();
   SkRect sourceBounds = src;
   SkRect skBounds = dest;
@@ -451,12 +450,11 @@ void GraphicsContext::drawInnerShadow(const FloatRoundedRect& rect,
     clip(rect.rect());
   }
 
-  std::unique_ptr<DrawLooperBuilder> drawLooperBuilder =
-      DrawLooperBuilder::create();
-  drawLooperBuilder->addShadow(FloatSize(shadowOffset), shadowBlur, shadowColor,
-                               DrawLooperBuilder::ShadowRespectsTransforms,
-                               DrawLooperBuilder::ShadowIgnoresAlpha);
-  setDrawLooper(std::move(drawLooperBuilder));
+  DrawLooperBuilder drawLooperBuilder;
+  drawLooperBuilder.addShadow(FloatSize(shadowOffset), shadowBlur, shadowColor,
+                              DrawLooperBuilder::ShadowRespectsTransforms,
+                              DrawLooperBuilder::ShadowIgnoresAlpha);
+  setDrawLooper(drawLooperBuilder.detachDrawLooper());
   fillRectWithRoundedHole(outerRect, roundedHole, fillColor);
 }
 
@@ -644,9 +642,7 @@ void GraphicsContext::drawLineForDocumentMarker(const FloatPoint& pt,
     restore();
 }
 
-void GraphicsContext::drawLineForText(const FloatPoint& pt,
-                                      float width,
-                                      bool printing) {
+void GraphicsContext::drawLineForText(const FloatPoint& pt, float width) {
   if (contextDisabled())
     return;
 
@@ -657,8 +653,7 @@ void GraphicsContext::drawLineForText(const FloatPoint& pt,
   switch (getStrokeStyle()) {
     case NoStroke:
     case SolidStroke:
-    case DoubleStroke:
-    case WavyStroke: {
+    case DoubleStroke: {
       int thickness = SkMax32(static_cast<int>(strokeThickness()), 1);
       SkRect r;
       r.fLeft = WebCoreFloatToSkScalar(pt.x());
@@ -679,6 +674,9 @@ void GraphicsContext::drawLineForText(const FloatPoint& pt,
       drawLine(IntPoint(pt.x(), y), IntPoint(pt.x() + width, y));
       return;
     }
+    case WavyStroke:
+    default:
+      break;
   }
 
   ASSERT_NOT_REACHED();
@@ -806,7 +804,7 @@ void GraphicsContext::drawImage(
   const FloatRect src = srcPtr ? *srcPtr : image->rect();
 
   SkPaint imagePaint = immutableState()->fillPaint();
-  imagePaint.setBlendMode(static_cast<SkBlendMode>(op));
+  imagePaint.setBlendMode(op);
   imagePaint.setColor(SK_ColorBLACK);
   imagePaint.setFilterQuality(computeFilterQuality(image, dest, src));
   imagePaint.setAntiAlias(shouldAntialias());
@@ -836,7 +834,7 @@ void GraphicsContext::drawImageRRect(
     return;
 
   SkPaint imagePaint = immutableState()->fillPaint();
-  imagePaint.setBlendMode(static_cast<SkBlendMode>(op));
+  imagePaint.setBlendMode(op);
   imagePaint.setColor(SK_ColorBLACK);
   imagePaint.setFilterQuality(
       computeFilterQuality(image, dest.rect(), srcRect));
@@ -900,6 +898,7 @@ void GraphicsContext::drawTiledImage(Image* image,
   if (contextDisabled() || !image)
     return;
   image->drawTiled(*this, destRect, srcPoint, tileSize, op, repeatSpacing);
+  m_paintController.setImagePainted();
 }
 
 void GraphicsContext::drawTiledImage(Image* image,
@@ -919,6 +918,7 @@ void GraphicsContext::drawTiledImage(Image* image,
   }
 
   image->drawTiled(*this, dest, srcRect, tileScaleFactor, hRule, vRule, op);
+  m_paintController.setImagePainted();
 }
 
 void GraphicsContext::drawOval(const SkRect& oval, const SkPaint& paint) {

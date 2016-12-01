@@ -14,7 +14,6 @@
 
 #include "base/bind.h"
 #include "base/bind_helpers.h"
-#include "base/feature_list.h"
 #include "base/format_macros.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
@@ -23,6 +22,7 @@
 #include "base/process/process.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
+#include "base/test/scoped_feature_list.h"
 #include "content/browser/loader/resource_dispatcher_host_impl.h"
 #include "content/browser/loader/resource_loader.h"
 #include "content/browser/loader/resource_loader_delegate.h"
@@ -62,6 +62,10 @@ std::string GenerateHeader(size_t response_data_size) {
       "Content-type: text/html\n"
       "Content-Length: %" PRIuS "\n",
       response_data_size);
+}
+
+int64_t TotalReceivedBytes(size_t response_data_size) {
+  return response_data_size + GenerateHeader(response_data_size).size();
 }
 
 std::string GenerateData(size_t response_data_size) {
@@ -142,6 +146,8 @@ class AsyncResourceHandlerTest : public ::testing::Test,
       : thread_bundle_(TestBrowserThreadBundle::IO_MAINLOOP), context_(true) {}
 
   void TearDown() override {
+    if (filter_)
+      filter_->OnChannelClosing();
     // Prevent memory leaks.
     filter_ = nullptr;
     rdh_.Shutdown();
@@ -246,7 +252,8 @@ TEST_F(AsyncResourceHandlerTest, Construct) {
 TEST_F(AsyncResourceHandlerTest, OneChunkLengths) {
   // Larger than kInlinedLeadingChunkSize and smaller than
   // kMaxAllocationSize.
-  StartRequestAndWaitWithResponseDataSize(4096);
+  constexpr auto kDataSize = 4096;
+  StartRequestAndWaitWithResponseDataSize(kDataSize);
   const auto& messages = filter_->messages();
   ASSERT_EQ(4u, messages.size());
   ASSERT_EQ(ResourceMsg_DataReceived::ID, messages[2]->type());
@@ -254,22 +261,31 @@ TEST_F(AsyncResourceHandlerTest, OneChunkLengths) {
   ResourceMsg_DataReceived::Read(messages[2].get(), &params);
 
   int encoded_data_length = std::get<3>(params);
-  EXPECT_EQ(4096, encoded_data_length);
+  EXPECT_EQ(kDataSize, encoded_data_length);
   int encoded_body_length = std::get<4>(params);
-  EXPECT_EQ(4096, encoded_body_length);
+  EXPECT_EQ(kDataSize, encoded_body_length);
+
+  ASSERT_EQ(ResourceMsg_RequestComplete::ID, messages[3]->type());
+  ResourceMsg_RequestComplete::Param completion_params;
+  ResourceMsg_RequestComplete::Read(messages[3].get(), &completion_params);
+  ResourceRequestCompletionStatus completion_status =
+      std::get<1>(completion_params);
+
+  EXPECT_EQ(TotalReceivedBytes(kDataSize),
+            completion_status.encoded_data_length);
+  EXPECT_EQ(kDataSize, completion_status.encoded_body_length);
 }
 
 TEST_F(AsyncResourceHandlerTest, InlinedChunkLengths) {
   // TODO(ricea): Remove this Feature-enabling code once the feature is on by
   // default.
-  auto feature_list = base::MakeUnique<base::FeatureList>();
-  feature_list->InitializeFromCommandLine(
-      features::kOptimizeLoadingIPCForSmallResources.name, "");
-  base::FeatureList::ClearInstanceForTesting();
-  base::FeatureList::SetInstance(std::move(feature_list));
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      features::kOptimizeLoadingIPCForSmallResources);
 
   // Smaller than kInlinedLeadingChunkSize.
-  StartRequestAndWaitWithResponseDataSize(8);
+  constexpr auto kDataSize = 8;
+  StartRequestAndWaitWithResponseDataSize(kDataSize);
   const auto& messages = filter_->messages();
   ASSERT_EQ(3u, messages.size());
   ASSERT_EQ(ResourceMsg_InlinedDataChunkReceived::ID, messages[1]->type());
@@ -277,14 +293,25 @@ TEST_F(AsyncResourceHandlerTest, InlinedChunkLengths) {
   ResourceMsg_InlinedDataChunkReceived::Read(messages[1].get(), &params);
 
   int encoded_data_length = std::get<2>(params);
-  EXPECT_EQ(8, encoded_data_length);
+  EXPECT_EQ(kDataSize, encoded_data_length);
   int encoded_body_length = std::get<3>(params);
-  EXPECT_EQ(8, encoded_body_length);
+  EXPECT_EQ(kDataSize, encoded_body_length);
+
+  ASSERT_EQ(ResourceMsg_RequestComplete::ID, messages[2]->type());
+  ResourceMsg_RequestComplete::Param completion_params;
+  ResourceMsg_RequestComplete::Read(messages[2].get(), &completion_params);
+  ResourceRequestCompletionStatus completion_status =
+      std::get<1>(completion_params);
+
+  EXPECT_EQ(TotalReceivedBytes(kDataSize),
+            completion_status.encoded_data_length);
+  EXPECT_EQ(kDataSize, completion_status.encoded_body_length);
 }
 
 TEST_F(AsyncResourceHandlerTest, TwoChunksLengths) {
   // Larger than kMaxAllocationSize.
-  StartRequestAndWaitWithResponseDataSize(64*1024);
+  constexpr auto kDataSize = 64 * 1024;
+  StartRequestAndWaitWithResponseDataSize(kDataSize);
   const auto& messages = filter_->messages();
   ASSERT_EQ(5u, messages.size());
   ASSERT_EQ(ResourceMsg_DataReceived::ID, messages[2]->type());
@@ -303,6 +330,15 @@ TEST_F(AsyncResourceHandlerTest, TwoChunksLengths) {
   EXPECT_EQ(32768, encoded_data_length);
   encoded_body_length = std::get<4>(params);
   EXPECT_EQ(32768, encoded_body_length);
+
+  ASSERT_EQ(ResourceMsg_RequestComplete::ID, messages[4]->type());
+  ResourceMsg_RequestComplete::Param completion_params;
+  ResourceMsg_RequestComplete::Read(messages[4].get(), &completion_params);
+  ResourceRequestCompletionStatus completion_status =
+      std::get<1>(completion_params);
+  EXPECT_EQ(TotalReceivedBytes(kDataSize),
+            completion_status.encoded_data_length);
+  EXPECT_EQ(kDataSize, completion_status.encoded_body_length);
 }
 
 }  // namespace

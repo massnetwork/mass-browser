@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_NTP_SNIPPETS_PHYSICAL_WEB_PAGES_PHYSICAL_WEB_PAGE_SUGGESTIONS_PROVIDER_H_
 #define COMPONENTS_NTP_SNIPPETS_PHYSICAL_WEB_PAGES_PHYSICAL_WEB_PAGE_SUGGESTIONS_PROVIDER_H_
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -14,10 +15,6 @@
 #include "components/ntp_snippets/category_status.h"
 #include "components/ntp_snippets/content_suggestion.h"
 #include "components/ntp_snippets/content_suggestions_provider.h"
-
-namespace gfx {
-class Image;
-}  // namespace gfx
 
 namespace ntp_snippets {
 
@@ -48,6 +45,9 @@ class PhysicalWebPageSuggestionsProvider : public ContentSuggestionsProvider {
   void DismissSuggestion(const ContentSuggestion::ID& suggestion_id) override;
   void FetchSuggestionImage(const ContentSuggestion::ID& suggestion_id,
                             const ImageFetchedCallback& callback) override;
+  void Fetch(const Category& category,
+             const std::set<std::string>& known_suggestion_ids,
+             const FetchDoneCallback& callback) override;
   void ClearHistory(
       base::Time begin,
       base::Time end,

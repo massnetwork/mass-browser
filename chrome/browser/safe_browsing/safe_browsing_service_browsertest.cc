@@ -391,7 +391,7 @@ class TestProtocolManager : public SafeBrowsingProtocolManager {
   void GetFullHash(const std::vector<SBPrefix>& prefixes,
                    SafeBrowsingProtocolManager::FullHashCallback callback,
                    bool is_download,
-                   bool is_extended_reporting) override {
+                   ExtendedReportingLevel reporting_level) override {
     BrowserThread::PostDelayedTask(
         BrowserThread::IO, FROM_HERE,
         base::Bind(InvokeFullHashCallback, callback, full_hashes_), delay_);
@@ -1633,9 +1633,9 @@ class SafeBrowsingDatabaseManagerCookieTest : public InProcessBrowserTest {
 
   void SetUp() override {
     // We need to start the test server to get the host&port in the url.
-    ASSERT_TRUE(embedded_test_server()->Start());
     embedded_test_server()->RegisterRequestHandler(
         base::Bind(&SafeBrowsingDatabaseManagerCookieTest::HandleRequest));
+    ASSERT_TRUE(embedded_test_server()->Start());
 
     sb_factory_.reset(new TestSafeBrowsingServiceFactory());
     SetProtocolConfigURLPrefix(

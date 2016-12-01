@@ -20,6 +20,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import static org.chromium.base.test.util.Matchers.greaterThanOrEqualTo;
+import static org.chromium.chrome.browser.ntp.cards.ContentSuggestionsTestUtils.createDummySuggestions;
+
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.RecyclerView.AdapterDataObserver;
 
@@ -34,10 +37,6 @@ import org.mockito.MockitoAnnotations;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
-import static org.chromium.base.test.util.Matchers.greaterThanOrEqualTo;
-import static org.chromium.chrome.browser.ntp.cards.ContentSuggestionsTestUtils.createDummySuggestions;
-import static org.chromium.chrome.browser.ntp.cards.ContentSuggestionsTestUtils.createInfo;
-
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.RecordUserAction;
 import org.chromium.base.test.util.Feature;
@@ -45,10 +44,10 @@ import org.chromium.chrome.browser.ChromeFeatureList;
 import org.chromium.chrome.browser.EnableFeatures;
 import org.chromium.chrome.browser.ntp.NewTabPage.DestructionObserver;
 import org.chromium.chrome.browser.ntp.NewTabPageView.NewTabPageManager;
+import org.chromium.chrome.browser.ntp.cards.ContentSuggestionsTestUtils.CategoryInfoBuilder;
 import org.chromium.chrome.browser.ntp.cards.SignInPromo.SigninObserver;
 import org.chromium.chrome.browser.ntp.snippets.CategoryInt;
 import org.chromium.chrome.browser.ntp.snippets.CategoryStatus;
-import org.chromium.chrome.browser.ntp.snippets.ContentSuggestionsCardLayout;
 import org.chromium.chrome.browser.ntp.snippets.FakeSuggestionsSource;
 import org.chromium.chrome.browser.ntp.snippets.KnownCategories;
 import org.chromium.chrome.browser.ntp.snippets.SnippetArticle;
@@ -76,26 +75,32 @@ public class NewTabPageAdapterTest {
     private FakeSuggestionsSource mSource;
     private NewTabPageAdapter mAdapter;
     private SigninManager mMockSigninManager;
-    @Mock private OfflinePageBridge mOfflinePageBridge;
+    @Mock
+    private OfflinePageBridge mOfflinePageBridge;
     @Mock private NewTabPageManager mNewTabPageManager;
 
     /**
      * Stores information about a section that should be present in the adapter.
      */
     private static class SectionDescriptor {
-        public final boolean mMoreButton;
-        public final boolean mStatusCard;
         public final int mNumSuggestions;
+        public final boolean mStatusCard;
+        public boolean mActionButton;
+        public boolean mProgressItem;
 
-        public SectionDescriptor(boolean moreButton, boolean statusCard, int numSuggestions) {
-            mMoreButton = moreButton;
-            mStatusCard = statusCard;
+        public SectionDescriptor(int numSuggestions) {
             mNumSuggestions = numSuggestions;
-            if (statusCard) {
-                assertEquals(0, numSuggestions);
-            } else {
-                assertTrue(numSuggestions > 0);
-            }
+            mStatusCard = numSuggestions == 0;
+        }
+
+        public SectionDescriptor withActionButton() {
+            mActionButton = true;
+            return this;
+        }
+
+        public SectionDescriptor withProgress() {
+            mProgressItem = true;
+            return this;
         }
     }
 
@@ -123,17 +128,21 @@ public class NewTabPageAdapterTest {
 
         public void expect(SectionDescriptor descriptor) {
             expect(ItemViewType.HEADER);
+            for (int i = 1; i <= descriptor.mNumSuggestions; i++) {
+                expect(ItemViewType.SNIPPET);
+            }
+
             if (descriptor.mStatusCard) {
                 expect(ItemViewType.STATUS);
+            }
+
+            if (descriptor.mActionButton) {
+                // TODO(bauerb): Verify the action.
                 expect(ItemViewType.ACTION);
+            }
+
+            if (descriptor.mProgressItem) {
                 expect(ItemViewType.PROGRESS);
-            } else {
-                for (int i = 1; i <= descriptor.mNumSuggestions; i++) {
-                    expect(ItemViewType.SNIPPET);
-                }
-                if (descriptor.mMoreButton) {
-                    expect(ItemViewType.ACTION);
-                }
             }
         }
 
@@ -184,20 +193,7 @@ public class NewTabPageAdapterTest {
      */
     private SectionDescriptor section(int numSuggestions) {
         assert numSuggestions > 0;
-        return new SectionDescriptor(false, false, numSuggestions);
-    }
-
-    /**
-     * To be used with {@link #assertItemsFor(SectionDescriptor...)}, for a section with
-     * {@code numSuggestions} cards and a more-button.
-     * @param numSuggestions The number of suggestions in the section. If this is zero, the
-     *                       more-button is still shown.
-     *                       TODO(pke): In the future, we additionally show an empty-card if
-     *                       numSuggestions is zero.
-     * @return A descriptor for the section.
-     */
-    private SectionDescriptor sectionWithMoreButton(int numSuggestions) {
-        return new SectionDescriptor(true, false, numSuggestions);
+        return new SectionDescriptor(numSuggestions);
     }
 
     /**
@@ -206,16 +202,7 @@ public class NewTabPageAdapterTest {
      * @return A descriptor for the section.
      */
     private SectionDescriptor sectionWithStatusCard() {
-        return new SectionDescriptor(false, true, 0);
-    }
-
-    /**
-     * To be used with {@link #assertItemsFor(SectionDescriptor...)}, for a section with button that
-     * has no suggestions and instead displays a status card.
-     * @return A descriptor for the section.
-     */
-    private SectionDescriptor sectionWithStatusCardAndMoreButton() {
-        return new SectionDescriptor(true, true, 0);
+        return new SectionDescriptor(0);
     }
 
     @Before
@@ -237,7 +224,8 @@ public class NewTabPageAdapterTest {
         final int category = KnownCategories.ARTICLES;
         mSource = new FakeSuggestionsSource();
         mSource.setStatusForCategory(category, CategoryStatus.INITIALIZING);
-        mSource.setInfoForCategory(category, createInfo(category, false, true));
+        mSource.setInfoForCategory(category,
+                new CategoryInfoBuilder(category).showIfEmpty().build());
 
         when(mNewTabPageManager.getSuggestionsSource()).thenReturn(mSource);
         when(mNewTabPageManager.isCurrentPage()).thenReturn(true);
@@ -259,7 +247,7 @@ public class NewTabPageAdapterTest {
     @Test
     @Feature({"Ntp"})
     public void testSuggestionLoading() {
-        assertItemsFor(sectionWithStatusCard());
+        assertItemsFor(sectionWithStatusCard().withProgress());
 
         final int numSuggestions = 3;
         List<SnippetArticle> suggestions = createDummySuggestions(numSuggestions);
@@ -271,7 +259,7 @@ public class NewTabPageAdapterTest {
         // The adapter should ignore any new incoming data.
         mSource.setSuggestionsForCategory(KnownCategories.ARTICLES,
                 Arrays.asList(new SnippetArticle[] {new SnippetArticle(0, "foo", "title1", "pub1",
-                        "txt1", "foo", "bar", 0, 0, 0, ContentSuggestionsCardLayout.FULL_CARD)}));
+                        "txt1", "foo", "bar", 0, 0, 0)}));
 
         assertItemsFor(section(numSuggestions));
     }
@@ -286,7 +274,7 @@ public class NewTabPageAdapterTest {
         // If we don't get anything, we should be in the same situation as the initial one.
         mSource.setSuggestionsForCategory(
                 KnownCategories.ARTICLES, new ArrayList<SnippetArticle>());
-        assertItemsFor(sectionWithStatusCard());
+        assertItemsFor(sectionWithStatusCard().withProgress());
 
         // We should load new suggestions when we get notified about them.
         final int numSuggestions = 5;
@@ -299,7 +287,7 @@ public class NewTabPageAdapterTest {
         // The adapter should ignore any new incoming data.
         mSource.setSuggestionsForCategory(KnownCategories.ARTICLES,
                 Arrays.asList(new SnippetArticle[] {new SnippetArticle(0, "foo", "title1", "pub1",
-                        "txt1", "foo", "bar", 0, 0, 0, ContentSuggestionsCardLayout.FULL_CARD)}));
+                        "txt1", "foo", "bar", 0, 0, 0)}));
         assertItemsFor(section(numSuggestions));
     }
 
@@ -347,8 +335,7 @@ public class NewTabPageAdapterTest {
         // If we have snippets, we should not load the new list (i.e. the extra item does *not*
         // appear).
         suggestions.add(new SnippetArticle(0, "https://site.com/url1", "title1", "pub1", "txt1",
-                "https://site.com/url1", "https://amp.site.com/url1", 0, 0, 0,
-                ContentSuggestionsCardLayout.FULL_CARD));
+                "https://site.com/url1", "https://amp.site.com/url1", 0, 0, 0));
         mSource.setSuggestionsForCategory(KnownCategories.ARTICLES, suggestions);
         assertItemsFor(section(3));
 
@@ -360,7 +347,7 @@ public class NewTabPageAdapterTest {
         // INITIALIZING lets us load snippets still.
         mSource.setStatusForCategory(KnownCategories.ARTICLES, CategoryStatus.INITIALIZING);
         mSource.setSuggestionsForCategory(KnownCategories.ARTICLES, suggestions);
-        assertItemsFor(sectionWithStatusCard());
+        assertItemsFor(sectionWithStatusCard().withProgress());
 
         // The adapter should now be waiting for new snippets and the fourth one should appear.
         mSource.setStatusForCategory(KnownCategories.ARTICLES, CategoryStatus.AVAILABLE);
@@ -460,12 +447,13 @@ public class NewTabPageAdapterTest {
         // Part 1: VisibleIfEmpty = true
         suggestionsSource = new FakeSuggestionsSource();
         suggestionsSource.setStatusForCategory(category, CategoryStatus.INITIALIZING);
-        suggestionsSource.setInfoForCategory(category, createInfo(category, false, true));
+        suggestionsSource.setInfoForCategory(category,
+                new CategoryInfoBuilder(category).showIfEmpty().build());
 
         // 1.1 - Initial state
         when(mNewTabPageManager.getSuggestionsSource()).thenReturn(suggestionsSource);
         mAdapter = new NewTabPageAdapter(mNewTabPageManager, null, null, mOfflinePageBridge);
-        assertItemsFor(sectionWithStatusCard());
+        assertItemsFor(sectionWithStatusCard().withProgress());
 
         // 1.2 - With suggestions
         suggestionsSource.setStatusForCategory(category, CategoryStatus.AVAILABLE);
@@ -484,7 +472,7 @@ public class NewTabPageAdapterTest {
         // Part 2: VisibleIfEmpty = false
         suggestionsSource = new FakeSuggestionsSource();
         suggestionsSource.setStatusForCategory(category, CategoryStatus.INITIALIZING);
-        suggestionsSource.setInfoForCategory(category, createInfo(category, false, false));
+        suggestionsSource.setInfoForCategory(category, new CategoryInfoBuilder(category).build());
 
         // 2.1 - Initial state
         when(mNewTabPageManager.getSuggestionsSource()).thenReturn(suggestionsSource);
@@ -513,39 +501,43 @@ public class NewTabPageAdapterTest {
         FakeSuggestionsSource suggestionsSource;
         SuggestionsSection section42;
 
-        // Part 1: ShowMoreButton = true
+        // Part 1: With "View All" action
         suggestionsSource = new FakeSuggestionsSource();
         suggestionsSource.setStatusForCategory(category, CategoryStatus.INITIALIZING);
-        suggestionsSource.setInfoForCategory(category, createInfo(category, true, true));
+        suggestionsSource.setInfoForCategory(category, new CategoryInfoBuilder(category)
+                                                               .withViewAllAction()
+                                                               .showIfEmpty()
+                                                               .build());
 
         // 1.1 - Initial state.
         when(mNewTabPageManager.getSuggestionsSource()).thenReturn(suggestionsSource);
         mAdapter = new NewTabPageAdapter(mNewTabPageManager, null, null, mOfflinePageBridge);
-        assertItemsFor(sectionWithStatusCardAndMoreButton());
+        assertItemsFor(sectionWithStatusCard().withActionButton().withProgress());
 
         // 1.2 - With suggestions.
         suggestionsSource.setStatusForCategory(category, CategoryStatus.AVAILABLE);
         suggestionsSource.setSuggestionsForCategory(category, articles);
-        assertItemsFor(sectionWithMoreButton(3));
+        assertItemsFor(section(3).withActionButton());
 
         // 1.3 - When all suggestions are dismissed.
         assertEquals(SuggestionsSection.class, mAdapter.getChildren().get(sectionIdx).getClass());
         section42 = (SuggestionsSection) mAdapter.getChildren().get(sectionIdx);
-        assertMatches(sectionWithMoreButton(3), section42);
+        assertMatches(section(3).withActionButton(), section42);
         section42.removeSuggestion(articles.get(0));
         section42.removeSuggestion(articles.get(1));
         section42.removeSuggestion(articles.get(2));
-        assertItemsFor(sectionWithStatusCardAndMoreButton());
+        assertItemsFor(sectionWithStatusCard().withActionButton());
 
-        // Part 1: ShowMoreButton = false
+        // Part 1: Without "View All" action
         suggestionsSource = new FakeSuggestionsSource();
         suggestionsSource.setStatusForCategory(category, CategoryStatus.INITIALIZING);
-        suggestionsSource.setInfoForCategory(category, createInfo(category, false, true));
+        suggestionsSource.setInfoForCategory(category,
+                new CategoryInfoBuilder(category).showIfEmpty().build());
 
         // 2.1 - Initial state.
         when(mNewTabPageManager.getSuggestionsSource()).thenReturn(suggestionsSource);
         mAdapter = new NewTabPageAdapter(mNewTabPageManager, null, null, mOfflinePageBridge);
-        assertItemsFor(sectionWithStatusCard());
+        assertItemsFor(sectionWithStatusCard().withProgress());
 
         // 2.2 - With suggestions.
         suggestionsSource.setStatusForCategory(category, CategoryStatus.AVAILABLE);
@@ -599,22 +591,25 @@ public class NewTabPageAdapterTest {
 
         int dynamicCategory1 = 1010;
         List<SnippetArticle> dynamics1 = createDummySuggestions(5);
-        mSource.setInfoForCategory(dynamicCategory1, createInfo(dynamicCategory1, true, false));
+        mSource.setInfoForCategory(dynamicCategory1, new CategoryInfoBuilder(dynamicCategory1)
+                                                             .withViewAllAction()
+                                                             .build());
         mSource.setStatusForCategory(dynamicCategory1, CategoryStatus.AVAILABLE);
         mSource.setSuggestionsForCategory(dynamicCategory1, dynamics1);
         // Reload
         mAdapter = new NewTabPageAdapter(mNewTabPageManager, null, null, mOfflinePageBridge);
 
-        assertItemsFor(section(3), sectionWithMoreButton(5));
+        assertItemsFor(section(3), section(5).withActionButton());
 
         int dynamicCategory2 = 1011;
         List<SnippetArticle> dynamics2 = createDummySuggestions(11);
-        mSource.setInfoForCategory(dynamicCategory2, createInfo(dynamicCategory1, false, false));
+        mSource.setInfoForCategory(dynamicCategory2,
+                new CategoryInfoBuilder(dynamicCategory1).build());
         mSource.setStatusForCategory(dynamicCategory2, CategoryStatus.AVAILABLE);
         mSource.setSuggestionsForCategory(dynamicCategory2, dynamics2);
         // Reload
         mAdapter = new NewTabPageAdapter(mNewTabPageManager, null, null, mOfflinePageBridge);
-        assertItemsFor(section(3), sectionWithMoreButton(5), section(11));
+        assertItemsFor(section(3), section(5).withActionButton(), section(11));
     }
 
     /**
@@ -623,7 +618,8 @@ public class NewTabPageAdapterTest {
     @Test
     @Feature({"Ntp"})
     public void testCategoryOrder() {
-        final int basicChildCount = 4; // above-the-fold, sign in promo, footer, spacer.
+        // Above-the-fold, sign in promo, all-dismissed, footer, spacer.
+        final int basicChildCount = 5;
         FakeSuggestionsSource suggestionsSource = new FakeSuggestionsSource();
         registerCategory(suggestionsSource, KnownCategories.ARTICLES, 0);
         registerCategory(suggestionsSource, KnownCategories.BOOKMARKS, 0);
@@ -707,6 +703,7 @@ public class NewTabPageAdapterTest {
                 mNewTabPageManager, null, null, mOfflinePageBridge);
         AdapterDataObserver dataObserver = mock(AdapterDataObserver.class);
         adapter.registerAdapterDataObserver(dataObserver);
+        reset(dataObserver); // reset notification changes from initialisation.
 
         // Adapter content:
         // Idx | Item
@@ -725,12 +722,16 @@ public class NewTabPageAdapterTest {
         adapter.dismissItem(3);
         verify(dataObserver, times(2)).onItemRangeRemoved(3, 1);
         verify(dataObserver).onItemRangeChanged(4, 1, null);
+        reset(dataObserver);
 
         // Dismiss the last suggestion in the section. We should now show the status card.
         adapter.dismissItem(2);
-        verify(dataObserver).onItemRangeRemoved(2, 1);
-        verify(dataObserver).onItemRangeInserted(2, 3);
-        verify(dataObserver, times(2)).onItemRangeChanged(6, 1, null);
+        verify(dataObserver).onItemRangeRemoved(2, 1); // Suggestion removed
+        verify(dataObserver).onItemRangeChanged(3, 1, null); // Spacer refresh
+        verify(dataObserver).onItemRangeInserted(2, 1); // Status card added
+        verify(dataObserver).onItemRangeChanged(4, 1, null); // Spacer refresh
+        verify(dataObserver).onItemRangeInserted(3, 1); // Action item added
+        verify(dataObserver).onItemRangeChanged(5, 1, null); // Spacer refresh
 
         // Adapter content:
         // Idx | Item
@@ -744,14 +745,15 @@ public class NewTabPageAdapterTest {
         // 6   | Spacer
 
         final int newSuggestionCount = 7;
-        final int changedCount = 3; // status, action and progress will be replaced by articles.
+        reset(dataObserver);
         suggestionsSource.setSuggestionsForCategory(
                 KnownCategories.ARTICLES, createDummySuggestions(newSuggestionCount));
         adapter.onNewSuggestions(KnownCategories.ARTICLES);
-        verify(dataObserver).onItemRangeChanged(2, changedCount, null);
-        verify(dataObserver)
-                .onItemRangeInserted(2 + changedCount, newSuggestionCount - changedCount);
-        verify(dataObserver).onItemRangeChanged(newSuggestionCount + 3, 1, null);
+        verify(dataObserver).onItemRangeInserted(2, newSuggestionCount);
+        verify(dataObserver).onItemRangeChanged(5 + newSuggestionCount, 1, null); // Spacer refresh
+        verify(dataObserver, times(2)).onItemRangeRemoved(2 + newSuggestionCount, 1);
+        verify(dataObserver).onItemRangeChanged(4 + newSuggestionCount, 1, null); // Spacer refresh
+        verify(dataObserver).onItemRangeChanged(3 + newSuggestionCount, 1, null); // Spacer refresh
 
         // Adapter content:
         // Idx | Item
@@ -767,10 +769,12 @@ public class NewTabPageAdapterTest {
         suggestionsSource.setSuggestionsForCategory(
                 KnownCategories.ARTICLES, createDummySuggestions(0));
         adapter.onCategoryStatusChanged(KnownCategories.ARTICLES, CategoryStatus.SIGNED_OUT);
-        verify(dataObserver).onItemRangeChanged(2, changedCount, null);
-        verify(dataObserver)
-                .onItemRangeRemoved(2 + changedCount, newSuggestionCount - changedCount);
-        verify(dataObserver).onItemRangeChanged(6, 1, null);
+        verify(dataObserver).onItemRangeRemoved(2, newSuggestionCount);
+        verify(dataObserver).onItemRangeChanged(3, 1, null); // Spacer refresh
+        verify(dataObserver).onItemRangeInserted(2, 1); // Status card added
+        verify(dataObserver).onItemRangeChanged(4, 1, null); // Spacer refresh
+        verify(dataObserver).onItemRangeInserted(3, 1); // Action item added
+        verify(dataObserver).onItemRangeChanged(5, 1, null); // Spacer refresh
     }
 
     @Test
@@ -841,12 +845,11 @@ public class NewTabPageAdapterTest {
         ChromePreferenceManager.getInstance(RuntimeEnvironment.application)
                 .setNewTabPageSigninPromoDismissed(false);
 
-        // TODO(peconn)
         NewTabPageAdapter adapter =
                 new NewTabPageAdapter(mNewTabPageManager, null, null, mOfflinePageBridge);
-        final int signInPromoIndex = 5;
+        final int signInPromoIndex = adapter.getFirstPositionForType(ItemViewType.PROMO);
 
-        assertEquals(5, adapter.getChildren().size());
+        assertEquals(6, adapter.getChildren().size());
         TreeNode signinPromo = adapter.getChildren().get(2);
 
         // Adapter content:
@@ -858,8 +861,9 @@ public class NewTabPageAdapterTest {
         // 3   | Action             | 1
         // 4   | Progress Indicator | 1
         // 5   | Sign in promo      | 2
-        // 6   | Footer             | 3
-        // 7   | Spacer             | 4
+        // 6   | All dismissed      | 3
+        // 7   | Footer             | 4
+        // 8   | Spacer             | 5
 
         assertEquals(ItemViewType.PROMO, signinPromo.getItemViewType(0));
 
@@ -869,7 +873,7 @@ public class NewTabPageAdapterTest {
                            .getNewTabPageSigninPromoDismissed());
 
         adapter = new NewTabPageAdapter(mNewTabPageManager, null, null, mOfflinePageBridge);
-        assertEquals(5, adapter.getChildren().size());
+        assertEquals(6, adapter.getChildren().size());
         // The items below the signin promo move up, footer is now at the position of the promo.
         assertEquals(ItemViewType.FOOTER, adapter.getItemViewType(signInPromoIndex));
     }
@@ -897,11 +901,10 @@ public class NewTabPageAdapterTest {
         // 0   | Above-the-fold
         // 1   | Header
         // 2   | Status
-        // 3   | Action
-        // 4   | Progress Indicator
-        // 5   | Footer
-        // 6   | Spacer
-        assertEquals(5, mAdapter.getFirstPositionForType(ItemViewType.FOOTER));
+        // 3   | Progress Indicator
+        // 4   | Footer
+        // 5   | Spacer
+        assertEquals(4, mAdapter.getFirstPositionForType(ItemViewType.FOOTER));
         assertEquals(RecyclerView.NO_POSITION,
                 mAdapter.getFirstPositionForType(ItemViewType.ALL_DISMISSED));
 
@@ -962,12 +965,13 @@ public class NewTabPageAdapterTest {
         // the current NTP.
         mSource.setStatusForCategory(KnownCategories.ARTICLES, CategoryStatus.AVAILABLE);
         mSource.setSuggestionsForCategory(KnownCategories.ARTICLES, createDummySuggestions(1));
-        mSource.setInfoForCategory(
-                KnownCategories.ARTICLES, createInfo(KnownCategories.ARTICLES, false, false));
+        mSource.setInfoForCategory(KnownCategories.ARTICLES,
+                new CategoryInfoBuilder(KnownCategories.ARTICLES).build());
         assertEquals(4, mAdapter.getItemCount()); // TODO(dgn): rewrite with section descriptors.
 
         // On Sign in, we should reset the sections, bring back suggestions instead of the All
         // Dismissed item.
+        mAdapter.onFullRefreshRequired();
         when(mMockSigninManager.isSignInAllowed()).thenReturn(true);
         signinObserver.onSignedIn();
         // Adapter content:
@@ -983,14 +987,15 @@ public class NewTabPageAdapterTest {
                 mAdapter.getFirstPositionForType(ItemViewType.ALL_DISMISSED));
     }
 
-    /** Registers the category with hasMoreButton=false and showIfEmpty=true*/
+    /** Registers the category with the reload action */
     private void registerCategory(FakeSuggestionsSource suggestionsSource,
             @CategoryInt int category, int suggestionCount) {
         // FakeSuggestionSource does not provide suggestions if the category's status is not
         // AVAILABLE.
         suggestionsSource.setStatusForCategory(category, CategoryStatus.AVAILABLE);
         // Important: showIfEmpty flag to true.
-        suggestionsSource.setInfoForCategory(category, createInfo(category, false, true));
+        suggestionsSource.setInfoForCategory(category,
+                new CategoryInfoBuilder(category).withReloadAction().showIfEmpty().build());
         suggestionsSource.setSuggestionsForCategory(
                 category, createDummySuggestions(suggestionCount));
     }

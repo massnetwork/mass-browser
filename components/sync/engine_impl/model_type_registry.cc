@@ -10,7 +10,7 @@
 
 #include "base/bind.h"
 #include "base/memory/ptr_util.h"
-#include "base/metrics/histogram.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/observer_list.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "components/sync/base/cryptographer.h"
@@ -243,6 +243,16 @@ ModelTypeSet ModelTypeRegistry::GetInitialSyncEndedTypes() const {
       result.Put(kv.first);
   }
   return result;
+}
+
+ModelTypeSet ModelTypeRegistry::GetInitialSyncDoneNonBlockingTypes() const {
+  ModelTypeSet types;
+  for (const auto& worker : model_type_workers_) {
+    if (worker->IsInitialSyncEnded()) {
+      types.Put(worker->GetModelType());
+    }
+  }
+  return types;
 }
 
 UpdateHandlerMap* ModelTypeRegistry::update_handler_map() {

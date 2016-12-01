@@ -132,7 +132,7 @@ void WebServiceWorkerRegistrationImpl::update(
       ServiceWorkerDispatcher::GetThreadSpecificInstance();
   DCHECK(dispatcher);
   dispatcher->UpdateServiceWorker(provider_impl->provider_id(),
-                                  registration_id(), callbacks);
+                                  registrationId(), callbacks);
 }
 
 void WebServiceWorkerRegistrationImpl::unregister(
@@ -144,7 +144,7 @@ void WebServiceWorkerRegistrationImpl::unregister(
       ServiceWorkerDispatcher::GetThreadSpecificInstance();
   DCHECK(dispatcher);
   dispatcher->UnregisterServiceWorker(provider_impl->provider_id(),
-                                      registration_id(), callbacks);
+                                      registrationId(), callbacks);
 }
 
 void WebServiceWorkerRegistrationImpl::enableNavigationPreload(
@@ -157,7 +157,7 @@ void WebServiceWorkerRegistrationImpl::enableNavigationPreload(
       ServiceWorkerDispatcher::GetThreadSpecificInstance();
   DCHECK(dispatcher);
   dispatcher->EnableNavigationPreload(provider_impl->provider_id(),
-                                      registration_id(), enable,
+                                      registrationId(), enable,
                                       std::move(callbacks));
 }
 
@@ -169,11 +169,25 @@ void WebServiceWorkerRegistrationImpl::getNavigationPreloadState(
   ServiceWorkerDispatcher* dispatcher =
       ServiceWorkerDispatcher::GetThreadSpecificInstance();
   DCHECK(dispatcher);
-  dispatcher->GetNavigationPreloadState(
-      provider_impl->provider_id(), registration_id(), std::move(callbacks));
+  dispatcher->GetNavigationPreloadState(provider_impl->provider_id(),
+                                        registrationId(), std::move(callbacks));
 }
 
-int64_t WebServiceWorkerRegistrationImpl::registration_id() const {
+void WebServiceWorkerRegistrationImpl::setNavigationPreloadHeader(
+    const blink::WebString& value,
+    blink::WebServiceWorkerProvider* provider,
+    std::unique_ptr<WebSetNavigationPreloadHeaderCallbacks> callbacks) {
+  WebServiceWorkerProviderImpl* provider_impl =
+      static_cast<WebServiceWorkerProviderImpl*>(provider);
+  ServiceWorkerDispatcher* dispatcher =
+      ServiceWorkerDispatcher::GetThreadSpecificInstance();
+  DCHECK(dispatcher);
+  dispatcher->SetNavigationPreloadHeader(provider_impl->provider_id(),
+                                         registrationId(), value.utf8(),
+                                         std::move(callbacks));
+}
+
+int64_t WebServiceWorkerRegistrationImpl::registrationId() const {
   return handle_ref_->registration_id();
 }
 

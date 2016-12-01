@@ -4,43 +4,87 @@
 
 package org.chromium.chrome.browser.vr_shell;
 
+import android.app.Activity;
 import android.app.PendingIntent;
-import android.content.Context;
+import android.content.ComponentName;
+import android.content.Intent;
 
+import com.google.vr.ndk.base.AndroidCompat;
 import com.google.vr.ndk.base.DaydreamApi;
+import com.google.vr.ndk.base.GvrApi;
 
 import org.chromium.base.annotations.UsedByReflection;
 
 /**
- * A wrapper for DaydreamApi.
+ * A wrapper for DaydreamApi. Note that we have to recreate the DaydreamApi instance each time we
+ * use it, or API calls begin to silently fail.
  */
 @UsedByReflection("VrShellDelegate.java")
 public class VrDaydreamApiImpl implements VrDaydreamApi {
-    private DaydreamApi mDaydreamApi;
+    private final Activity mActivity;
 
     @UsedByReflection("VrShellDelegate.java")
-    public VrDaydreamApiImpl(Context context) {
-        mDaydreamApi = DaydreamApi.create(context);
+    public VrDaydreamApiImpl(Activity activity) {
+        mActivity = activity;
     }
 
     @Override
-    public void registerDaydreamIntent(PendingIntent pendingIntent) {
-        if (mDaydreamApi != null) {
-            mDaydreamApi.registerDaydreamIntent(pendingIntent);
-        }
-    }
-    @Override
-    public void unregisterDaydreamIntent() {
-        if (mDaydreamApi != null) {
-            mDaydreamApi.unregisterDaydreamIntent();
-        }
+    public boolean isDaydreamReadyDevice() {
+        return DaydreamApi.isDaydreamReadyPlatform(mActivity);
     }
 
     @Override
-    public void close() {
-        if (mDaydreamApi != null) {
-            mDaydreamApi.close();
-        }
-        mDaydreamApi = null;
+    public boolean registerDaydreamIntent(final PendingIntent pendingIntent) {
+        DaydreamApi daydreamApi = DaydreamApi.create(mActivity);
+        if (daydreamApi == null) return false;
+        daydreamApi.registerDaydreamIntent(pendingIntent);
+        daydreamApi.close();
+        return true;
+    }
+
+    @Override
+    public boolean unregisterDaydreamIntent() {
+        DaydreamApi daydreamApi = DaydreamApi.create(mActivity);
+        if (daydreamApi == null) return false;
+        daydreamApi.unregisterDaydreamIntent();
+        daydreamApi.close();
+        return true;
+    }
+
+    @Override
+    public Intent createVrIntent(final ComponentName componentName) {
+        return DaydreamApi.createVrIntent(componentName);
+    }
+
+    @Override
+    public boolean launchInVr(final PendingIntent pendingIntent) {
+        DaydreamApi daydreamApi = DaydreamApi.create(mActivity);
+        if (daydreamApi == null) return false;
+        daydreamApi.launchInVr(pendingIntent);
+        daydreamApi.close();
+        return true;
+    }
+
+    @Override
+    public boolean exitFromVr(int requestCode, final Intent intent) {
+        DaydreamApi daydreamApi = DaydreamApi.create(mActivity);
+        if (daydreamApi == null) return false;
+        daydreamApi.exitFromVr(mActivity, requestCode, intent);
+        daydreamApi.close();
+        return true;
+    }
+
+    @Override
+    public void setVrModeEnabled(boolean enabled) {
+        AndroidCompat.setVrModeEnabled(mActivity, enabled);
+    }
+
+    @Override
+    public Boolean isDaydreamCurrentViewer() {
+        DaydreamApi daydreamApi = DaydreamApi.create(mActivity);
+        if (daydreamApi == null) return false;
+        int type = daydreamApi.getCurrentViewerType();
+        daydreamApi.close();
+        return type == GvrApi.ViewerType.DAYDREAM;
     }
 }

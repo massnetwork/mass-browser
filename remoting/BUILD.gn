@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//media/media_options.gni")
 import("//remoting/build/config/remoting_build.gni")
 
 group("remoting_all") {
@@ -160,7 +161,7 @@ test("remoting_unittests") {
   }
 
   if (enable_webrtc) {
-    deps += [ "//third_party/libjingle:libjingle_webrtc" ]
+    deps += [ "//third_party/libjingle/webrtc:libjingle_webrtc" ]
   }
 
   if (is_android) {
@@ -207,7 +208,7 @@ if (enable_remoting_host) {
     ]
 
     if (enable_webrtc) {
-      deps += [ "//third_party/libjingle:libjingle_webrtc" ]
+      deps += [ "//third_party/libjingle/webrtc:libjingle_webrtc" ]
     }
 
     if (is_win) {

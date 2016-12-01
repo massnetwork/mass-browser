@@ -47,17 +47,18 @@ class Configuration {
   // Returns true if --chrome is explicitly or implicitly on the command line.
   bool has_chrome() const { return has_chrome_; }
 
-  // Returns true if --chrome-frame is on the command line.
-  bool has_chrome_frame() const { return has_chrome_frame_; }
-
   // Returns true if --multi-install is on the command line.
   bool is_multi_install() const { return is_multi_install_; }
 
-  // Returns true if --system-level is on the command line.
+  // Returns true if --system-level is on the command line or if
+  // GoogleUpdateIsMachine=1 is set in the process's environment.
   bool is_system_level() const { return is_system_level_; }
 
   // Retuns true if --chrome-sxs is on the command line.
   bool is_side_by_side() const { return is_side_by_side_; }
+
+  // Returns true if any invalid switch is found on the command line.
+  bool has_invalid_switch() const { return has_invalid_switch_; }
 
   // Returns the previous version contained in the image's resource.
   const wchar_t* previous_version() const { return previous_version_; }
@@ -73,10 +74,10 @@ class Configuration {
   int argument_count_;
   Operation operation_;
   bool has_chrome_;
-  bool has_chrome_frame_;
   bool is_multi_install_;
   bool is_system_level_;
   bool is_side_by_side_;
+  bool has_invalid_switch_;
   const wchar_t* previous_version_;
 
  protected:

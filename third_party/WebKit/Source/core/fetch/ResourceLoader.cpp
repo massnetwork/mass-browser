@@ -37,6 +37,7 @@
 #include "platform/exported/WrappedResourceResponse.h"
 #include "platform/network/ResourceError.h"
 #include "public/platform/Platform.h"
+#include "public/platform/WebCachePolicy.h"
 #include "public/platform/WebData.h"
 #include "public/platform/WebURLError.h"
 #include "public/platform/WebURLRequest.h"
@@ -54,7 +55,9 @@ ResourceLoader* ResourceLoader::create(ResourceFetcher* fetcher,
 }
 
 ResourceLoader::ResourceLoader(ResourceFetcher* fetcher, Resource* resource)
-    : m_fetcher(fetcher), m_resource(resource) {
+    : m_fetcher(fetcher),
+      m_resource(resource),
+      m_isCacheAwareLoadingActivated(false) {
   DCHECK(m_resource);
   DCHECK(m_fetcher);
   m_resource->setLoader(this);
@@ -83,6 +86,16 @@ void ResourceLoader::start(const ResourceRequest& request,
   DCHECK(m_loader);
   m_loader->setDefersLoading(defersLoading);
   m_loader->setLoadingTaskRunner(loadingTaskRunner);
+
+  if (m_isCacheAwareLoadingActivated) {
+    // Override cache policy for cache-aware loading. If this request fails, a
+    // reload with original request will be triggered in didFail().
+    ResourceRequest cacheAwareRequest(request);
+    cacheAwareRequest.setCachePolicy(WebCachePolicy::ReturnCacheDataIfValid);
+    m_loader->loadAsynchronously(WrappedResourceRequest(cacheAwareRequest),
+                                 this);
+    return;
+  }
 
   if (m_resource->options().synchronousPolicy == RequestSynchronously)
     requestSynchronously(request);
@@ -137,6 +150,13 @@ bool ResourceLoader::willFollowRedirect(
   DCHECK(!passedNewRequest.isNull());
   DCHECK(!passedRedirectResponse.isNull());
 
+  if (m_isCacheAwareLoadingActivated) {
+    // Fail as cache miss if cached response is a redirect.
+    didFail(
+        ResourceError::cacheMissError(m_resource->lastResourceRequest().url()));
+    return false;
+  }
+
   ResourceRequest& newRequest(passedNewRequest.toMutableResourceRequest());
   const ResourceResponse& redirectResponse(
       passedRedirectResponse.toResourceResponse());
@@ -182,12 +202,13 @@ void ResourceLoader::didSendData(WebURLLoader*,
   m_resource->didSendData(bytesSent, totalBytesToBeSent);
 }
 
-void ResourceLoader::didReceiveResponse(WebURLLoader*,
-                                        const WebURLResponse& response,
-                                        WebDataConsumerHandle* handle) {
+void ResourceLoader::didReceiveResponse(
+    WebURLLoader*,
+    const WebURLResponse& response,
+    std::unique_ptr<WebDataConsumerHandle> handle) {
   DCHECK(!response.isNull());
   m_fetcher->didReceiveResponse(m_resource.get(), response.toResourceResponse(),
-                                handle);
+                                std::move(handle));
 }
 
 void ResourceLoader::didReceiveResponse(WebURLLoader* loader,
@@ -198,34 +219,49 @@ void ResourceLoader::didReceiveResponse(WebURLLoader* loader,
 void ResourceLoader::didReceiveData(WebURLLoader*,
                                     const char* data,
                                     int length,
-                                    int encodedDataLength,
-                                    int encodedBodyLength) {
+                                    int encodedDataLength) {
   CHECK_GE(length, 0);
   m_fetcher->didReceiveData(m_resource.get(), data, length, encodedDataLength);
-  m_resource->addToEncodedBodyLength(encodedBodyLength);
   m_resource->addToDecodedBodyLength(length);
   m_resource->appendData(data, length);
 }
 
 void ResourceLoader::didFinishLoadingFirstPartInMultipart() {
   m_fetcher->didFinishLoading(m_resource.get(), 0,
-                              WebURLLoaderClient::kUnknownEncodedDataLength,
                               ResourceFetcher::DidFinishFirstPartInMultipart);
 }
 
 void ResourceLoader::didFinishLoading(WebURLLoader*,
                                       double finishTime,
-                                      int64_t encodedDataLength) {
+                                      int64_t encodedDataLength,
+                                      int64_t encodedBodyLength) {
+  m_resource->setEncodedDataLength(encodedDataLength);
+  m_resource->addToEncodedBodyLength(encodedBodyLength);
   m_loader.reset();
-  m_fetcher->didFinishLoading(m_resource.get(), finishTime, encodedDataLength,
+  m_fetcher->didFinishLoading(m_resource.get(), finishTime,
                               ResourceFetcher::DidFinishLoading);
 }
 
-void ResourceLoader::didFail(WebURLLoader*, const WebURLError& error) {
+void ResourceLoader::didFail(WebURLLoader*,
+                             const WebURLError& error,
+                             int64_t encodedDataLength,
+                             int64_t encodedBodyLength) {
+  m_resource->setEncodedDataLength(encodedDataLength);
+  m_resource->addToEncodedBodyLength(encodedBodyLength);
   didFail(error);
 }
 
 void ResourceLoader::didFail(const ResourceError& error) {
+  if (m_isCacheAwareLoadingActivated && error.isCacheMiss() &&
+      m_fetcher->context().shouldLoadNewResource(m_resource->getType())) {
+    m_resource->willReloadAfterDiskCacheMiss();
+    m_isCacheAwareLoadingActivated = false;
+    restart(m_resource->resourceRequest(),
+            m_fetcher->context().loadingTaskRunner(),
+            m_fetcher->context().defersLoading());
+    return;
+  }
+
   m_loader.reset();
   m_fetcher->didFailLoading(m_resource.get(), error);
 }
@@ -241,15 +277,16 @@ void ResourceLoader::requestSynchronously(const ResourceRequest& request) {
   WebURLError errorOut;
   WebData dataOut;
   int64_t encodedDataLength = WebURLLoaderClient::kUnknownEncodedDataLength;
+  int64_t encodedBodyLength = 0;
   m_loader->loadSynchronously(requestIn, responseOut, errorOut, dataOut,
-                              encodedDataLength);
+                              encodedDataLength, encodedBodyLength);
 
   // A message dispatched while synchronously fetching the resource
   // can bring about the cancellation of this load.
   if (!m_loader)
     return;
   if (errorOut.reason) {
-    didFail(0, errorOut);
+    didFail(0, errorOut, encodedDataLength, encodedBodyLength);
     return;
   }
   didReceiveResponse(0, responseOut);
@@ -266,7 +303,31 @@ void ResourceLoader::requestSynchronously(const ResourceRequest& request) {
                               encodedDataLength);
     m_resource->setResourceBuffer(dataOut);
   }
-  didFinishLoading(0, monotonicallyIncreasingTime(), encodedDataLength);
+  didFinishLoading(0, monotonicallyIncreasingTime(), encodedDataLength,
+                   encodedBodyLength);
+}
+
+void ResourceLoader::activateCacheAwareLoadingIfNeeded(
+    const ResourceRequest& request) {
+  DCHECK(!m_isCacheAwareLoadingActivated);
+
+  if (m_resource->options().cacheAwareLoadingEnabled !=
+      IsCacheAwareLoadingEnabled)
+    return;
+
+  // Synchronous requests are not supported.
+  if (m_resource->options().synchronousPolicy == RequestSynchronously)
+    return;
+
+  // Don't activate on Resource revalidation.
+  if (m_resource->isCacheValidator())
+    return;
+
+  // Don't activate if cache policy is explicitly set.
+  if (request.getCachePolicy() != WebCachePolicy::UseProtocolCachePolicy)
+    return;
+
+  m_isCacheAwareLoadingActivated = true;
 }
 
 }  // namespace blink

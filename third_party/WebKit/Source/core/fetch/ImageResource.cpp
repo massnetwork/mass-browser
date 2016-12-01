@@ -30,6 +30,7 @@
 #include "core/fetch/ResourceLoader.h"
 #include "core/fetch/ResourceLoadingLog.h"
 #include "core/svg/graphics/SVGImage.h"
+#include "platform/Histogram.h"
 #include "platform/RuntimeEnabledFeatures.h"
 #include "platform/SharedBuffer.h"
 #include "platform/geometry/IntSize.h"
@@ -46,6 +47,12 @@
 #include <v8.h>
 
 namespace blink {
+namespace {
+// The amount of time to wait before informing the clients that the image has
+// been updated (in seconds). This effectively throttles invalidations that
+// result from new data arriving for this image.
+constexpr double kFlushDelaySeconds = 1.;
+}  // namespace
 
 class ImageResource::ImageResourceFactory : public ResourceFactory {
   STACK_ALLOCATED();
@@ -107,7 +114,9 @@ ImageResource::ImageResource(const ResourceRequest& resourceRequest,
       m_image(nullptr),
       m_hasDevicePixelRatioHeaderValue(false),
       m_isSchedulingReload(false),
-      m_isPlaceholder(isPlaceholder) {
+      m_isPlaceholder(isPlaceholder),
+      m_flushTimer(this, &ImageResource::flushImageIfNeeded),
+      m_isRefetchableDataFromDiskCache(true) {
   RESOURCE_LOADING_DVLOG(1) << "new ImageResource(ResourceRequest) " << this;
 }
 
@@ -118,7 +127,9 @@ ImageResource::ImageResource(blink::Image* image,
       m_image(image),
       m_hasDevicePixelRatioHeaderValue(false),
       m_isSchedulingReload(false),
-      m_isPlaceholder(false) {
+      m_isPlaceholder(false),
+      m_flushTimer(this, &ImageResource::flushImageIfNeeded),
+      m_isRefetchableDataFromDiskCache(true) {
   RESOURCE_LOADING_DVLOG(1) << "new ImageResource(Image) " << this;
   setStatus(Cached);
 }
@@ -252,6 +263,10 @@ void ImageResource::destroyDecodedDataIfPossible() {
     return;
   CHECK(!errorOccurred());
   m_image->destroyDecodedData();
+  if (!isPreloaded() && m_isRefetchableDataFromDiskCache) {
+    UMA_HISTOGRAM_MEMORY_KB("Memory.Renderer.EstimatedDroppableEncodedSize",
+                            encodedSize() / 1024);
+  }
 }
 
 void ImageResource::doResetAnimation() {
@@ -292,6 +307,41 @@ void ImageResource::appendData(const char* data, size_t length) {
     m_multipartParser->appendData(data, length);
   } else {
     Resource::appendData(data, length);
+
+    // If we don't have the size available yet, then update immediately since
+    // we need to know the image size as soon as possible. Likewise for
+    // animated images, update right away since we shouldn't throttle animated
+    // images.
+    if (m_sizeAvailable == Image::SizeUnavailable ||
+        (m_image && m_image->maybeAnimated())) {
+      updateImage(false);
+      return;
+    }
+
+    // For other cases, only update at |kFlushDelaySeconds| intervals. This
+    // throttles how frequently we update |m_image| and how frequently we
+    // inform the clients which causes an invalidation of this image. In other
+    // words, we only invalidate this image every |kFlushDelaySeconds| seconds
+    // while loading.
+    if (!m_flushTimer.isActive()) {
+      double now = WTF::monotonicallyIncreasingTime();
+      if (!m_lastFlushTime)
+        m_lastFlushTime = now;
+
+      DCHECK_LE(m_lastFlushTime, now);
+      double flushDelay = m_lastFlushTime - now + kFlushDelaySeconds;
+      if (flushDelay < 0.)
+        flushDelay = 0.;
+      m_flushTimer.startOneShot(flushDelay, BLINK_FROM_HERE);
+    }
+  }
+}
+
+void ImageResource::flushImageIfNeeded(TimerBase*) {
+  // We might have already loaded the image fully, in which case we don't need
+  // to call |updateImage()|.
+  if (isLoading()) {
+    m_lastFlushTime = WTF::monotonicallyIncreasingTime();
     updateImage(false);
   }
 }
@@ -414,6 +464,7 @@ inline void ImageResource::clearImage() {
   // pointer before dropping our reference.
   m_image->clearImageObserver();
   m_image.clear();
+  m_sizeAvailable = Image::SizeUnavailable;
 }
 
 void ImageResource::updateImage(bool allDataReceived) {
@@ -422,24 +473,22 @@ void ImageResource::updateImage(bool allDataReceived) {
   if (data())
     createImage();
 
-  Image::SizeAvailability sizeAvailable = Image::SizeUnavailable;
-
   // Have the image update its data from its internal buffer. It will not do
   // anything now, but will delay decoding until queried for info (like size or
   // specific image frames).
   if (data()) {
     DCHECK(m_image);
-    sizeAvailable = m_image->setData(data(), allDataReceived);
+    m_sizeAvailable = m_image->setData(data(), allDataReceived);
   }
 
   // Go ahead and tell our observers to try to draw if we have either received
   // all the data or the size is known. Each chunk from the network causes
   // observers to repaint, which will force that chunk to decode.
-  if (sizeAvailable == Image::SizeUnavailable && !allDataReceived)
+  if (m_sizeAvailable == Image::SizeUnavailable && !allDataReceived)
     return;
 
   if (m_isPlaceholder && allDataReceived && m_image && !m_image->isNull()) {
-    if (sizeAvailable == Image::SizeAvailable) {
+    if (m_sizeAvailable == Image::SizeAvailable) {
       // TODO(sclittle): Show the original image if the response consists of the
       // entire image, such as if the entire image response body is smaller than
       // the requested range.
@@ -458,8 +507,10 @@ void ImageResource::updateImage(bool allDataReceived) {
     clear();
     if (!errorOccurred())
       setStatus(DecodeError);
-    if (!allDataReceived && loader())
-      loader()->didFinishLoading(nullptr, monotonicallyIncreasingTime(), size);
+    if (!allDataReceived && loader()) {
+      loader()->didFinishLoading(nullptr, monotonicallyIncreasingTime(), size,
+                                 size);
+    }
     memoryCache()->remove(this);
   }
 
@@ -487,7 +538,6 @@ void ImageResource::finish(double loadFinishTime) {
     // document:
     // https://docs.google.com/document/d/1v0yTAZ6wkqX2U_M6BNIGUJpM1s0TIw1VsqpxoL7aciY/edit?usp=sharing
     clearData();
-    setEncodedSizeMemoryUsage(0);
   }
   Resource::finish(loadFinishTime);
 }
@@ -530,16 +580,6 @@ void ImageResource::decodedSizeChangedTo(const blink::Image* image,
     return;
 
   setDecodedSize(newSize);
-}
-
-void ImageResource::didDraw(const blink::Image* image) {
-  if (!image || image != m_image)
-    return;
-  // decodedSize() == 0 indicates that the image is decoded into
-  // DiscardableMemory, not in MemoryCache. So we don't need to call
-  // Resource::didAccessDecodedData() to update MemoryCache.
-  if (decodedSize() != 0)
-    Resource::didAccessDecodedData();
 }
 
 bool ImageResource::shouldPauseAnimation(const blink::Image* image) {
@@ -591,7 +631,9 @@ static bool isLoFiImage(const ImageResource& resource) {
   if (resource.resourceRequest().loFiState() != WebURLRequest::LoFiOn)
     return false;
   return !resource.isLoaded() ||
-         resource.response().httpHeaderField("chrome-proxy").contains("q=low");
+         resource.response()
+             .httpHeaderField("chrome-proxy-content-transform")
+             .contains("empty-image");
 }
 
 void ImageResource::reloadIfLoFiOrPlaceholder(

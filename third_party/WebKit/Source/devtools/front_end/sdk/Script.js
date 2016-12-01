@@ -23,19 +23,19 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /**
- * @implements {WebInspector.ContentProvider}
+ * @implements {Common.ContentProvider}
  * @unrestricted
  */
-WebInspector.Script = class extends WebInspector.SDKObject {
+SDK.Script = class extends SDK.SDKObject {
   /**
-   * @param {!WebInspector.DebuggerModel} debuggerModel
+   * @param {!SDK.DebuggerModel} debuggerModel
    * @param {string} scriptId
    * @param {string} sourceURL
    * @param {number} startLine
    * @param {number} startColumn
    * @param {number} endLine
    * @param {number} endColumn
-   * @param {!RuntimeAgent.ExecutionContextId} executionContextId
+   * @param {!Protocol.Runtime.ExecutionContextId} executionContextId
    * @param {string} hash
    * @param {boolean} isContentScript
    * @param {boolean} isLiveEdit
@@ -87,13 +87,13 @@ WebInspector.Script = class extends WebInspector.SDKObject {
     if (sourceURLLineIndex === -1)
       return source;
     var sourceURLLine = source.substr(sourceURLLineIndex + 1).split('\n', 1)[0];
-    if (sourceURLLine.search(WebInspector.Script.sourceURLRegex) === -1)
+    if (sourceURLLine.search(SDK.Script.sourceURLRegex) === -1)
       return source;
     return source.substr(0, sourceURLLineIndex) + source.substr(sourceURLLineIndex + sourceURLLine.length + 1);
   }
 
   /**
-   * @param {!WebInspector.Script} script
+   * @param {!SDK.Script} script
    * @param {string} source
    */
   static _reportDeprecatedCommentIfNeeded(script, source) {
@@ -112,12 +112,11 @@ WebInspector.Script = class extends WebInspector.SDKObject {
       return;
     if (sourceTail.search(/^[\040\t]*\/\/@ source(mapping)?url=/mi) === -1)
       return;
-    var text = WebInspector.UIString(
+    var text = Common.UIString(
         '\'//@ sourceURL\' and \'//@ sourceMappingURL\' are deprecated, please use \'//# sourceURL=\' and \'//# sourceMappingURL=\' instead.');
-    var msg = new WebInspector.ConsoleMessage(
-        script.target(), WebInspector.ConsoleMessage.MessageSource.JS, WebInspector.ConsoleMessage.MessageLevel.Warning,
-        text, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        script.scriptId);
+    var msg = new SDK.ConsoleMessage(
+        script.target(), SDK.ConsoleMessage.MessageSource.JS, SDK.ConsoleMessage.MessageLevel.Warning, text, undefined,
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, script.scriptId);
     consoleModel.addMessage(msg);
   }
 
@@ -129,7 +128,7 @@ WebInspector.Script = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @return {?WebInspector.ExecutionContext}
+   * @return {?SDK.ExecutionContext}
    */
   executionContext() {
     return this.target().runtimeModel.executionContext(this._executionContextId);
@@ -152,10 +151,10 @@ WebInspector.Script = class extends WebInspector.SDKObject {
 
   /**
    * @override
-   * @return {!WebInspector.ResourceType}
+   * @return {!Common.ResourceType}
    */
   contentType() {
-    return WebInspector.resourceTypes.Script;
+    return Common.resourceTypes.Script;
   }
 
   /**
@@ -174,14 +173,14 @@ WebInspector.Script = class extends WebInspector.SDKObject {
     return promise;
 
     /**
-     * @this {WebInspector.Script}
+     * @this {SDK.Script}
      * @param {?Protocol.Error} error
      * @param {string} source
      */
     function didGetScriptSource(error, source) {
       if (!error) {
-        WebInspector.Script._reportDeprecatedCommentIfNeeded(this, source);
-        this._source = WebInspector.Script._trimSourceURLComment(source);
+        SDK.Script._reportDeprecatedCommentIfNeeded(this, source);
+        this._source = SDK.Script._trimSourceURLComment(source);
       } else {
         this._source = '';
       }
@@ -194,12 +193,12 @@ WebInspector.Script = class extends WebInspector.SDKObject {
    * @param {string} query
    * @param {boolean} caseSensitive
    * @param {boolean} isRegex
-   * @param {function(!Array.<!DebuggerAgent.SearchMatch>)} callback
+   * @param {function(!Array.<!Protocol.Debugger.SearchMatch>)} callback
    */
   searchInContent(query, caseSensitive, isRegex, callback) {
     /**
      * @param {?Protocol.Error} error
-     * @param {!Array.<!DebuggerAgent.SearchMatch>} searchMatches
+     * @param {!Array.<!Protocol.Debugger.SearchMatch>} searchMatches
      */
     function innerCallback(error, searchMatches) {
       if (error) {
@@ -210,7 +209,7 @@ WebInspector.Script = class extends WebInspector.SDKObject {
       var result = [];
       for (var i = 0; i < searchMatches.length; ++i) {
         var searchMatch =
-            new WebInspector.ContentProvider.SearchMatch(searchMatches[i].lineNumber, searchMatches[i].lineContent);
+            new Common.ContentProvider.SearchMatch(searchMatches[i].lineNumber, searchMatches[i].lineContent);
         result.push(searchMatch);
       }
       callback(result || []);
@@ -236,16 +235,16 @@ WebInspector.Script = class extends WebInspector.SDKObject {
 
   /**
    * @param {string} newSource
-   * @param {function(?Protocol.Error, !RuntimeAgent.ExceptionDetails=, !Array.<!DebuggerAgent.CallFrame>=, !RuntimeAgent.StackTrace=, boolean=)} callback
+   * @param {function(?Protocol.Error, !Protocol.Runtime.ExceptionDetails=, !Array.<!Protocol.Debugger.CallFrame>=, !Protocol.Runtime.StackTrace=, boolean=)} callback
    */
   editSource(newSource, callback) {
     /**
-     * @this {WebInspector.Script}
+     * @this {SDK.Script}
      * @param {?Protocol.Error} error
-     * @param {!Array.<!DebuggerAgent.CallFrame>=} callFrames
+     * @param {!Array.<!Protocol.Debugger.CallFrame>=} callFrames
      * @param {boolean=} stackChanged
-     * @param {!RuntimeAgent.StackTrace=} asyncStackTrace
-     * @param {!RuntimeAgent.ExceptionDetails=} exceptionDetails
+     * @param {!Protocol.Runtime.StackTrace=} asyncStackTrace
+     * @param {!Protocol.Runtime.ExceptionDetails=} exceptionDetails
      */
     function didEditScriptSource(error, callFrames, stackChanged, asyncStackTrace, exceptionDetails) {
       if (!error && !exceptionDetails)
@@ -254,24 +253,25 @@ WebInspector.Script = class extends WebInspector.SDKObject {
       callback(error, exceptionDetails, callFrames, asyncStackTrace, needsStepIn);
     }
 
-    newSource = WebInspector.Script._trimSourceURLComment(newSource);
+    newSource = SDK.Script._trimSourceURLComment(newSource);
     // We append correct sourceURL to script for consistency only. It's not actually needed for things to work correctly.
     newSource = this._appendSourceURLCommentIfNeeded(newSource);
 
-    if (this.scriptId)
+    if (this.scriptId) {
       this.target().debuggerAgent().setScriptSource(
           this.scriptId, newSource, undefined, didEditScriptSource.bind(this));
-    else
+    } else {
       callback('Script failed to parse');
+    }
   }
 
   /**
    * @param {number} lineNumber
    * @param {number=} columnNumber
-   * @return {!WebInspector.DebuggerModel.Location}
+   * @return {!SDK.DebuggerModel.Location}
    */
   rawLocation(lineNumber, columnNumber) {
-    return new WebInspector.DebuggerModel.Location(this.debuggerModel, this.scriptId, lineNumber, columnNumber || 0);
+    return new SDK.DebuggerModel.Location(this.debuggerModel, this.scriptId, lineNumber, columnNumber || 0);
   }
 
   /**
@@ -289,7 +289,7 @@ WebInspector.Script = class extends WebInspector.SDKObject {
     if (this.sourceMapURL)
       return;
     this.sourceMapURL = sourceMapURL;
-    this.dispatchEventToListeners(WebInspector.Script.Events.SourceMapURLAdded, this.sourceMapURL);
+    this.dispatchEventToListeners(SDK.Script.Events.SourceMapURLAdded, this.sourceMapURL);
   }
 
   /**
@@ -307,7 +307,7 @@ WebInspector.Script = class extends WebInspector.SDKObject {
   }
 
   /**
-   * @param {!Array<!DebuggerAgent.ScriptPosition>} positions
+   * @param {!Array<!Protocol.Debugger.ScriptPosition>} positions
    * @return {!Promise<boolean>}
    */
   setBlackboxedRanges(positions) {
@@ -316,7 +316,7 @@ WebInspector.Script = class extends WebInspector.SDKObject {
     /**
      * @param {function(?)} fulfill
      * @param {function(*)} reject
-     * @this {WebInspector.Script}
+     * @this {SDK.Script}
      */
     function setBlackboxedRanges(fulfill, reject) {
       this.target().debuggerAgent().setBlackboxedRanges(this.scriptId, positions, callback);
@@ -333,9 +333,9 @@ WebInspector.Script = class extends WebInspector.SDKObject {
 };
 
 /** @enum {symbol} */
-WebInspector.Script.Events = {
+SDK.Script.Events = {
   ScriptEdited: Symbol('ScriptEdited'),
   SourceMapURLAdded: Symbol('SourceMapURLAdded')
 };
 
-WebInspector.Script.sourceURLRegex = /^[\040\t]*\/\/[@#] sourceURL=\s*(\S*?)\s*$/m;
+SDK.Script.sourceURLRegex = /^[\040\t]*\/\/[@#] sourceURL=\s*(\S*?)\s*$/m;

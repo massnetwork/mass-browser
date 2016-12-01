@@ -36,9 +36,8 @@ extern const char kEngineTransport[];
 // Enables downloading the complete page from the engine.
 extern const char kDownloadWholeDocument[];
 
-// Enables the updated compositing path, which uses a threaded
-// LayerTreeHostInProcess for the BlimpCompositor.
-extern const char kEnableUpdatedCompositingPath[];
+// Specifies directory where android fonts are stored for use in Linux client.
+extern const char kAndroidFontsPath[];
 
 }  // namespace switches
 }  // namespace blimp

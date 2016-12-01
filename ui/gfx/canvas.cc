@@ -28,9 +28,10 @@ namespace gfx {
 Canvas::Canvas(const Size& size, float image_scale, bool is_opaque)
     : image_scale_(image_scale) {
   Size pixel_size = ScaleToCeiledSize(size, image_scale);
-  canvas_ = sk_sp<SkCanvas>(skia::CreatePlatformCanvas(pixel_size.width(),
-                                                       pixel_size.height(),
-                                                       is_opaque));
+  canvas_owner_ = skia::CreatePlatformCanvas(pixel_size.width(),
+                                             pixel_size.height(), is_opaque);
+  canvas_ = canvas_owner_.get();
+
 #if !defined(USE_CAIRO)
   // skia::PlatformCanvas instances are initialized to 0 by Cairo, but
   // uninitialized on other platforms.
@@ -44,10 +45,11 @@ Canvas::Canvas(const Size& size, float image_scale, bool is_opaque)
 
 Canvas::Canvas()
     : image_scale_(1.f),
-      canvas_(sk_sp<SkCanvas>(skia::CreatePlatformCanvas(0, 0, false))) {}
+      canvas_owner_(skia::CreatePlatformCanvas(0, 0, false)),
+      canvas_(canvas_owner_.get()) {}
 
-Canvas::Canvas(sk_sp<SkCanvas> canvas, float image_scale)
-    : image_scale_(image_scale), canvas_(std::move(canvas)) {
+Canvas::Canvas(SkCanvas* canvas, float image_scale)
+    : image_scale_(image_scale), canvas_(canvas) {
   DCHECK(canvas_);
 }
 
@@ -59,9 +61,10 @@ void Canvas::RecreateBackingCanvas(const Size& size,
                                    bool is_opaque) {
   image_scale_ = image_scale;
   Size pixel_size = ScaleToFlooredSize(size, image_scale);
-  canvas_ = sk_sp<SkCanvas>(skia::CreatePlatformCanvas(pixel_size.width(),
-                                                       pixel_size.height(),
-                                                       is_opaque));
+  canvas_owner_ = skia::CreatePlatformCanvas(pixel_size.width(),
+                                             pixel_size.height(), is_opaque);
+  canvas_ = canvas_owner_.get();
+
   SkScalar scale_scalar = SkFloatToScalar(image_scale);
   canvas_->scale(scale_scalar, scale_scalar);
 }
@@ -218,24 +221,22 @@ void Canvas::Scale(int x_scale, int y_scale) {
 }
 
 void Canvas::DrawColor(SkColor color) {
-  DrawColor(color, SkXfermode::kSrcOver_Mode);
+  DrawColor(color, SkBlendMode::kSrcOver);
 }
 
-void Canvas::DrawColor(SkColor color, SkXfermode::Mode mode) {
-  canvas_->drawColor(color, static_cast<SkBlendMode>(mode));
+void Canvas::DrawColor(SkColor color, SkBlendMode mode) {
+  canvas_->drawColor(color, mode);
 }
 
 void Canvas::FillRect(const Rect& rect, SkColor color) {
-  FillRect(rect, color, SkXfermode::kSrcOver_Mode);
+  FillRect(rect, color, SkBlendMode::kSrcOver);
 }
 
-void Canvas::FillRect(const Rect& rect,
-                      SkColor color,
-                      SkXfermode::Mode mode) {
+void Canvas::FillRect(const Rect& rect, SkColor color, SkBlendMode mode) {
   SkPaint paint;
   paint.setColor(color);
   paint.setStyle(SkPaint::kFill_Style);
-  paint.setBlendMode(static_cast<SkBlendMode>(mode));
+  paint.setBlendMode(mode);
   DrawRect(rect, paint);
 }
 
@@ -244,18 +245,14 @@ void Canvas::DrawRect(const Rect& rect, SkColor color) {
 }
 
 void Canvas::DrawRect(const RectF& rect, SkColor color) {
-  DrawRect(rect, color, SkXfermode::kSrcOver_Mode);
+  DrawRect(rect, color, SkBlendMode::kSrcOver);
 }
 
-void Canvas::DrawRect(const Rect& rect,
-                      SkColor color,
-                      SkXfermode::Mode mode) {
+void Canvas::DrawRect(const Rect& rect, SkColor color, SkBlendMode mode) {
   DrawRect(RectF(rect), color, mode);
 }
 
-void Canvas::DrawRect(const RectF& rect,
-                      SkColor color,
-                      SkXfermode::Mode mode) {
+void Canvas::DrawRect(const RectF& rect, SkColor color, SkBlendMode mode) {
   SkPaint paint;
   paint.setColor(color);
   paint.setStyle(SkPaint::kStroke_Style);
@@ -263,7 +260,7 @@ void Canvas::DrawRect(const RectF& rect,
   // we set a stroke width of 1, for example, this will internally create a
   // path and fill it, which causes problems near the edge of the canvas.
   paint.setStrokeWidth(SkIntToScalar(0));
-  paint.setBlendMode(static_cast<SkBlendMode>(mode));
+  paint.setBlendMode(mode);
 
   DrawRect(rect, paint);
 }

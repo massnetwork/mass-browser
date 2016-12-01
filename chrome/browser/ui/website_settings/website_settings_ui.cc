@@ -13,6 +13,7 @@
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
 #include "components/strings/grit/components_strings.h"
+#include "ppapi/features/features.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/image/image.h"
@@ -90,7 +91,7 @@ const PermissionsUIInfo kPermissionsUIInfo[] = {
      IDR_BLOCKED_JAVASCRIPT, IDR_ALLOWED_JAVASCRIPT},
     {CONTENT_SETTINGS_TYPE_POPUPS, IDS_WEBSITE_SETTINGS_TYPE_POPUPS,
      IDR_BLOCKED_POPUPS, IDR_ALLOWED_POPUPS},
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
     {CONTENT_SETTINGS_TYPE_PLUGINS, IDS_WEBSITE_SETTINGS_TYPE_FLASH,
      IDR_BLOCKED_PLUGINS, IDR_ALLOWED_PLUGINS},
 #endif
@@ -99,10 +100,6 @@ const PermissionsUIInfo kPermissionsUIInfo[] = {
     {CONTENT_SETTINGS_TYPE_NOTIFICATIONS,
      IDS_WEBSITE_SETTINGS_TYPE_NOTIFICATIONS, IDR_BLOCKED_NOTIFICATION,
      IDR_ALLOWED_NOTIFICATION},
-    {CONTENT_SETTINGS_TYPE_FULLSCREEN, IDS_WEBSITE_SETTINGS_TYPE_FULLSCREEN,
-     IDR_ALLOWED_FULLSCREEN, IDR_ALLOWED_FULLSCREEN},
-    {CONTENT_SETTINGS_TYPE_MOUSELOCK, IDS_WEBSITE_SETTINGS_TYPE_MOUSELOCK,
-     IDR_BLOCKED_MOUSE_CURSOR, IDR_ALLOWED_MOUSE_CURSOR},
     {CONTENT_SETTINGS_TYPE_MEDIASTREAM_MIC, IDS_WEBSITE_SETTINGS_TYPE_MIC,
      IDR_BLOCKED_MIC, IDR_ALLOWED_MIC},
     {CONTENT_SETTINGS_TYPE_MEDIASTREAM_CAMERA, IDS_WEBSITE_SETTINGS_TYPE_CAMERA,
@@ -170,7 +167,6 @@ WebsiteSettingsUI::IdentityInfo::GetSecurityDescription() const {
     case WebsiteSettings::SITE_IDENTITY_STATUS_CERT:
     case WebsiteSettings::SITE_IDENTITY_STATUS_EV_CERT:
     case WebsiteSettings::SITE_IDENTITY_STATUS_CERT_REVOCATION_UNKNOWN:
-    case WebsiteSettings::SITE_IDENTITY_STATUS_CT_ERROR:
     case WebsiteSettings::SITE_IDENTITY_STATUS_ADMIN_PROVIDED_CERT:
       switch (connection_status) {
         case WebsiteSettings::
@@ -187,6 +183,17 @@ WebsiteSettingsUI::IdentityInfo::GetSecurityDescription() const {
           return CreateSecurityDescription(IDS_WEBSITE_SETTINGS_SECURE_SUMMARY,
                                            IDS_WEBSITE_SETTINGS_SECURE_DETAILS);
       }
+    case WebsiteSettings::SITE_IDENTITY_STATUS_MALWARE:
+      return CreateSecurityDescription(IDS_WEBSITE_SETTINGS_MALWARE_SUMMARY,
+                                       IDS_WEBSITE_SETTINGS_MALWARE_DETAILS);
+    case WebsiteSettings::SITE_IDENTITY_STATUS_SOCIAL_ENGINEERING:
+      return CreateSecurityDescription(
+          IDS_WEBSITE_SETTINGS_SOCIAL_ENGINEERING_SUMMARY,
+          IDS_WEBSITE_SETTINGS_SOCIAL_ENGINEERING_DETAILS);
+    case WebsiteSettings::SITE_IDENTITY_STATUS_UNWANTED_SOFTWARE:
+      return CreateSecurityDescription(
+          IDS_WEBSITE_SETTINGS_UNWANTED_SOFTWARE_SUMMARY,
+          IDS_WEBSITE_SETTINGS_UNWANTED_SOFTWARE_DETAILS);
     case WebsiteSettings::
         SITE_IDENTITY_STATUS_DEPRECATED_SIGNATURE_ALGORITHM_MINOR:
     case WebsiteSettings::
@@ -240,7 +247,7 @@ base::string16 WebsiteSettingsUI::PermissionActionToUIString(
   if (effective_setting == CONTENT_SETTING_DEFAULT)
     effective_setting = default_setting;
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   HostContentSettingsMap* host_content_settings_map =
       HostContentSettingsMapFactory::GetForProfile(profile);
   effective_setting = PluginsFieldTrial::EffectiveContentSetting(
@@ -338,7 +345,6 @@ int WebsiteSettingsUI::GetIdentityIconID(
       resource_id = IDR_PAGEINFO_WARNING_MAJOR;
       break;
     case WebsiteSettings::SITE_IDENTITY_STATUS_ERROR:
-    case WebsiteSettings::SITE_IDENTITY_STATUS_CT_ERROR:
       resource_id = IDR_PAGEINFO_BAD;
       break;
     case WebsiteSettings::SITE_IDENTITY_STATUS_ADMIN_PROVIDED_CERT:

@@ -216,16 +216,18 @@ void Element::clearTabIndexExplicitlyIfNeeded() {
     elementRareData()->clearTabIndexExplicitly();
 }
 
-void Element::setTabIndexExplicitly(short tabIndex) {
-  ensureElementRareData().setTabIndexExplicitly(tabIndex);
+void Element::setTabIndexExplicitly() {
+  ensureElementRareData().setTabIndexExplicitly();
 }
 
 void Element::setTabIndex(int value) {
   setIntegralAttribute(tabindexAttr, value);
 }
 
-short Element::tabIndex() const {
-  return hasRareData() ? elementRareData()->tabIndex() : 0;
+int Element::tabIndex() const {
+  return hasElementFlag(TabIndexWasSetExplicitly)
+             ? getIntegralAttribute(tabindexAttr)
+             : 0;
 }
 
 bool Element::layoutObjectIsFocusable() const {
@@ -1746,9 +1748,6 @@ void Element::detachLayoutTree(const AttachContext& context) {
   if (context.clearInvalidation)
     document().styleEngine().styleInvalidator().clearInvalidation(*this);
 
-  if (svgFilterNeedsLayerUpdate())
-    document().unscheduleSVGFilterLayerUpdateHack(*this);
-
   setNeedsResizeObserverUpdate();
 
   DCHECK(needsAttach());
@@ -1834,7 +1833,7 @@ PassRefPtr<ComputedStyle> Element::originalStyleForLayoutObject() {
   return document().ensureStyleResolver().styleForElement(this);
 }
 
-void Element::recalcStyle(StyleRecalcChange change) {
+void Element::recalcStyle(StyleRecalcChange change, Text* nextTextSibling) {
   DCHECK(document().inStyleRecalc());
   DCHECK(!document().lifecycle().inDetach());
   DCHECK(!parentOrShadowHostNode()->needsStyleRecalc());
@@ -1855,7 +1854,7 @@ void Element::recalcStyle(StyleRecalcChange change) {
       }
     }
     if (parentComputedStyle())
-      change = recalcOwnStyle(change);
+      change = recalcOwnStyle(change, nextTextSibling);
     clearNeedsStyleRecalc();
     clearNeedsReattachLayoutTree();
   }
@@ -1900,6 +1899,8 @@ PassRefPtr<ComputedStyle> Element::propagateInheritedProperties(
     StyleRecalcChange change) {
   if (change != IndependentInherit)
     return nullptr;
+  if (isPseudoElement())
+    return nullptr;
   if (needsStyleRecalc())
     return nullptr;
   if (hasAnimations())
@@ -1916,7 +1917,8 @@ PassRefPtr<ComputedStyle> Element::propagateInheritedProperties(
   return newStyle;
 }
 
-StyleRecalcChange Element::recalcOwnStyle(StyleRecalcChange change) {
+StyleRecalcChange Element::recalcOwnStyle(StyleRecalcChange change,
+                                          Text* nextTextSibling) {
   DCHECK(document().inStyleRecalc());
   DCHECK(!parentOrShadowHostNode()->needsStyleRecalc());
   DCHECK(change >= IndependentInherit || needsStyleRecalc());
@@ -1941,7 +1943,10 @@ StyleRecalcChange Element::recalcOwnStyle(StyleRecalcChange change) {
   }
 
   if (localChange == Reattach) {
-    document().addNonAttachedStyle(*this, std::move(newStyle));
+    StyleReattachData styleReattachData;
+    styleReattachData.computedStyle = std::move(newStyle);
+    styleReattachData.nextTextSibling = nextTextSibling;
+    document().addStyleReattachData(*this, styleReattachData);
     setNeedsReattachLayoutTree();
     return rebuildLayoutTree();
   }
@@ -1953,8 +1958,7 @@ StyleRecalcChange Element::recalcOwnStyle(StyleRecalcChange change) {
 
   if (LayoutObject* layoutObject = this->layoutObject()) {
     if (localChange != NoChange ||
-        pseudoStyleCacheIsInvalid(oldStyle.get(), newStyle.get()) ||
-        svgFilterNeedsLayerUpdate()) {
+        pseudoStyleCacheIsInvalid(oldStyle.get(), newStyle.get())) {
       layoutObject->setStyle(newStyle.get());
     } else {
       // Although no change occurred, we use the new style so that the cousin
@@ -1987,8 +1991,9 @@ StyleRecalcChange Element::recalcOwnStyle(StyleRecalcChange change) {
 
 StyleRecalcChange Element::rebuildLayoutTree() {
   DCHECK(inActiveDocument());
+  StyleReattachData styleReattachData = document().getStyleReattachData(*this);
   AttachContext reattachContext;
-  reattachContext.resolvedStyle = document().getNonAttachedStyle(*this);
+  reattachContext.resolvedStyle = styleReattachData.computedStyle.get();
   bool layoutObjectWillChange = needsAttach() || layoutObject();
 
   // We are calling Element::rebuildLayoutTree() from inside
@@ -2008,7 +2013,7 @@ StyleRecalcChange Element::rebuildLayoutTree() {
     // we can either traverse the current subtree from this node onwards
     // or store it.
     // The choice is between increased time and increased memory complexity.
-    reattachWhitespaceSiblingsIfNeeded(nextTextSibling());
+    reattachWhitespaceSiblingsIfNeeded(styleReattachData.nextTextSibling);
     return Reattach;
   }
   return ReattachNoLayoutObject;
@@ -2157,8 +2162,6 @@ ShadowRoot* Element::createShadowRoot(const ScriptState* scriptState,
 ShadowRoot* Element::attachShadow(const ScriptState* scriptState,
                                   const ShadowRootInit& shadowRootInitDict,
                                   ExceptionState& exceptionState) {
-  DCHECK(RuntimeEnabledFeatures::shadowDOMV1Enabled());
-
   HostsUsingFeatures::countMainWorldOnly(
       scriptState, document(),
       HostsUsingFeatures::Feature::ElementAttachShadow);
@@ -2437,19 +2440,16 @@ void Element::parseAttribute(const QualifiedName& name,
                              const AtomicString& value) {
   if (name == tabindexAttr) {
     int tabindex = 0;
-    if (value.isEmpty()) {
+    if (value.isEmpty() || !parseHTMLInteger(value, tabindex)) {
       clearTabIndexExplicitlyIfNeeded();
       if (adjustedFocusedElementInTreeScope() == this) {
         // We might want to call blur(), but it's dangerous to dispatch
         // events here.
         document().setNeedsFocusedElementCheck();
       }
-    } else if (parseHTMLInteger(value, tabindex)) {
-      // Clamp tabindex to the range of 'short' to match Firefox's behavior.
-      setTabIndexExplicitly(
-          max(static_cast<int>(std::numeric_limits<short>::min()),
-              std::min(tabindex,
-                       static_cast<int>(std::numeric_limits<short>::max()))));
+    } else {
+      // We only set when value is in integer range.
+      setTabIndexExplicitly();
     }
   } else if (name == XMLNames::langAttr) {
     pseudoStateChanged(CSSSelector::PseudoLang);
@@ -3327,7 +3327,9 @@ KURL Element::getNonEmptyURLAttribute(const QualifiedName& name) const {
 }
 
 int Element::getIntegralAttribute(const QualifiedName& attributeName) const {
-  return getAttribute(attributeName).toInt();
+  int integralValue = 0;
+  parseHTMLInteger(getAttribute(attributeName), integralValue);
+  return integralValue;
 }
 
 void Element::setIntegralAttribute(const QualifiedName& attributeName,
@@ -3618,10 +3620,6 @@ void Element::updateExtraNamedItemRegistration(const AtomicString& oldId,
     toHTMLDocument(document()).addExtraNamedItem(newId);
 }
 
-void Element::scheduleSVGFilterLayerUpdateHack() {
-  document().scheduleSVGFilterLayerUpdateHack(*this);
-}
-
 ScrollOffset Element::savedLayerScrollOffset() const {
   return hasRareData() ? elementRareData()->savedLayerScrollOffset()
                        : ScrollOffset();
@@ -3910,21 +3908,23 @@ bool Element::setInlineStyleProperty(CSSPropertyID propertyID,
                                      const String& value,
                                      bool important) {
   DCHECK(isStyledElement());
-  bool changes = ensureMutableInlineStyle().setProperty(
-      propertyID, value, important, document().elementSheet().contents());
-  if (changes)
+  bool didChange = ensureMutableInlineStyle()
+                       .setProperty(propertyID, value, important,
+                                    document().elementSheet().contents())
+                       .didChange;
+  if (didChange)
     inlineStyleChanged();
-  return changes;
+  return didChange;
 }
 
 bool Element::removeInlineStyleProperty(CSSPropertyID propertyID) {
   DCHECK(isStyledElement());
   if (!inlineStyle())
     return false;
-  bool changes = ensureMutableInlineStyle().removeProperty(propertyID);
-  if (changes)
+  bool didChange = ensureMutableInlineStyle().removeProperty(propertyID);
+  if (didChange)
     inlineStyleChanged();
-  return changes;
+  return didChange;
 }
 
 void Element::removeAllInlineStyleProperties() {

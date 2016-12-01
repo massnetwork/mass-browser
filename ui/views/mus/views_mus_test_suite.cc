@@ -19,6 +19,7 @@
 #include "services/service_manager/public/cpp/service_context.h"
 #include "services/ui/common/switches.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/aura/window.h"
 #include "ui/views/mus/window_manager_connection.h"
 #include "ui/views/test/platform_test_helper.h"
 #include "ui/views/views_delegate.h"
@@ -37,6 +38,12 @@ class DefaultService : public service_manager::Service {
   DefaultService() {}
   ~DefaultService() override {}
 
+  // service_manager::Service:
+  bool OnConnect(const service_manager::ServiceInfo& remote_info,
+                 service_manager::InterfaceRegistry* registry) override {
+    return false;
+  }
+
  private:
   DISALLOW_COPY_AND_ASSIGN(DefaultService);
 };
@@ -50,6 +57,11 @@ class PlatformTestHelperMus : public PlatformTestHelper {
     connection_ = WindowManagerConnection::Create(connector, identity);
   }
   ~PlatformTestHelperMus() override {}
+
+  // PlatformTestHelper:
+  void SimulateNativeDestroy(Widget* widget) override {
+    delete widget->GetNativeView();
+  }
 
  private:
   std::unique_ptr<WindowManagerConnection> connection_;
@@ -112,8 +124,7 @@ class ServiceManagerConnection {
   }
 
   void CloneConnector(base::WaitableEvent* wait) {
-    service_manager_connector_ =
-        service_manager_connection_->connector()->Clone();
+    service_manager_connector_ = context_->connector()->Clone();
     wait->Signal();
   }
 
@@ -121,40 +132,38 @@ class ServiceManagerConnection {
     background_service_manager_ =
         base::MakeUnique<service_manager::BackgroundServiceManager>();
     background_service_manager_->Init(nullptr);
-    service_ = base::MakeUnique<DefaultService>();
-    service_manager_connection_ =
+    context_ =
         base::MakeUnique<service_manager::ServiceContext>(
-            service_.get(),
+            base::MakeUnique<DefaultService>(),
             background_service_manager_->CreateServiceRequest(GetTestName()));
 
     // ui/views/mus requires a WindowManager running, so launch test_wm.
-    service_manager::Connector* connector =
-        service_manager_connection_->connector();
-    connector->Connect("service:test_wm");
+    service_manager::Connector* connector = context_->connector();
+    connector->Connect("test_wm");
     service_manager_connector_ = connector->Clone();
-    service_manager_identity_ = service_manager_connection_->identity();
+    service_manager_identity_ = context_->identity();
     wait->Signal();
   }
 
   void TearDownConnections(base::WaitableEvent* wait) {
-    service_manager_connection_.reset();
+    context_.reset();
     wait->Signal();
   }
 
-  // Returns the name of the test executable, e.g. "exe:views_mus_unittests".
+  // Returns the name of the test executable, e.g.
+  // "views_mus_unittests".
   std::string GetTestName() {
     base::FilePath executable = base::CommandLine::ForCurrentProcess()
                                     ->GetProgram()
                                     .BaseName()
                                     .RemoveExtension();
-    return std::string("exe:") + executable.MaybeAsASCII();
+    return std::string("") + executable.MaybeAsASCII();
   }
 
   base::Thread thread_;
   std::unique_ptr<service_manager::BackgroundServiceManager>
       background_service_manager_;
-  std::unique_ptr<service_manager::ServiceContext> service_manager_connection_;
-  std::unique_ptr<DefaultService> service_;
+  std::unique_ptr<service_manager::ServiceContext> context_;
   std::unique_ptr<service_manager::Connector> service_manager_connector_;
   service_manager::Identity service_manager_identity_;
 

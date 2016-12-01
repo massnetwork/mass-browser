@@ -26,6 +26,7 @@ enum class WindowTreeChangeType {
   NEW_WINDOW,
   PROPERTY,
   REMOVE_TRANSIENT,
+  REORDER,
   VISIBLE,
 
   // This covers all cases that aren't used in tests.
@@ -51,12 +52,15 @@ class TestWindowTree : public ui::mojom::WindowTree {
 
   bool WasEventAcked(uint32_t event_id) const;
 
-  mojo::Array<uint8_t> GetLastPropertyValue();
+  base::Optional<std::vector<uint8_t>> GetLastPropertyValue();
 
-  mojo::Map<mojo::String, mojo::Array<uint8_t>> GetLastNewWindowProperties();
+  base::Optional<std::unordered_map<std::string, std::vector<uint8_t>>>
+  GetLastNewWindowProperties();
 
   // True if at least one function has been called that takes a change id.
   bool has_change() const { return !changes_.empty(); }
+
+  size_t number_of_changes() const { return changes_.size(); }
 
   // Acks all changes with a value of true.
   void AckAllChanges();
@@ -80,6 +84,12 @@ class TestWindowTree : public ui::mojom::WindowTree {
   // Data from the most recently added/removed transient window.
   const TransientData& transient_data() const { return transient_data_; }
 
+  const gfx::Insets& last_client_area() const { return last_client_area_; }
+
+  const base::Optional<gfx::Rect>& last_hit_test_mask() const {
+    return last_hit_test_mask_;
+  }
+
  private:
   struct Change {
     WindowTreeChangeType type;
@@ -91,31 +101,35 @@ class TestWindowTree : public ui::mojom::WindowTree {
       WindowTreeChangeType type = WindowTreeChangeType::OTHER);
 
   // ui::mojom::WindowTree:
-  void NewWindow(
-      uint32_t change_id,
-      uint32_t window_id,
-      mojo::Map<mojo::String, mojo::Array<uint8_t>> properties) override;
+  void NewWindow(uint32_t change_id,
+                 uint32_t window_id,
+                 const base::Optional<
+                     std::unordered_map<std::string, std::vector<uint8_t>>>&
+                     properties) override;
   void NewTopLevelWindow(
       uint32_t change_id,
       uint32_t window_id,
-      mojo::Map<mojo::String, mojo::Array<uint8_t>> properties) override;
+      const std::unordered_map<std::string, std::vector<uint8_t>>& properties)
+      override;
   void DeleteWindow(uint32_t change_id, uint32_t window_id) override;
   void SetWindowBounds(uint32_t change_id,
                        uint32_t window_id,
                        const gfx::Rect& bounds) override;
   void SetClientArea(uint32_t window_id,
                      const gfx::Insets& insets,
-                     mojo::Array<gfx::Rect> additional_client_areas) override;
+                     const base::Optional<std::vector<gfx::Rect>>&
+                         additional_client_areas) override;
   void SetHitTestMask(uint32_t window_id,
                       const base::Optional<gfx::Rect>& mask) override;
   void SetCanAcceptDrops(uint32_t window_id, bool accepts_drags) override;
   void SetWindowVisibility(uint32_t change_id,
                            uint32_t window_id,
                            bool visible) override;
-  void SetWindowProperty(uint32_t change_id,
-                         uint32_t window_id,
-                         const mojo::String& name,
-                         mojo::Array<uint8_t> value) override;
+  void SetWindowProperty(
+      uint32_t change_id,
+      uint32_t window_id,
+      const std::string& name,
+      const base::Optional<std::vector<uint8_t>>& value) override;
   void SetWindowOpacity(uint32_t change_id,
                         uint32_t window_id,
                         float opacity) override;
@@ -124,8 +138,6 @@ class TestWindowTree : public ui::mojom::WindowTree {
       ui::mojom::CompositorFrameSinkType type,
       mojo::InterfaceRequest<cc::mojom::MojoCompositorFrameSink> surface,
       cc::mojom::MojoCompositorFrameSinkClientPtr client) override;
-  void OnWindowSurfaceDetached(uint32_t window_id,
-                               const cc::SurfaceSequence& sequence) override;
   void AddWindow(uint32_t change_id, uint32_t parent, uint32_t child) override;
   void RemoveWindowFromParent(uint32_t change_id, uint32_t window_id) override;
   void AddTransientWindow(uint32_t change_id,
@@ -166,10 +178,11 @@ class TestWindowTree : public ui::mojom::WindowTree {
       override;
   void GetCursorLocationMemory(
       const GetCursorLocationMemoryCallback& callback) override;
-  void PerformDragDrop(uint32_t change_id,
-                       uint32_t source_window_id,
-                       mojo::Map<mojo::String, mojo::Array<uint8_t>> drag_data,
-                       uint32_t drag_operation) override;
+  void PerformDragDrop(
+      uint32_t change_id,
+      uint32_t source_window_id,
+      const std::unordered_map<std::string, std::vector<uint8_t>>& drag_data,
+      uint32_t drag_operation) override;
   void CancelDragDrop(uint32_t window_id) override;
   void PerformWindowMove(uint32_t change_id,
                          uint32_t window_id,
@@ -180,15 +193,20 @@ class TestWindowTree : public ui::mojom::WindowTree {
   std::set<uint32_t> acked_events_;
   uint32_t window_id_ = 0u;
 
-  mojo::Array<uint8_t> last_property_value_;
+  base::Optional<std::vector<uint8_t>> last_property_value_;
 
   std::vector<Change> changes_;
 
   ui::mojom::WindowTreeClient* client_;
 
-  mojo::Map<mojo::String, mojo::Array<uint8_t>> last_new_window_properties_;
+  base::Optional<std::unordered_map<std::string, std::vector<uint8_t>>>
+      last_new_window_properties_;
 
   TransientData transient_data_;
+
+  gfx::Insets last_client_area_;
+
+  base::Optional<gfx::Rect> last_hit_test_mask_;
 
   DISALLOW_COPY_AND_ASSIGN(TestWindowTree);
 };

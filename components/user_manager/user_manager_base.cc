@@ -161,6 +161,8 @@ void UserManagerBase::UserLoggedIn(const AccountId& account_id,
       PublicAccountUserLoggedIn(user);
     } else if (user && user->GetType() == USER_TYPE_KIOSK_APP) {
       KioskAppLoggedIn(user);
+    } else if (user && user->GetType() == USER_TYPE_ARC_KIOSK_APP) {
+      ArcKioskAppLoggedIn(user);
     } else if ((user && user->GetType() == USER_TYPE_SUPERVISED) ||
                (!user && IsSupervisedAccountId(account_id))) {
       SupervisedUserLoggedIn(account_id);
@@ -241,7 +243,8 @@ void UserManagerBase::SwitchToLastActiveUser() {
   if (!last_session_active_account_id_.is_valid())
     return;
 
-  if (AccountId::FromUserEmail(GetActiveUser()->email()) !=
+  if (AccountId::FromUserEmail(
+          GetActiveUser()->GetAccountId().GetUserEmail()) !=
       last_session_active_account_id_)
     SwitchActiveUser(last_session_active_account_id_);
 
@@ -320,16 +323,6 @@ User* UserManagerBase::FindUserAndModify(const AccountId& account_id) {
   if (active_user_ && active_user_->GetAccountId() == account_id)
     return active_user_;
   return FindUserInListAndModify(account_id);
-}
-
-const User* UserManagerBase::GetLoggedInUser() const {
-  DCHECK(task_runner_->RunsTasksOnCurrentThread());
-  return active_user_;
-}
-
-User* UserManagerBase::GetLoggedInUser() {
-  DCHECK(task_runner_->RunsTasksOnCurrentThread());
-  return active_user_;
 }
 
 const User* UserManagerBase::GetActiveUser() const {
@@ -531,7 +524,7 @@ bool UserManagerBase::IsCurrentUserNew() const {
 bool UserManagerBase::IsCurrentUserNonCryptohomeDataEphemeral() const {
   DCHECK(task_runner_->RunsTasksOnCurrentThread());
   return IsUserLoggedIn() &&
-         IsUserNonCryptohomeDataEphemeral(GetLoggedInUser()->GetAccountId());
+         IsUserNonCryptohomeDataEphemeral(GetActiveUser()->GetAccountId());
 }
 
 bool UserManagerBase::IsCurrentUserCryptohomeDataEphemeral() const {
@@ -609,7 +602,7 @@ bool UserManagerBase::IsUserNonCryptohomeDataEphemeral(
   //    policy was enabled.
   //    - or -
   // b) The user logged into any other account type.
-  if (IsUserLoggedIn() && (account_id == GetLoggedInUser()->GetAccountId()) &&
+  if (IsUserLoggedIn() && (account_id == GetActiveUser()->GetAccountId()) &&
       (is_current_user_ephemeral_regular_user_ ||
        !IsLoggedInAsUserWithGaiaAccount())) {
     return true;
@@ -694,7 +687,7 @@ bool UserManagerBase::CanUserBeRemoved(const User* user) const {
   for (UserList::const_iterator it = logged_in_users_.begin();
        it != logged_in_users_.end();
        ++it) {
-    if ((*it)->email() == user->email())
+    if ((*it)->GetAccountId() == user->GetAccountId())
       return false;
   }
 
@@ -847,8 +840,8 @@ void UserManagerBase::GuestUserLoggedIn() {
 void UserManagerBase::AddUserRecord(User* user) {
   // Add the user to the front of the user list.
   ListPrefUpdate prefs_users_update(GetLocalState(), kRegularUsers);
-  prefs_users_update->Insert(
-      0, base::MakeUnique<base::StringValue>(user->email()));
+  prefs_users_update->Insert(0, base::MakeUnique<base::StringValue>(
+                                    user->GetAccountId().GetUserEmail()));
   users_.insert(users_.begin(), user);
 }
 
@@ -960,7 +953,7 @@ User* UserManagerBase::RemoveRegularOrSupervisedUserFromList(
       it = users_.erase(it);
     } else {
       if ((*it)->HasGaiaAccount() || (*it)->IsSupervised()) {
-        const std::string user_email = (*it)->email();
+        const std::string user_email = (*it)->GetAccountId().GetUserEmail();
         prefs_users_update->AppendString(user_email);
       }
       ++it;
@@ -1011,7 +1004,8 @@ void UserManagerBase::CallUpdateLoginState() {
 }
 
 void UserManagerBase::SetLRUUser(User* user) {
-  GetLocalState()->SetString(kLastActiveUser, user->email());
+  GetLocalState()->SetString(kLastActiveUser,
+                             user->GetAccountId().GetUserEmail());
   GetLocalState()->CommitPendingWrite();
 
   UserList::iterator it =

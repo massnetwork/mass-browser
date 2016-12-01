@@ -23,7 +23,7 @@
 #include "remoting/proto/event.pb.h"
 #include "remoting/protocol/clipboard_stub.h"
 #include "remoting/protocol/errors.h"
-#include "third_party/webrtc/modules/desktop_capture/screen_capturer.h"
+#include "third_party/webrtc/modules/desktop_capture/desktop_capturer.h"
 
 namespace base {
 class SingleThreadTaskRunner;
@@ -93,7 +93,7 @@ class DesktopSessionProxy
   void OnChannelError() override;
 
   // Connects to the desktop session agent.
-  bool AttachToDesktop(const IPC::ChannelHandle& desktop_pipe);
+  bool AttachToDesktop(const IPC::ChannelHandle& desktop_pipe, int session_id);
 
   // Closes the connection to the desktop session agent and cleans up
   // the associated resources.

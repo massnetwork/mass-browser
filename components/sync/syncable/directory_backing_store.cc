@@ -22,13 +22,13 @@
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "components/sync/base/hash_util.h"
 #include "components/sync/base/node_ordinal.h"
 #include "components/sync/base/time.h"
 #include "components/sync/protocol/bookmark_specifics.pb.h"
 #include "components/sync/protocol/sync.pb.h"
 #include "components/sync/syncable/syncable_columns.h"
 #include "components/sync/syncable/syncable_id.h"
-#include "components/sync/syncable/syncable_util.h"
 #include "sql/error_delegate_util.h"
 #include "sql/transaction.h"
 
@@ -1384,9 +1384,8 @@ bool DirectoryBackingStore::MigrateVersion85To86() {
         // means we can set the bookmark tag according to the originator client
         // item ID and originator cache guid, because (unlike the other case) we
         // know that this client is the originator.
-        unique_bookmark_tag = syncable::GenerateSyncableBookmarkHash(
-            cache_guid,
-            id_string.substr(1));
+        unique_bookmark_tag =
+            GenerateSyncableBookmarkHash(cache_guid, id_string.substr(1));
       } else {
         // If we've already committed the item, then we don't know who the
         // originator was.  We do not have access to the originator client item
@@ -1400,7 +1399,7 @@ bool DirectoryBackingStore::MigrateVersion85To86() {
         // tag according to the originator_cache_guid and originator_item_id
         // when we see updates for this item.  That should ensure that commonly
         // modified items will end up with the proper tag values eventually.
-        unique_bookmark_tag = syncable::GenerateSyncableBookmarkHash(
+        unique_bookmark_tag = GenerateSyncableBookmarkHash(
             std::string(),  // cache_guid left intentionally blank.
             id_string.substr(1));
       }
@@ -1718,6 +1717,11 @@ bool DirectoryBackingStore::GetDatabasePageSize(int* page_size) {
   return true;
 }
 
+bool DirectoryBackingStore::ReportMemoryUsage(
+    base::trace_event::MemoryAllocatorDump* mad) {
+  return db_ && db_->ReportMemoryUsage(mad);
+}
+
 bool DirectoryBackingStore::UpdatePageSizeIfNecessary() {
   int page_size;
   if (!GetDatabasePageSize(&page_size))
@@ -1749,9 +1753,8 @@ void DirectoryBackingStore::ResetAndCreateConnection() {
   db_->set_cache_size(32);
   db_->set_page_size(database_page_size_);
 
-  // TODO(shess): The current mitigation for http://crbug.com/537742 stores
-  // state in the meta table, which this database does not use.
-  db_->set_mmap_disabled();
+  // This db does not use [meta] table, store mmap status data elsewhere.
+  db_->set_mmap_alt_status();
 
   if (!catastrophic_error_handler_.is_null())
     SetCatastrophicErrorHandler(catastrophic_error_handler_);

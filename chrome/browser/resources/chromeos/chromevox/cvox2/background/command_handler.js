@@ -159,7 +159,11 @@ CommandHandler.onCommand = function(command) {
           cvox.QueueMode.FLUSH);
       return false;
     case 'reportIssue':
-      var url = Background.ISSUE_URL;
+      var url = 'https://code.google.com/p/chromium/issues/entry?' +
+          'labels=Type-Bug,Pri-2,cvox2,OS-Chrome&' +
+          'components=UI>accessibility&' +
+          'description=';
+
       var description = {};
       description['Mode'] = ChromeVoxState.instance.mode;
       description['Version'] = chrome.app.getDetails().version;
@@ -180,8 +184,11 @@ CommandHandler.onCommand = function(command) {
             ChromeVoxState.instance.currentRange);
       }
       break;
-    case 'showNextUpdatePage':
+    case 'help':
       (new PanelCommand(PanelCommandType.TUTORIAL)).send();
+      return false;
+    case 'showNextUpdatePage':
+      (new PanelCommand(PanelCommandType.UPDATE_NOTES)).send();
       return false;
     default:
       break;
@@ -203,27 +210,34 @@ CommandHandler.onCommand = function(command) {
   var rootPred = AutomationPredicate.root;
   var speechProps = {};
   var skipSync = false;
+  var didNavigate = false;
   switch (command) {
     case 'nextCharacter':
+      didNavigate = true;
       speechProps['phoneticCharacters'] = true;
       current = current.move(cursors.Unit.CHARACTER, Dir.FORWARD);
       break;
     case 'previousCharacter':
+      didNavigate = true;
       speechProps['phoneticCharacters'] = true;
       current = current.move(cursors.Unit.CHARACTER, Dir.BACKWARD);
       break;
     case 'nextWord':
+      didNavigate = true;
       current = current.move(cursors.Unit.WORD, Dir.FORWARD);
       break;
     case 'previousWord':
+      didNavigate = true;
       current = current.move(cursors.Unit.WORD, Dir.BACKWARD);
       break;
     case 'forward':
     case 'nextLine':
+      didNavigate = true;
       current = current.move(cursors.Unit.LINE, Dir.FORWARD);
       break;
     case 'backward':
     case 'previousLine':
+      didNavigate = true;
       current = current.move(cursors.Unit.LINE, Dir.BACKWARD);
       break;
     case 'nextButton':
@@ -275,6 +289,16 @@ CommandHandler.onCommand = function(command) {
       dir = Dir.BACKWARD;
       pred = AutomationPredicate.formField;
       predErrorMsg = 'no_previous_form_field';
+      break;
+    case 'previousGraphic':
+      dir = Dir.BACKWARD;
+      pred = AutomationPredicate.image;
+      predErrorMsg = 'no_previous_graphic';
+      break;
+    case 'nextGraphic':
+      dir = Dir.FORWARD;
+      pred = AutomationPredicate.image;
+      predErrorMsg = 'no_next_graphic';
       break;
     case 'nextHeading':
       dir = Dir.FORWARD;
@@ -388,10 +412,12 @@ CommandHandler.onCommand = function(command) {
       break;
     case 'right':
     case 'nextObject':
+      didNavigate = true;
       current = current.move(cursors.Unit.NODE, Dir.FORWARD);
       break;
     case 'left':
     case 'previousObject':
+      didNavigate = true;
       current = current.move(cursors.Unit.NODE, Dir.BACKWARD);
       break;
     case 'previousGroup':
@@ -646,7 +672,12 @@ CommandHandler.onCommand = function(command) {
       return true;
   }
 
+  if (didNavigate)
+    chrome.metricsPrivate.recordUserAction('Accessibility.ChromeVox.Navigate');
+
   if (pred) {
+    chrome.metricsPrivate.recordUserAction('Accessibility.ChromeVox.Jump');
+
     var bound = current.getBound(dir).node;
     if (bound) {
       var node = AutomationUtil.findNextNode(

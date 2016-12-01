@@ -23,6 +23,12 @@
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0)
 // 16 bit depth, Realsense F200.
 #define V4L2_PIX_FMT_Z16 v4l2_fourcc('Z', '1', '6', ' ')
+#endif
+
+// TODO(aleksandar.stojiljkovic): Wrap this with kernel version check once the
+// format is introduced to kernel.
+// See https://crbug.com/661877
+#ifndef V4L2_PIX_FMT_INVZ
 // 16 bit depth, Realsense SR300.
 #define V4L2_PIX_FMT_INVZ v4l2_fourcc('I', 'N', 'V', 'Z')
 #endif
@@ -45,10 +51,6 @@ const int kMjpegWidth = 640;
 const int kMjpegHeight = 480;
 // Typical framerate, in fps
 const int kTypicalFramerate = 30;
-
-// Constant used to multiply zoom values to avoid using floating point. Used to
-// scale both the readings (min, max, current) and the value to set it to.
-const int kZoomMultiplier = 100;
 
 // V4L2 color formats supported by V4L2CaptureDelegate derived classes.
 // This list is ordered by precedence of use -- but see caveats for MJPEG.
@@ -441,9 +443,9 @@ void V4L2CaptureDelegate::SetPhotoOptions(
   if (settings->has_zoom) {
     v4l2_control zoom_current = {};
     zoom_current.id = V4L2_CID_ZOOM_ABSOLUTE;
-    zoom_current.value = settings->zoom / kZoomMultiplier;
+    zoom_current.value = settings->zoom;
     if (HANDLE_EINTR(ioctl(device_fd_.get(), VIDIOC_S_CTRL, &zoom_current)) < 0)
-      DPLOG(ERROR) << "setting zoom to " << settings->zoom / kZoomMultiplier;
+      DPLOG(ERROR) << "setting zoom to " << settings->zoom;
   }
 
   if (settings->has_white_balance_mode &&
@@ -575,9 +577,16 @@ void V4L2CaptureDelegate::DoCapture() {
     const scoped_refptr<BufferTracker>& buffer_tracker =
         buffer_tracker_pool_[buffer.index];
 
-    base::TimeDelta timestamp =
-        base::TimeDelta::FromSeconds(buffer.timestamp.tv_sec) +
-        base::TimeDelta::FromMicroseconds(buffer.timestamp.tv_usec);
+    // There's a wide-spread issue where the kernel does not report accurate,
+    // monotonically-increasing timestamps in the v4l2_buffer::timestamp
+    // field (goo.gl/Nlfamz).
+    // Until this issue is fixed, just use the reference clock as a source of
+    // media timestamps.
+    const base::TimeTicks now = base::TimeTicks::Now();
+    if (first_ref_time_.is_null())
+      first_ref_time_ = now;
+    const base::TimeDelta timestamp = now - first_ref_time_;
+
 #ifdef V4L2_BUF_FLAG_ERROR
     if (buffer.flags & V4L2_BUF_FLAG_ERROR) {
       LOG(ERROR) << "Dequeued v4l2 buffer contains corrupted data ("
@@ -587,7 +596,7 @@ void V4L2CaptureDelegate::DoCapture() {
 #endif
       client_->OnIncomingCapturedData(
           buffer_tracker->start(), buffer_tracker->payload_size(),
-          capture_format_, rotation_, base::TimeTicks::Now(), timestamp);
+          capture_format_, rotation_, now, timestamp);
 
     while (!take_photo_callbacks_.empty()) {
       VideoCaptureDevice::TakePhotoCallback cb =

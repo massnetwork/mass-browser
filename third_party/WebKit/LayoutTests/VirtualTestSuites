@@ -1,5 +1,10 @@
 [
   {
+    "prefix": "color_space",
+    "base": "fast/canvas/color-space",
+    "args": ["--enable-color-correct-rendering"]
+  },
+  {
     "prefix": "gpu",
     "base": "fast/canvas",
     "args": ["--enable-accelerated-2d-canvas",
@@ -64,7 +69,7 @@
   },
   {
     "prefix": "gpu-rasterization",
-    "base": "fast/images",
+    "base": "images",
     "args": ["--force-gpu-rasterization"]
   },
   {
@@ -144,6 +149,11 @@
   },
   {
     "prefix": "rootlayerscrolls",
+    "base": "scrollingcoordinator",
+    "args": ["--root-layer-scrolls"]
+  },
+  {
+    "prefix": "rootlayerscrolls",
     "base": "fast/scrolling",
     "args": ["--root-layer-scrolls"]
   },
@@ -171,11 +181,6 @@
     "prefix": "scroll_customization",
     "base": "fast/events/touch",
     "args": ["--enable-blink-features=ScrollCustomization"]
-  },
-  {
-    "prefix": "smoothscrolling",
-    "base": "fast/events/touch/gesture",
-    "args": ["--enable-smooth-scrolling"]
   },
   {
     "prefix": "mse-1mb-buffers",
@@ -281,7 +286,7 @@
   },
   {
     "prefix": "mojo-loading",
-    "base": "http/tests/xmlhttprequest/web-apps",
+    "base": "http/tests/xmlhttprequest",
     "args": ["--enable-blink-features=LoadingWithMojo"]
   },
   {
@@ -295,9 +300,9 @@
     "args": ["--enable-features=WebAssembly"]
   },
   {
-    "prefix": "mojo-service-worker",
+    "prefix": "disable-mojo-service-worker",
     "base": "http/tests/serviceworker",
-    "args": ["--mojo-service-worker"]
+    "args": ["--disable-mojo-service-worker"]
   },
   {
     "prefix": "service-worker-navigation-preload",
@@ -318,5 +323,10 @@
     "prefix": "layout_ng",
     "base": "fast/block/float",
     "args": ["--enable-blink-features=LayoutNG"]
+  },
+  {
+    "prefix": "feature-policy",
+    "base": "http/tests/feature-policy",
+    "args": ["--enable-blink-features=FeaturePolicy"]
   }
 ]

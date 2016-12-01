@@ -74,6 +74,7 @@
 #include "extensions/common/extension_set.h"
 #include "extensions/common/permissions/api_permission.h"
 #include "extensions/common/permissions/permissions_data.h"
+#include "ppapi/features/features.h"
 #include "ui/base/l10n/l10n_util.h"
 
 #if defined(OS_CHROMEOS)
@@ -142,16 +143,6 @@ const ExceptionsInfoMap& GetExceptionsInfoMap() {
         CONTENT_SETTINGS_TYPE_POPUPS,
         ContentSettingWithExceptions(
             true, UserMetricsAction("Options_DefaultPopupsSettingChanged"))));
-    exceptions_info_map.insert(std::make_pair(
-        CONTENT_SETTINGS_TYPE_FULLSCREEN,
-        ContentSettingWithExceptions(
-            true,
-            UserMetricsAction("Options_DefaultFullScreenSettingChanged"))));
-    exceptions_info_map.insert(std::make_pair(
-        CONTENT_SETTINGS_TYPE_MOUSELOCK,
-        ContentSettingWithExceptions(
-            true,
-            UserMetricsAction("Options_DefaultMouseLockSettingChanged"))));
     exceptions_info_map.insert(std::make_pair(
         CONTENT_SETTINGS_TYPE_PPAPI_BROKER,
         ContentSettingWithExceptions(
@@ -734,7 +725,7 @@ void ContentSettingsHandler::UpdateSettingDefaultFromModel(
   ContentSetting default_setting =
       host_content_settings_map->GetDefaultContentSetting(type, &provider_id);
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   default_setting = PluginsFieldTrial::EffectiveContentSetting(
       host_content_settings_map, type, default_setting);
 #endif
@@ -1096,14 +1087,6 @@ void ContentSettingsHandler::UpdateZoomLevelsExceptionsView() {
 
 void ContentSettingsHandler::UpdateExceptionsViewFromHostContentSettingsMap(
     ContentSettingsType type) {
-  // Fullscreen and mouse lock have no global settings to update.
-  // TODO(mgiuca): Delete this after removing these content settings entirely
-  // (https://crbug.com/591896).
-  if (type == CONTENT_SETTINGS_TYPE_FULLSCREEN ||
-      type == CONTENT_SETTINGS_TYPE_MOUSELOCK) {
-    return;
-  }
-
   base::ListValue exceptions;
   HostContentSettingsMap* settings_map =
       HostContentSettingsMapFactory::GetForProfile(GetProfile());

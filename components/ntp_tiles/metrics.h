@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_NTP_TILES_METRICS_H_
 #define COMPONENTS_NTP_TILES_METRICS_H_
 
+#include <utility>
 #include <vector>
 
 #include "components/ntp_tiles/ntp_tile.h"
@@ -35,17 +36,10 @@ enum MostVisitedTileType {
   THUMBNAIL,
 };
 
-// Records an impression of an individual tile.
-void RecordTileImpression(int index, NTPTileSource source);
-
-// Records an impression of the page itself, after all tiles have loaded.
-void RecordPageImpression(int number_of_tiles);
-
-// Records the visual types (see above) of all visible tiles.
-// TODO(treib): Merge this with RecordPageImpression.
-void RecordImpressionTileTypes(
-    const std::vector<MostVisitedTileType>& tile_types,
-    const std::vector<NTPTileSource>& sources);
+// Records an NTP impression, after all tiles have loaded.
+// Includes the visual types (see above) of all visible tiles.
+void RecordPageImpression(
+    const std::vector<std::pair<NTPTileSource, MostVisitedTileType>>& tiles);
 
 // Records a click on a tile.
 void RecordTileClick(int index,

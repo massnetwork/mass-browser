@@ -175,4 +175,27 @@ void FontResource::checkNotify() {
   Resource::checkNotify();
 }
 
+bool FontResource::isLowPriorityLoadingAllowedForRemoteFont() const {
+  DCHECK(!url().protocolIsData());
+  DCHECK(!isLoaded());
+  ResourceClientWalker<FontResourceClient> walker(clients());
+  while (FontResourceClient* client = walker.next()) {
+    if (!client->isLowPriorityLoadingAllowedForRemoteFont()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void FontResource::onMemoryDump(WebMemoryDumpLevelOfDetail level,
+                                WebProcessMemoryDump* memoryDump) const {
+  Resource::onMemoryDump(level, memoryDump);
+  if (!m_fontData)
+    return;
+  const String name = getMemoryDumpName() + "/decoded_webfont";
+  WebMemoryAllocatorDump* dump = memoryDump->createMemoryAllocatorDump(name);
+  dump->addScalar("size", "bytes", m_fontData->dataSize());
+  memoryDump->addSuballocation(dump->guid(), "malloc");
+}
+
 }  // namespace blink

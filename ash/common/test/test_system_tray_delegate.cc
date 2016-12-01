@@ -9,7 +9,6 @@
 #include "ash/common/login_status.h"
 #include "ash/common/session/session_state_delegate.h"
 #include "ash/common/wm_shell.h"
-#include "base/message_loop/message_loop.h"
 #include "base/time/time.h"
 
 namespace ash {
@@ -26,11 +25,6 @@ TestSystemTrayDelegate::TestSystemTrayDelegate()
     : login_status_(g_initial_status), session_length_limit_set_(false) {}
 
 TestSystemTrayDelegate::~TestSystemTrayDelegate() {}
-
-// static
-void TestSystemTrayDelegate::SetSystemUpdateRequired(bool required) {
-  g_system_update_required = required;
-}
 
 void TestSystemTrayDelegate::SetLoginStatus(LoginStatus login_status) {
   login_status_ = login_status;
@@ -98,10 +92,6 @@ bool TestSystemTrayDelegate::GetSessionLengthLimit(
   if (session_length_limit_set_)
     *session_length_limit = session_length_limit_;
   return session_length_limit_set_;
-}
-
-void TestSystemTrayDelegate::SignOut() {
-  base::MessageLoop::current()->QuitWhenIdle();
 }
 
 void TestSystemTrayDelegate::GetCurrentIME(IMEInfo* info) {

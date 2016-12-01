@@ -456,7 +456,7 @@ int32_t CommandBufferProxyImpl::CreateImage(ClientBuffer buffer,
   gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager =
       channel_->gpu_memory_buffer_manager();
   gfx::GpuMemoryBuffer* gpu_memory_buffer =
-      gpu_memory_buffer_manager->GpuMemoryBufferFromClientBuffer(buffer);
+      reinterpret_cast<gfx::GpuMemoryBuffer*>(buffer);
   DCHECK(gpu_memory_buffer);
 
   // This handle is owned by the GPU process and must be passed to it or it
@@ -522,7 +522,7 @@ int32_t CommandBufferProxyImpl::CreateGpuMemoryBufferImage(
     unsigned usage) {
   CheckLock();
   std::unique_ptr<gfx::GpuMemoryBuffer> buffer(
-      channel_->gpu_memory_buffer_manager()->AllocateGpuMemoryBuffer(
+      channel_->gpu_memory_buffer_manager()->CreateGpuMemoryBuffer(
           gfx::Size(width, height),
           gpu::DefaultBufferFormatForImageFormat(internal_format),
           gfx::BufferUsage::SCANOUT, gpu::kNullSurfaceHandle));

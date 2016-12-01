@@ -15,7 +15,7 @@ import org.chromium.base.VisibleForTesting;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.compositor.bottombar.OverlayPanel;
 import org.chromium.chrome.browser.compositor.bottombar.OverlayPanelAnimation;
-import org.chromium.chrome.browser.compositor.bottombar.OverlayPanelInflater;
+import org.chromium.chrome.browser.compositor.bottombar.OverlayPanelTextViewInflater;
 import org.chromium.chrome.browser.compositor.layouts.ChromeAnimation;
 import org.chromium.chrome.browser.compositor.layouts.ChromeAnimation.Animatable;
 import org.chromium.ui.resources.dynamics.DynamicResourceLoader;
@@ -24,7 +24,7 @@ import org.chromium.ui.resources.dynamics.DynamicResourceLoader;
  * Controls the Caption View that is shown at the bottom of the control and used
  * as a dynamic resource.
  */
-public class ContextualSearchCaptionControl extends OverlayPanelInflater
+public class ContextualSearchCaptionControl extends OverlayPanelTextViewInflater
         implements ChromeAnimation.Animatable<ContextualSearchCaptionControl.AnimationType> {
     private static final float ANIMATION_PERCENTAGE_ZERO = 0.f;
     private static final float ANIMATION_PERCENTAGE_COMPLETE = 1.f;
@@ -65,6 +65,11 @@ public class ContextualSearchCaptionControl extends OverlayPanelInflater
     private boolean mShowingExpandedCaption;
 
     /**
+     * Whether the expanded caption should be shown.
+     */
+    private final boolean mShouldShowExpandedCaption;
+
+    /**
      * The caption visibility.
      */
     private boolean mIsVisible;
@@ -83,15 +88,18 @@ public class ContextualSearchCaptionControl extends OverlayPanelInflater
     private boolean mDidCapture;
 
     /**
-     * @param panel             The panel.
-     * @param context           The Android Context used to inflate the View.
-     * @param container         The container View used to inflate the View.
-     * @param resourceLoader    The resource loader that will handle the snapshot capturing.
+     * @param panel                     The panel.
+     * @param context                   The Android Context used to inflate the View.
+     * @param container                 The container View used to inflate the View.
+     * @param resourceLoader            The resource loader that will handle the snapshot capturing.
+     * @param shouldShowExpandedCaption Whether the "Open in new tab" caption should be shown
+     *                                  when the panel is expanded.
      */
     public ContextualSearchCaptionControl(OverlayPanel panel, Context context, ViewGroup container,
-            DynamicResourceLoader resourceLoader) {
+            DynamicResourceLoader resourceLoader, boolean shouldShowExpandedCaption) {
         super(panel, R.layout.contextual_search_caption_view, R.id.contextual_search_caption_view,
                 context, container, resourceLoader);
+        mShouldShowExpandedCaption = shouldShowExpandedCaption;
     }
 
     /**
@@ -123,6 +131,14 @@ public class ContextualSearchCaptionControl extends OverlayPanelInflater
      * @param percentage The percentage to the more opened state.
      */
     public void onUpdateFromPeekToExpand(float percentage) {
+        if (!mShouldShowExpandedCaption) {
+            if (mHasPeekingCaption) {
+                mOverlayPanel.cancelAnimation(this, AnimationType.APPEARANCE);
+                mAnimationPercentage = 1.f - percentage;
+            }
+            return;
+        }
+
         if (mHasPeekingCaption) {
             if (percentage < EXPANDED_CAPTION_THRESHOLD && mShowingExpandedCaption) {
                 // Start showing the peeking caption again.
@@ -200,6 +216,26 @@ public class ContextualSearchCaptionControl extends OverlayPanelInflater
         return mAnimationPercentage;
     }
 
+    /**
+     * @return The text currently showing in the caption view.
+     */
+    public CharSequence getCaptionText() {
+        return mCaption.getText();
+    }
+
+    //========================================================================================
+    // OverlayPanelTextViewInflater overrides
+    //========================================================================================
+
+    @Override
+    protected TextView getTextView() {
+        return mCaption;
+    }
+
+    //========================================================================================
+    // OverlayPanelInflater overrides
+    //========================================================================================
+
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
@@ -216,14 +252,6 @@ public class ContextualSearchCaptionControl extends OverlayPanelInflater
         mDidCapture = true;
 
         if (!mShowingExpandedCaption) animateTransitionIn();
-    }
-
-    /**
-     * @return The text currently showing in the caption view.
-     */
-    @VisibleForTesting
-    public CharSequence getCaptionText() {
-        return mCaption.getText();
     }
 
     // ============================================================================================

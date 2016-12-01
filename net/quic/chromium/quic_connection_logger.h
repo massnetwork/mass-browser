@@ -11,7 +11,6 @@
 #include <string>
 
 #include "base/macros.h"
-#include "net/base/ip_endpoint.h"
 #include "net/base/net_export.h"
 #include "net/base/network_change_notifier.h"
 #include "net/cert/cert_verify_result.h"
@@ -52,8 +51,8 @@ class NET_EXPORT_PRIVATE QuicConnectionLogger
                     TransmissionType transmission_type,
                     QuicTime sent_time) override;
   void OnPingSent() override;
-  void OnPacketReceived(const IPEndPoint& self_address,
-                        const IPEndPoint& peer_address,
+  void OnPacketReceived(const QuicSocketAddress& self_address,
+                        const QuicSocketAddress& peer_address,
                         const QuicEncryptedPacket& packet) override;
   void OnUnauthenticatedHeader(const QuicPacketHeader& header) override;
   void OnIncorrectConnectionId(QuicConnectionId connection_id) override;
@@ -112,9 +111,6 @@ class NET_EXPORT_PRIVATE QuicConnectionLogger
   // The largest packet number received.  In the case where a packet is
   // received late (out of order), this value will not be updated.
   QuicPacketNumber largest_received_packet_number_;
-  // The largest packet number which the peer has failed to
-  // receive, according to the missing packet set in their ack frames.
-  QuicPacketNumber largest_received_missing_packet_number_;
   // Number of times that the current received packet number is
   // smaller than the last received packet number.
   size_t num_out_of_order_received_packets_;

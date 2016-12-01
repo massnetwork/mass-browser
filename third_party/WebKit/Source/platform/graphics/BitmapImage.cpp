@@ -290,9 +290,6 @@ void BitmapImage::draw(
   if (image->isLazyGenerated())
     PlatformInstrumentation::didDrawLazyPixelRef(image->uniqueID());
 
-  if (ImageObserver* observer = getImageObserver())
-    observer->didDraw(this);
-
   startAnimation();
 }
 
@@ -337,7 +334,7 @@ sk_sp<SkImage> BitmapImage::frameAtIndex(size_t index) {
   return decodeAndCacheFrame(index);
 }
 
-bool BitmapImage::frameIsCompleteAtIndex(size_t index) {
+bool BitmapImage::frameIsCompleteAtIndex(size_t index) const {
   if (index < m_frames.size() && m_frames[index].m_haveMetadata &&
       m_frames[index].m_isComplete)
     return true;
@@ -345,7 +342,7 @@ bool BitmapImage::frameIsCompleteAtIndex(size_t index) {
   return m_source.frameIsCompleteAtIndex(index);
 }
 
-float BitmapImage::frameDurationAtIndex(size_t index) {
+float BitmapImage::frameDurationAtIndex(size_t index) const {
   if (index < m_frames.size() && m_frames[index].m_haveMetadata)
     return m_frames[index].m_duration;
 

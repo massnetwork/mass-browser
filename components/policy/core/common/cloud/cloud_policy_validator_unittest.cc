@@ -105,14 +105,13 @@ class CloudPolicyValidatorTest : public testing::Test {
     validator->ValidatePayload();
     validator->ValidateCachedKey(public_key,
                                  cached_key_signature_,
-                                 GetPolicyVerificationKey(),
                                  owning_domain_);
-    validator->ValidateSignature(public_key,
-                                 GetPolicyVerificationKey(),
-                                 owning_domain_,
-                                 allow_key_rotation_);
-    if (allow_key_rotation_)
-      validator->ValidateInitialKey(GetPolicyVerificationKey(), owning_domain_);
+    if (allow_key_rotation_) {
+      validator->ValidateSignatureAllowingRotation(public_key, owning_domain_);
+      validator->ValidateInitialKey(owning_domain_);
+    } else {
+      validator->ValidateSignature(public_key);
+    }
     return base::WrapUnique(validator);
   }
 

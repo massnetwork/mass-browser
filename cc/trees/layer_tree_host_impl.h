@@ -17,7 +17,6 @@
 #include "base/callback.h"
 #include "base/macros.h"
 #include "base/time/time.h"
-#include "cc/animation/layer_tree_mutator.h"
 #include "cc/base/cc_export.h"
 #include "cc/base/synced_property.h"
 #include "cc/debug/micro_benchmark_controller_impl.h"
@@ -39,6 +38,7 @@
 #include "cc/scheduler/video_frame_controller.h"
 #include "cc/tiles/image_decode_controller.h"
 #include "cc/tiles/tile_manager.h"
+#include "cc/trees/layer_tree_mutator.h"
 #include "cc/trees/layer_tree_settings.h"
 #include "cc/trees/mutator_host_client.h"
 #include "cc/trees/task_runner_provider.h"
@@ -50,10 +50,7 @@ class ScrollOffset;
 
 namespace cc {
 
-class AnimationEvents;
-class AnimationHost;
 class BrowserControlsOffsetManager;
-class CompletionEvent;
 class CompositorFrameMetadata;
 class CompositorFrameSink;
 class DebugRectHistory;
@@ -62,24 +59,20 @@ class FrameRateCounter;
 class LayerImpl;
 class LayerTreeImpl;
 class MemoryHistory;
+class MutatorEvents;
+class MutatorHost;
 class PageScaleAnimation;
 class PendingTreeDurationHistogramTimer;
-class PictureLayerImpl;
 class RasterTilePriorityQueue;
-class TileTaskManager;
 class RasterBufferProvider;
-class RenderPassDrawQuad;
 class RenderingStatsInstrumentation;
 class ResourcePool;
 class ScrollElasticityHelper;
-class ScrollbarLayerImplBase;
 class SwapPromise;
 class SwapPromiseMonitor;
 class SynchronousTaskGraphRunner;
 class TaskGraphRunner;
-class TextureMailboxDeleter;
 class UIResourceBitmap;
-class UIResourceRequest;
 struct ScrollAndScaleSet;
 class Viewport;
 
@@ -111,7 +104,7 @@ class LayerTreeHostImplClient {
   virtual void SetNeedsPrepareTilesOnImplThread() = 0;
   virtual void SetVideoNeedsBeginFrames(bool needs_begin_frames) = 0;
   virtual void PostAnimationEventsToMainThreadOnImplThread(
-      std::unique_ptr<AnimationEvents> events) = 0;
+      std::unique_ptr<MutatorEvents> events) = 0;
   virtual bool IsInsideDraw() = 0;
   virtual void RenewTreePriority() = 0;
   virtual void PostDelayedAnimationTaskOnImplThread(const base::Closure& task,
@@ -150,7 +143,7 @@ class CC_EXPORT LayerTreeHostImpl
       TaskRunnerProvider* task_runner_provider,
       RenderingStatsInstrumentation* rendering_stats_instrumentation,
       TaskGraphRunner* task_graph_runner,
-      std::unique_ptr<AnimationHost> animation_host,
+      std::unique_ptr<MutatorHost> mutator_host,
       int id);
   ~LayerTreeHostImpl() override;
 
@@ -483,7 +476,7 @@ class CC_EXPORT LayerTreeHostImpl
     return task_runner_provider_;
   }
 
-  AnimationHost* animation_host() const { return animation_host_.get(); }
+  MutatorHost* mutator_host() const { return mutator_host_.get(); }
 
   void SetDebugState(const LayerTreeDebugState& new_debug_state);
   const LayerTreeDebugState& debug_state() const { return debug_state_; }
@@ -601,7 +594,7 @@ class CC_EXPORT LayerTreeHostImpl
       TaskRunnerProvider* task_runner_provider,
       RenderingStatsInstrumentation* rendering_stats_instrumentation,
       TaskGraphRunner* task_graph_runner,
-      std::unique_ptr<AnimationHost> animation_host,
+      std::unique_ptr<MutatorHost> mutator_host,
       int id);
 
   // Virtual for testing.
@@ -687,8 +680,7 @@ class CC_EXPORT LayerTreeHostImpl
                                    const gfx::Vector2dF& scroll_delta,
                                    base::TimeDelta delayed_by);
 
-  void SetCompositorContextVisibility(bool is_visible);
-  void SetWorkerContextVisibility(bool is_visible);
+  void SetContextVisibility(bool is_visible);
 
   using UIResourceMap = std::unordered_map<UIResourceId, UIResourceData>;
   UIResourceMap ui_resource_map_;
@@ -793,7 +785,7 @@ class CC_EXPORT LayerTreeHostImpl
 
   gfx::Rect viewport_damage_rect_;
 
-  std::unique_ptr<AnimationHost> animation_host_;
+  std::unique_ptr<MutatorHost> mutator_host_;
   std::set<VideoFrameController*> video_frame_controllers_;
 
   // Map from scroll layer ID to scrollbar animation controller.

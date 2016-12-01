@@ -4,6 +4,7 @@
 
 #include "ash/common/system/chromeos/palette/palette_tray.h"
 
+#include "ash/common/material_design/material_design_controller.h"
 #include "ash/common/session/session_state_delegate.h"
 #include "ash/common/shelf/shelf_constants.h"
 #include "ash/common/shelf/wm_shelf.h"
@@ -162,7 +163,12 @@ PaletteTray::PaletteTray(WmShelf* wm_shelf)
 
   PaletteTool::RegisterToolInstances(palette_tool_manager_.get());
 
-  SetContentsBackground();
+  if (MaterialDesignController::IsShelfMaterial()) {
+    SetInkDropMode(InkDropMode::ON);
+    SetContentsBackground(false);
+  } else {
+    SetContentsBackground(true);
+  }
 
   SetLayoutManager(new views::FillLayout());
   icon_ = new views::ImageView();
@@ -212,10 +218,8 @@ bool PaletteTray::ShowPalette() {
 
   DCHECK(tray_container());
 
-  views::TrayBubbleView::InitParams init_params(
-      views::TrayBubbleView::ANCHOR_TYPE_TRAY, GetAnchorAlignment(),
-      kPaletteWidth, kPaletteWidth);
-  init_params.first_item_has_no_margin = true;
+  views::TrayBubbleView::InitParams init_params(GetAnchorAlignment(),
+                                                kPaletteWidth, kPaletteWidth);
   init_params.can_activate = true;
   init_params.close_on_deactivate = true;
 
@@ -231,14 +235,14 @@ bool PaletteTray::ShowPalette() {
 
   // Create and customize bubble view.
   views::TrayBubbleView* bubble_view =
-      views::TrayBubbleView::Create(tray_container(), this, &init_params);
-  bubble_view->SetArrowPaintType(views::BubbleBorder::PAINT_NONE);
+      views::TrayBubbleView::Create(GetBubbleAnchor(), this, &init_params);
+  bubble_view->set_anchor_view_insets(GetBubbleAnchorInsets());
   bubble_view->set_margins(
       gfx::Insets(kPalettePaddingOnTop, 0, kPalettePaddingOnBottom, 0));
 
   // Add title.
   auto* title_view = new TitleView(this);
-  title_view->SetBorder(views::Border::CreateEmptyBorder(
+  title_view->SetBorder(views::CreateEmptyBorder(
       gfx::Insets(0, kPaddingBetweenTitleAndLeftEdge, 0, 0)));
   bubble_view->AddChildView(title_view);
 
@@ -246,7 +250,7 @@ bool PaletteTray::ShowPalette() {
   views::Separator* separator =
       new views::Separator(views::Separator::HORIZONTAL);
   separator->SetColor(kPaletteSeparatorColor);
-  separator->SetBorder(views::Border::CreateEmptyBorder(gfx::Insets(
+  separator->SetBorder(views::CreateEmptyBorder(gfx::Insets(
       kPaddingBetweenTitleAndSeparator, 0, kMenuSeparatorVerticalPadding, 0)));
   bubble_view->AddChildView(separator);
 
@@ -259,7 +263,7 @@ bool PaletteTray::ShowPalette() {
 
   // Show the bubble.
   bubble_.reset(new ash::TrayBubbleWrapper(this, bubble_view));
-  SetDrawBackgroundAsActive(true);
+  SetIsActive(true);
   return true;
 }
 
@@ -300,7 +304,7 @@ void PaletteTray::HideBubbleWithView(const views::TrayBubbleView* bubble_view) {
 
 void PaletteTray::BubbleViewDestroyed() {
   palette_tool_manager_->NotifyViewsDestroyed();
-  SetDrawBackgroundAsActive(false);
+  SetIsActive(false);
 }
 
 void PaletteTray::OnMouseEnteredView() {}
@@ -309,31 +313,6 @@ void PaletteTray::OnMouseExitedView() {}
 
 base::string16 PaletteTray::GetAccessibleNameForBubble() {
   return GetAccessibleNameForTray();
-}
-
-gfx::Rect PaletteTray::GetAnchorRect(
-    views::Widget* anchor_widget,
-    views::TrayBubbleView::AnchorType anchor_type,
-    views::TrayBubbleView::AnchorAlignment anchor_alignment) const {
-  gfx::Rect r =
-      GetBubbleAnchorRect(anchor_widget, anchor_type, anchor_alignment);
-
-  // Move the palette to the left so the right edge of the palette aligns with
-  // the right edge of the tray button.
-  if (IsHorizontalAlignment(shelf_alignment())) {
-    // TODO(jdufault): Figure out a more robust adjustment method that does not
-    // break in md-shelf.
-    int icon_size = tray_container()->width();
-    if (tray_container()->border())
-      icon_size -= tray_container()->border()->GetInsets().width();
-
-    r.Offset(-r.width() + icon_size, 0);
-  } else {
-    // Vertical layout doesn't need the border adjustment that horizontal needs.
-    r.Offset(0, -r.height() + tray_container()->height());
-  }
-
-  return r;
 }
 
 void PaletteTray::OnBeforeBubbleWidgetInit(
@@ -359,6 +338,12 @@ void PaletteTray::HidePalette() {
   bubble_.reset();
 
   shelf()->UpdateAutoHideState();
+}
+
+void PaletteTray::HidePaletteImmediately() {
+  if (bubble_)
+    bubble_->bubble_widget()->SetVisibilityChangedAnimationsEnabled(false);
+  HidePalette();
 }
 
 void PaletteTray::RecordPaletteOptionsUsage(PaletteTrayOptions option) {
@@ -412,10 +397,10 @@ void PaletteTray::SetIconBorderForShelfAlignment() {
   // TODO(tdanderson): Ensure PaletteTray follows material design specs. See
   // crbug.com/630464.
   if (IsHorizontalAlignment(shelf_alignment())) {
-    icon_->SetBorder(views::Border::CreateEmptyBorder(gfx::Insets(
+    icon_->SetBorder(views::CreateEmptyBorder(gfx::Insets(
         kHorizontalShelfVerticalPadding, kHorizontalShelfHorizontalPadding)));
   } else {
-    icon_->SetBorder(views::Border::CreateEmptyBorder(gfx::Insets(
+    icon_->SetBorder(views::CreateEmptyBorder(gfx::Insets(
         kVerticalShelfVerticalPadding, kVerticalShelfHorizontalPadding)));
   }
 }

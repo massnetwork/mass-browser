@@ -60,6 +60,12 @@ class BackgroundNytimesMobileStory(_BackgroundStory):
     # Scroll to video, start it and then wait for a few seconds.
     action_runner.WaitForElement(selector='.nytd-player-poster')
     action_runner.ScrollPageToElement(selector='.nytd-player-poster')
+    # For some reason on some devices (e.g. Nexus7) we don't scroll all the way
+    # to the element. I think this might be caused by the page reflowing (due to
+    # vidoes loading) during the scroll. To be sure we get to the element
+    # wait a moment and then try to scroll again.
+    action_runner.Wait(1)
+    action_runner.ScrollPageToElement(selector='.nytd-player-poster')
     action_runner.TapElement(selector='.nytd-player-poster')
     action_runner.Wait(_WAIT_FOR_VIDEO_SECONDS)
 
@@ -77,4 +83,3 @@ class BackgroundGmailMobileStory(LoadGmailMobileStory):
   def _Measure(self, action_runner):
     action_runner.tab.browser.Background()
     super(BackgroundGmailMobileStory, self)._Measure(action_runner)
-

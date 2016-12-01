@@ -100,15 +100,15 @@ class Service
   void AddUserIfNecessary(const service_manager::Identity& remote_identity);
 
   // service_manager::Service:
-  void OnStart(const service_manager::ServiceInfo& info) override;
+  void OnStart() override;
   bool OnConnect(const service_manager::ServiceInfo& remote_info,
                  service_manager::InterfaceRegistry* registry) override;
 
   // WindowServerDelegate:
+  void StartDisplayInit() override;
   void OnFirstDisplayReady() override;
   void OnNoMoreDisplays() override;
   bool IsTestConfig() const override;
-  void CreateDefaultDisplays() override;
   void UpdateTouchTransforms() override;
 
   // service_manager::InterfaceFactory<mojom::AccessibilityManager>

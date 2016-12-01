@@ -6,6 +6,7 @@ package org.chromium.chrome.browser.compositor.layouts;
 
 import android.content.Context;
 import android.graphics.Rect;
+import android.graphics.RectF;
 
 import org.chromium.chrome.browser.compositor.TitleCache;
 import org.chromium.chrome.browser.fullscreen.ChromeFullscreenManager;
@@ -83,6 +84,21 @@ class MockLayoutHost implements LayoutManagerHost, LayoutRenderHost {
     }
 
     @Override
+    public void getWindowViewport(RectF outRect) {
+        outRect.set(0, 0, getWidth(), getHeight());
+    }
+
+    @Override
+    public void getVisibleViewport(RectF outRect) {
+        outRect.set(0, 0, getWidth(), getHeight());
+    }
+
+    @Override
+    public float getHeightMinusBrowserControls() {
+        return getHeight();
+    }
+
+    @Override
     public LayoutRenderHost getLayoutRenderHost() {
         return this;
     }
@@ -92,11 +108,6 @@ class MockLayoutHost implements LayoutManagerHost, LayoutRenderHost {
 
     @Override
     public void loadPersitentTextureDataIfNeeded() { }
-
-    @Override
-    public int getLayoutTabsDrawnCount() {
-        return 0;
-    }
 
     @Override
     public void setContentOverlayVisibility(boolean visible) { }
@@ -109,18 +120,6 @@ class MockLayoutHost implements LayoutManagerHost, LayoutRenderHost {
     @Override
     public ChromeFullscreenManager getFullscreenManager() {
         return null;
-    }
-
-    @Override
-    public Rect getVisibleViewport(Rect rect) {
-        if (rect == null) rect = new Rect();
-        rect.set(0, 0, getWidth(), getHeight());
-        return rect;
-    }
-
-    @Override
-    public int getBrowserControlsHeightPixels() {
-        return 0;
     }
 
     @Override

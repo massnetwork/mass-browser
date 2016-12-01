@@ -96,7 +96,7 @@ class FrameLoaderClientImpl final : public FrameLoaderClient {
                                      HistoryCommitType,
                                      bool contentInitiated) override;
   void dispatchWillCommitProvisionalLoad() override;
-  void dispatchDidStartProvisionalLoad(double triggeringEventTime) override;
+  void dispatchDidStartProvisionalLoad() override;
   void dispatchDidReceiveTitle(const String&) override;
   void dispatchDidChangeIcons(IconType) override;
   void dispatchDidCommitLoad(HistoryItem*, HistoryCommitType) override;
@@ -112,7 +112,8 @@ class FrameLoaderClientImpl final : public FrameLoaderClient {
                                              NavigationType,
                                              NavigationPolicy,
                                              bool shouldReplaceCurrentEntry,
-                                             bool isClientRedirect) override;
+                                             bool isClientRedirect,
+                                             HTMLFormElement*) override;
   void dispatchWillSendSubmitEvent(HTMLFormElement*) override;
   void dispatchWillSubmitForm(HTMLFormElement*) override;
   void didStartLoading(LoadStartType) override;
@@ -122,6 +123,7 @@ class FrameLoaderClientImpl final : public FrameLoaderClient {
                          NavigationPolicy,
                          const String& suggestedName,
                          bool shouldReplaceCurrentEntry) override;
+  void loadErrorPage(int reason) override;
   bool navigateBackForward(int offset) const override;
   void didAccessInitialDocument() override;
   void didDisplayInsecureContent() override;
@@ -156,6 +158,8 @@ class FrameLoaderClientImpl final : public FrameLoaderClient {
       HTMLMediaElement&,
       const WebMediaPlayerSource&,
       WebMediaPlayerClient*) override;
+  WebRemotePlaybackClient* createWebRemotePlaybackClient(
+      HTMLMediaElement&) override;
   ObjectContentType getObjectContentType(
       const KURL&,
       const WTF::String& mimeType,
@@ -182,6 +186,7 @@ class FrameLoaderClientImpl final : public FrameLoaderClient {
   void didEnforceInsecureRequestPolicy(WebInsecureRequestPolicy) override;
   void didUpdateToUniqueOrigin() override;
   void didChangeSandboxFlags(Frame* childFrame, SandboxFlags) override;
+  void didSetFeaturePolicyHeader(const String& headerValue) override;
   void didAddContentSecurityPolicy(const String& headerValue,
                                    ContentSecurityPolicyHeaderType,
                                    ContentSecurityPolicyHeaderSource) override;

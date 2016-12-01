@@ -54,6 +54,7 @@ import org.chromium.chrome.browser.coins.CoinsDialogFragment;
 import org.chromium.chrome.browser.coins.CoinsSingleton;
 import org.chromium.chrome.browser.compositor.Invalidator;
 import org.chromium.chrome.browser.compositor.layouts.LayoutUpdateHost;
+import org.chromium.chrome.browser.fullscreen.BrowserStateBrowserControlsVisibilityDelegate;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
 import org.chromium.chrome.browser.ntp.NewTabPage;
 import org.chromium.chrome.browser.omnibox.LocationBar;
@@ -242,7 +243,7 @@ public class ToolbarPhone extends ToolbarLayout
     private boolean mHasCheckedIfTabSwitcherCalloutIsNecessary;
 
     /** Manages when the Toolbar hides and unhides. */
-    private FullscreenManager mFullscreenManager;
+    private BrowserStateBrowserControlsVisibilityDelegate mControlsVisibilityDelegate;
 
     /** Token held when the TabSwitcherCallout is displayed to prevent the Toolbar from hiding. */
     private int mFullscreenCalloutToken = FullscreenManager.INVALID_TOKEN;
@@ -2232,9 +2233,10 @@ public class ToolbarPhone extends ToolbarLayout
     }
 
     @Override
-    public void setFullscreenManager(FullscreenManager manager) {
-        super.setFullscreenManager(manager);
-        mFullscreenManager = manager;
+    public void setBrowserControlsVisibilityDelegate(
+            BrowserStateBrowserControlsVisibilityDelegate controlsVisibilityDelegate) {
+        super.setBrowserControlsVisibilityDelegate(controlsVisibilityDelegate);
+        mControlsVisibilityDelegate = controlsVisibilityDelegate;
     }
 
     private void setUseLightDrawablesForTextureCapture() {
@@ -2258,17 +2260,17 @@ public class ToolbarPhone extends ToolbarLayout
         mTabSwitcherCallout.setOnDismissListener(new OnDismissListener() {
             @Override
             public void onDismiss() {
-                if (mFullscreenManager != null) {
-                    mFullscreenManager.hideControlsPersistent(mFullscreenCalloutToken);
+                if (mControlsVisibilityDelegate != null) {
+                    mControlsVisibilityDelegate.hideControlsPersistent(mFullscreenCalloutToken);
                     mFullscreenCalloutToken = FullscreenManager.INVALID_TOKEN;
                 }
                 mTabSwitcherCallout = null;
             }
         });
 
-        if (mFullscreenManager != null) {
+        if (mControlsVisibilityDelegate != null) {
             mFullscreenCalloutToken =
-                    mFullscreenManager.showControlsPersistentAndClearOldToken(
+                    mControlsVisibilityDelegate.showControlsPersistentAndClearOldToken(
                             mFullscreenCalloutToken);
         }
     }

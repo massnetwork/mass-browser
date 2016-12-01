@@ -4,8 +4,9 @@
 package org.chromium.chrome.browser.ntp.snippets;
 
 import android.graphics.Bitmap;
+import android.support.annotation.Nullable;
 
-import org.chromium.chrome.browser.ntp.snippets.ContentSuggestionsCardLayout.ContentSuggestionsCardLayoutEnum;
+import java.io.File;
 
 /**
  * Represents the data for an article card on the NTP.
@@ -41,12 +42,8 @@ public class SnippetArticle {
     /** The position of this article within its section. */
     public final int mPosition;
 
-    /** The position of this article in the complete list. Populated by NewTabPageAdapter.*/
+    /** The position of this article in the complete list. Populated by NewTabPageAdapter. */
     public int mGlobalPosition = -1;
-
-    /** The layout that should be used to display the snippet. */
-    @ContentSuggestionsCardLayoutEnum
-    public final int mCardLayout;
 
     /** Bitmap of the thumbnail, fetched lazily, when the RecyclerView wants to show the snippet. */
     private Bitmap mThumbnailBitmap;
@@ -54,21 +51,30 @@ public class SnippetArticle {
     /** Stores whether impression of this article has been tracked already. */
     private boolean mImpressionTracked;
 
-    /** Whether the linked article (normal URL) is available offline. */
-    private boolean mAvailableOffline;
-
-    /** Whether the linked AMP article is available offline. */
-    private boolean mAmpAvailableOffline;
-
     /** To be run when the offline status of the article or AMP article changes. */
     private Runnable mOfflineStatusChangeRunnable;
+
+    /** Whether the linked article represents an asset download. */
+    public boolean mIsAssetDownload;
+
+    /** The path to the asset download (only for asset download articles). */
+    private File mAssetDownloadFile;
+
+    /** The mime type of the asset download (only for asset download articles). */
+    private String mAssetDownloadMimeType;
+
+    /** The tab id of the corresponding tab (only for recent tab articles). */
+    private String mRecentTabId;
+
+    /** The offline id of the corresponding offline page, if any. */
+    private Long mOfflinePageOfflineId;
 
     /**
      * Creates a SnippetArticleListItem object that will hold the data.
      */
     public SnippetArticle(int category, String idWithinCategory, String title, String publisher,
             String previewText, String url, String ampUrl, long timestamp, float score,
-            int position, @ContentSuggestionsCardLayoutEnum int cardLayout) {
+            int position) {
         mCategory = category;
         mIdWithinCategory = idWithinCategory;
         mTitle = title;
@@ -79,7 +85,6 @@ public class SnippetArticle {
         mPublishTimestampMilliseconds = timestamp;
         mScore = score;
         mPosition = position;
-        mCardLayout = cardLayout;
     }
 
     @Override
@@ -115,42 +120,110 @@ public class SnippetArticle {
         return true;
     }
 
-    /** Sets whether the non-AMP URL is available offline. */
-    public void setAvailableOffline(boolean available) {
-        boolean previous = mAvailableOffline;
-        mAvailableOffline = available;
-
-        if (mOfflineStatusChangeRunnable != null && available != previous) {
-            mOfflineStatusChangeRunnable.run();
-        }
-    }
-
-    /** Sets whether the AMP URL is available offline. */
-    public void setAmpAvailableOffline(boolean available) {
-        boolean previous = mAmpAvailableOffline;
-        mAmpAvailableOffline = available;
-
-        if (mOfflineStatusChangeRunnable != null && available != previous) {
-            mOfflineStatusChangeRunnable.run();
-        }
-    }
-
-    /** Whether the non-AMP URL is available offline. */
-    public boolean isAvailableOffline() {
-        return mAvailableOffline;
-    }
-
-    /** Whether the AMP URL is available offline. */
-    public boolean isAmpAvailableOffline() {
-        return mAmpAvailableOffline;
-    }
-
     /**
      * Sets the {@link Runnable} to be run when the article's offline status changes.
      * Pass null to wipe.
      */
     public void setOfflineStatusChangeRunnable(Runnable runnable) {
         mOfflineStatusChangeRunnable = runnable;
+    }
+
+    /** @return whether a snippet is either offline page or asset download. */
+    public boolean isDownload() {
+        return mCategory == KnownCategories.DOWNLOADS;
+    }
+
+    /**
+     * @return the asset download path. May only be called if {@link #mIsAssetDownload} is
+     * {@code true} (which implies that this snippet belongs to the DOWNLOADS category).
+     */
+    public File getAssetDownloadFile() {
+        assert isDownload();
+        assert mIsAssetDownload;
+        return mAssetDownloadFile;
+    }
+
+    /**
+     * @return the mime type of the asset download. May only be called if {@link #mIsAssetDownload}
+     * is {@code true} (which implies that this snippet belongs to the DOWNLOADS category).
+     */
+    public String getAssetDownloadMimeType() {
+        assert isDownload();
+        assert mIsAssetDownload;
+        return mAssetDownloadMimeType;
+    }
+
+    /**
+     * Marks the article suggestion as an asset download with the given path and mime type. May only
+     * be called if this snippet belongs to DOWNLOADS category.
+     */
+    public void setAssetDownloadData(String filePath, String mimeType) {
+        assert isDownload();
+        mIsAssetDownload = true;
+        mAssetDownloadFile = new File(filePath);
+        mAssetDownloadMimeType = mimeType;
+    }
+
+    /**
+     * Marks the article suggestion as an offline page download with the given id. May only
+     * be called if this snippet belongs to DOWNLOADS category.
+     */
+    public void setOfflinePageDownloadData(long offlinePageId) {
+        assert isDownload();
+        mIsAssetDownload = false;
+        setOfflinePageOfflineId(offlinePageId);
+    }
+
+    /**
+    * @return whether a snippet has to be matched with the exact offline page or with the most
+    * recent offline page found by the snippet's URL.
+    */
+    public boolean requiresExactOfflinePage() {
+        return isDownload() || isRecentTab();
+    }
+
+    public boolean isRecentTab() {
+        return mCategory == KnownCategories.RECENT_TABS;
+    }
+
+    /**
+     * @return the corresponding recent tab id. May only be called if this snippet is a recent tab
+     * article.
+     */
+    public String getRecentTabId() {
+        assert isRecentTab();
+        return mRecentTabId;
+    }
+
+    /**
+     * Sets tab id and offline page id for recent tab articles. May only be called if this snippet
+     * is a recent tab article.
+     */
+    public void setRecentTabData(String tabId, long offlinePageId) {
+        assert isRecentTab();
+        mRecentTabId = tabId;
+        setOfflinePageOfflineId(offlinePageId);
+    }
+
+    /** Sets offline id of the corresponding to the snippet offline page. Null to clear.*/
+    public void setOfflinePageOfflineId(@Nullable Long offlineId) {
+        Long previous = mOfflinePageOfflineId;
+        mOfflinePageOfflineId = offlineId;
+
+        if (mOfflineStatusChangeRunnable == null) return;
+        if ((previous == null) ? (mOfflinePageOfflineId != null)
+                               : !previous.equals(mOfflinePageOfflineId)) {
+            mOfflineStatusChangeRunnable.run();
+        }
+    }
+
+    /**
+     * Gets offline id of the corresponding to the snippet offline page.
+     * Null if there is no corresponding offline page.
+     */
+    @Nullable
+    public Long getOfflinePageOfflineId() {
+        return mOfflinePageOfflineId;
     }
 
     @Override

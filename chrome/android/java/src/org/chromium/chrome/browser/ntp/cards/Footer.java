@@ -18,7 +18,14 @@ import org.chromium.ui.text.SpanApplier;
 /**
  * A footer to show some text and a link to learn more.
  */
-public class Footer extends Leaf {
+public class Footer extends OptionalLeaf {
+    /**
+     * @param parent The footer's parent node.
+     */
+    public Footer(NodeParent parent) {
+        super(parent);
+    }
+
     @Override
     @ItemViewType
     protected int getItemViewType() {
@@ -46,7 +53,7 @@ public class Footer extends Leaf {
                 }
             };
 
-            TextView textView = (TextView) itemView;
+            TextView textView = (TextView) itemView.findViewById(R.id.text);
             textView.setText(SpanApplier.applySpans(
                     root.getResources().getString(R.string.ntp_learn_more_about_suggested_content),
                     new SpanApplier.SpanInfo("<link>", "</link>", link)));

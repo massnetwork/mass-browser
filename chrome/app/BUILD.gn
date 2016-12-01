@@ -4,6 +4,8 @@
 
 import("//build/config/ui.gni")
 import("//chrome/common/features.gni")
+import("//ppapi/features/features.gni")
+import("//printing/features/features.gni")
 import("//services/service_manager/public/service_manifest.gni")
 import("//tools/grit/grit_rule.gni")
 
@@ -24,6 +26,15 @@ source_set("chrome_dll_resources") {
   ]
   if (is_win) {
     sources += [ "chrome_dll.rc" ]
+    if (enable_basic_printing) {
+      # The resource compiler can only handle macro functions up to 31 chars
+      # which the buildflag system produces for this. Make a define so we can
+      # toggle off of the enable-basic-printing flag in the .rc file.
+      defines = [ "ENABLE_BASIC_PRINTING_FOR_RC" ]
+    }
+    deps = [
+      "//printing/features",
+    ]
   }
 }
 
@@ -307,6 +318,8 @@ static_library("test_support") {
     "//components/startup_metric_utils/browser:lib",
     "//content/public/app:both",
     "//content/public/common",
+    "//ppapi/features",
+    "//printing/features",
     "//ui/base",
   ]
 
@@ -342,6 +355,14 @@ static_library("test_support") {
   }
 }
 
+service_manifest_overlay("chrome_content_browser_manifest_overlay") {
+  source = "//chrome/browser/chrome_content_browser_manifest_overlay.json"
+  packaged_services = [ "image_decoder" ]
+  deps = [
+    "//services/image_decoder:manifest",
+  ]
+}
+
 if (use_aura) {
   # NOTE: These rules generate compiled versions of the content service
   # manifests with Chrome's overlays applied. These are only used at run-time,
@@ -354,8 +375,9 @@ if (use_aura) {
     output_name = "chrome_content_browser"
     source = "${root_out_dir}/Packages/content_browser/manifest.json"
     overlays =
-        [ "//chrome/browser/chrome_content_browser_manifest_overlay.json" ]
+        [ "${root_gen_dir}/chrome_content_browser_manifest_overlay.json" ]
     deps = [
+      ":chrome_content_browser_manifest_overlay",
       "//content/public/app:browser_manifest",
     ]
   }

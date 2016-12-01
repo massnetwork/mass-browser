@@ -69,6 +69,12 @@ class MockRenderMessageFilterImpl : public mojom::RenderMessageFilter {
     return true;
   }
 
+  void CreateFullscreenWidget(
+      int opener_id,
+      const CreateFullscreenWidgetCallback& callback) override {
+    NOTREACHED();
+  }
+
  private:
   MockRenderThread* const thread_;
 };
@@ -227,6 +233,10 @@ bool MockRenderThread::ResolveProxy(const GURL& url, std::string* proxy_list) {
 
 base::WaitableEvent* MockRenderThread::GetShutdownEvent() {
   return NULL;
+}
+
+int32_t MockRenderThread::GetClientId() {
+  return 1;
 }
 
 #if defined(OS_WIN)

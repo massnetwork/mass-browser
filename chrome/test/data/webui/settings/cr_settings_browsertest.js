@@ -424,7 +424,6 @@ TEST_F('CrSettingsResetPageTest', 'ResetPage', function() {
 });
 
 /**
- * Test fixture for chrome/browser/resources/settings/appearance_page/.
  * @constructor
  * @extends {CrSettingsBrowserTest}
  */
@@ -444,8 +443,32 @@ CrSettingsAppearancePageTest.prototype = {
   ]),
 };
 
-TEST_F('CrSettingsAppearancePageTest', 'AppearancePage', function() {
-  settings_appearance.registerTests();
+TEST_F('CrSettingsAppearancePageTest', 'All', function() {
+  mocha.run();
+});
+
+/**
+ * @constructor
+ * @extends {CrSettingsBrowserTest}
+ */
+function CrSettingsAppearanceFontsPageTest() {}
+
+CrSettingsAppearanceFontsPageTest.prototype = {
+  __proto__: CrSettingsBrowserTest.prototype,
+
+  /** @override */
+  browsePreload:
+      'chrome://md-settings/appearance_page/appearance_fonts_page.html',
+
+  /** @override */
+  extraLibraries: CrSettingsBrowserTest.prototype.extraLibraries.concat([
+    ROOT_PATH + 'ui/webui/resources/js/promise_resolver.js',
+    'test_browser_proxy.js',
+    'appearance_fonts_page_test.js',
+  ]),
+};
+
+TEST_F('CrSettingsAppearanceFontsPageTest', 'All', function() {
   mocha.run();
 });
 
@@ -473,6 +496,31 @@ CrSettingsDefaultBrowserTest.prototype = {
 
 TEST_F('CrSettingsDefaultBrowserTest', 'DefaultBrowserPage', function() {
   settings_default_browser.registerTests();
+  mocha.run();
+});
+
+/**
+ * Test fixture for
+ * chrome/browser/resources/settings/people_page/import_data_dialog.html
+ * @constructor
+ * @extends {CrSettingsBrowserTest}
+ */
+function CrSettingsImportDataDialogTest() {}
+
+CrSettingsImportDataDialogTest.prototype = {
+  __proto__: CrSettingsBrowserTest.prototype,
+
+  /** @override */
+  browsePreload: 'chrome://md-settings/people_page/import_data_dialog.html',
+
+  /** @override */
+  extraLibraries: CrSettingsBrowserTest.prototype.extraLibraries.concat([
+    'test_browser_proxy.js',
+    'import_data_dialog_test.js',
+  ]),
+};
+
+TEST_F('CrSettingsImportDataDialogTest', 'All', function() {
   mocha.run();
 });
 GEN('#endif');
@@ -520,6 +568,7 @@ CrSettingsSearchEnginesTest.prototype = {
   /** @override */
   extraLibraries: CrSettingsBrowserTest.prototype.extraLibraries.concat([
     'test_browser_proxy.js',
+    'test_extension_control_browser_proxy.js',
     'test_search_engines_browser_proxy.js',
     'search_engines_page_test.js',
   ]),
@@ -609,6 +658,8 @@ CrSettingsSiteSettingsTest.prototype = {
     'test_browser_proxy.js',
     'test_site_settings_prefs_browser_proxy.js',
     'zoom_levels_tests.js',
+    'usb_devices_tests.js',
+    'protocol_handlers_tests.js'
   ]),
 };
 
@@ -618,6 +669,8 @@ TEST_F('CrSettingsSiteSettingsTest', 'SiteSettings', function() {
   site_list.registerTests();
   site_settings_category.registerTests();
   zoom_levels.registerTests();
+  usb_devices.registerTests();
+  protocol_handlers.registerTests();
 
   mocha.run();
 });
@@ -815,6 +868,9 @@ CrSettingsNonExistentRouteTest.prototype = {
 
   /** @override */
   browsePreload: 'chrome://md-settings/non/existent/route',
+
+  /** @override */
+  runAccessibilityChecks: false,
 };
 
 TEST_F('CrSettingsNonExistentRouteTest', 'All', function() {
@@ -845,6 +901,9 @@ CrSettingsRouteDynamicParametersTest.prototype = {
 
   /** @override */
   browsePreload: 'chrome://md-settings/people?guid=a%2Fb&foo=42',
+
+  /** @override */
+  runAccessibilityChecks: false,
 };
 
 TEST_F('CrSettingsRouteDynamicParametersTest', 'MAYBE_All', function() {
@@ -877,7 +936,8 @@ TEST_F('CrSettingsRouteDynamicParametersTest', 'MAYBE_All', function() {
 });
 
 // Times out on Windows Tests (dbg). See https://crbug.com/651296.
-GEN('#if defined(OS_WIN) || defined(OS_CHROMEOS)');
+// Times out / crashes on chromium.linux/Linux Tests (dbg) crbug.com/667882
+GEN('#if defined(OS_WIN) || defined(OS_CHROMEOS) || defined(OS_LINUX)');
 GEN('#define MAYBE_MainPage_All DISABLED_All');
 GEN('#else');
 GEN('#define MAYBE_MainPage_All All');
@@ -898,6 +958,7 @@ CrSettingsMainPageTest.prototype = {
 
   /** @override */
   extraLibraries: CrSettingsBrowserTest.prototype.extraLibraries.concat([
+    'test_browser_proxy.js',
     'settings_main_test.js',
   ]),
 };

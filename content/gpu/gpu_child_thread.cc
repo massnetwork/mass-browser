@@ -22,7 +22,6 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/service_manager_connection.h"
-#include "content/public/common/service_names.h"
 #include "content/public/gpu/content_gpu_client.h"
 #include "gpu/command_buffer/service/gpu_switches.h"
 #include "gpu/command_buffer/service/sync_point_manager.h"
@@ -51,7 +50,7 @@
 
 #if defined(OS_ANDROID)
 #include "media/base/android/media_client_android.h"
-#include "media/gpu/avda_surface_tracker.h"
+#include "media/gpu/avda_codec_allocator.h"
 #endif
 
 namespace content {
@@ -510,7 +509,7 @@ void GpuChildThread::OnWakeUpGpu() {
 }
 
 void GpuChildThread::OnDestroyingVideoSurface(int surface_id) {
-  media::AVDASurfaceTracker::GetInstance()->NotifyDestroyingSurface(surface_id);
+  media::AVDACodecAllocator::Instance()->OnSurfaceDestroyed(surface_id);
   Send(new GpuHostMsg_DestroyingVideoSurfaceAck(surface_id));
 }
 #endif

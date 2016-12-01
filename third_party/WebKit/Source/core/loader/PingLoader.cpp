@@ -33,6 +33,7 @@
 
 #include "core/dom/DOMArrayBufferView.h"
 #include "core/dom/Document.h"
+#include "core/dom/SecurityContext.h"
 #include "core/fetch/CrossOriginAccessControl.h"
 #include "core/fetch/FetchContext.h"
 #include "core/fetch/FetchInitiatorTypeNames.h"
@@ -42,6 +43,7 @@
 #include "core/fileapi/File.h"
 #include "core/frame/FrameConsole.h"
 #include "core/frame/LocalFrame.h"
+#include "core/frame/csp/ContentSecurityPolicy.h"
 #include "core/html/FormData.h"
 #include "core/inspector/ConsoleMessage.h"
 #include "core/inspector/InspectorInstrumentation.h"
@@ -208,9 +210,9 @@ class PingLoaderImpl : public GarbageCollectedFinalized<PingLoaderImpl>,
                           WebURLRequest&,
                           const WebURLResponse&) override;
   void didReceiveResponse(WebURLLoader*, const WebURLResponse&) final;
-  void didReceiveData(WebURLLoader*, const char*, int, int, int) final;
-  void didFinishLoading(WebURLLoader*, double, int64_t) final;
-  void didFail(WebURLLoader*, const WebURLError&) final;
+  void didReceiveData(WebURLLoader*, const char*, int, int) final;
+  void didFinishLoading(WebURLLoader*, double, int64_t, int64_t) final;
+  void didFail(WebURLLoader*, const WebURLError&, int64_t, int64_t) final;
 
   void timeout(TimerBase*);
 
@@ -334,9 +336,8 @@ bool PingLoaderImpl::willFollowRedirect(
 void PingLoaderImpl::didReceiveResponse(WebURLLoader*,
                                         const WebURLResponse& response) {
   if (LocalFrame* frame = this->frame()) {
-    TRACE_EVENT_INSTANT1(
-        "devtools.timeline", "ResourceFinish", TRACE_EVENT_SCOPE_THREAD, "data",
-        InspectorResourceFinishEvent::data(m_identifier, 0, true));
+    TRACE_EVENT1("devtools.timeline", "ResourceFinish", "data",
+                 InspectorResourceFinishEvent::data(m_identifier, 0, true));
     const ResourceResponse& resourceResponse = response.toResourceResponse();
     InspectorInstrumentation::didReceiveResourceResponse(frame, m_identifier, 0,
                                                          resourceResponse, 0);
@@ -345,31 +346,31 @@ void PingLoaderImpl::didReceiveResponse(WebURLLoader*,
   dispose();
 }
 
-void PingLoaderImpl::didReceiveData(WebURLLoader*, const char*, int, int, int) {
+void PingLoaderImpl::didReceiveData(WebURLLoader*, const char*, int, int) {
   if (LocalFrame* frame = this->frame()) {
-    TRACE_EVENT_INSTANT1(
-        "devtools.timeline", "ResourceFinish", TRACE_EVENT_SCOPE_THREAD, "data",
-        InspectorResourceFinishEvent::data(m_identifier, 0, true));
+    TRACE_EVENT1("devtools.timeline", "ResourceFinish", "data",
+                 InspectorResourceFinishEvent::data(m_identifier, 0, true));
     didFailLoading(frame);
   }
   dispose();
 }
 
-void PingLoaderImpl::didFinishLoading(WebURLLoader*, double, int64_t) {
+void PingLoaderImpl::didFinishLoading(WebURLLoader*, double, int64_t, int64_t) {
   if (LocalFrame* frame = this->frame()) {
-    TRACE_EVENT_INSTANT1(
-        "devtools.timeline", "ResourceFinish", TRACE_EVENT_SCOPE_THREAD, "data",
-        InspectorResourceFinishEvent::data(m_identifier, 0, true));
+    TRACE_EVENT1("devtools.timeline", "ResourceFinish", "data",
+                 InspectorResourceFinishEvent::data(m_identifier, 0, true));
     didFailLoading(frame);
   }
   dispose();
 }
 
-void PingLoaderImpl::didFail(WebURLLoader*, const WebURLError& resourceError) {
+void PingLoaderImpl::didFail(WebURLLoader*,
+                             const WebURLError& resourceError,
+                             int64_t,
+                             int64_t) {
   if (LocalFrame* frame = this->frame()) {
-    TRACE_EVENT_INSTANT1(
-        "devtools.timeline", "ResourceFinish", TRACE_EVENT_SCOPE_THREAD, "data",
-        InspectorResourceFinishEvent::data(m_identifier, 0, true));
+    TRACE_EVENT1("devtools.timeline", "ResourceFinish", "data",
+                 InspectorResourceFinishEvent::data(m_identifier, 0, true));
     didFailLoading(frame);
   }
   dispose();
@@ -377,9 +378,8 @@ void PingLoaderImpl::didFail(WebURLLoader*, const WebURLError& resourceError) {
 
 void PingLoaderImpl::timeout(TimerBase*) {
   if (LocalFrame* frame = this->frame()) {
-    TRACE_EVENT_INSTANT1(
-        "devtools.timeline", "ResourceFinish", TRACE_EVENT_SCOPE_THREAD, "data",
-        InspectorResourceFinishEvent::data(m_identifier, 0, true));
+    TRACE_EVENT1("devtools.timeline", "ResourceFinish", "data",
+                 InspectorResourceFinishEvent::data(m_identifier, 0, true));
     didFailLoading(frame);
   }
   dispose();
@@ -472,6 +472,12 @@ void PingLoader::sendLinkAuditPing(LocalFrame* frame,
                                    const KURL& destinationURL) {
   if (!pingURL.protocolIsInHTTPFamily())
     return;
+
+  if (ContentSecurityPolicy* policy =
+          frame->securityContext()->contentSecurityPolicy()) {
+    if (!policy->allowConnectToSource(pingURL))
+      return;
+  }
 
   ResourceRequest request(pingURL);
   request.setHTTPMethod(HTTPNames::POST);

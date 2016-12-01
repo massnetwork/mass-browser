@@ -54,7 +54,7 @@ class CC_EXPORT RenderSurfaceImpl {
   }
   float draw_opacity() const { return draw_properties_.draw_opacity; }
 
-  SkXfermode::Mode BlendMode() const;
+  SkBlendMode BlendMode() const;
   bool UsesDefaultBlendMode() const;
 
   void SetNearestOcclusionImmuneAncestor(const RenderSurfaceImpl* surface) {
@@ -148,14 +148,7 @@ class CC_EXPORT RenderSurfaceImpl {
   RenderPassId GetRenderPassId();
 
   void AppendRenderPasses(RenderPassSink* pass_sink);
-  void AppendQuads(RenderPass* render_pass,
-                   const gfx::Transform& draw_transform,
-                   const Occlusion& occlusion_in_content_space,
-                   SkColor debug_border_color,
-                   float debug_border_width,
-                   LayerImpl* mask_layer,
-                   AppendQuadsData* append_quads_data,
-                   RenderPassId render_pass_id);
+  void AppendQuads(RenderPass* render_pass, AppendQuadsData* append_quads_data);
 
   int TransformTreeIndex() const;
   int ClipTreeIndex() const;

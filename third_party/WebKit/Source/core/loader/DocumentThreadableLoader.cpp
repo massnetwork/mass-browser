@@ -94,7 +94,7 @@ class EmptyDataHandle final : public WebDataConsumerHandle {
   };
 
   std::unique_ptr<Reader> obtainReader(Client* client) override {
-    return WTF::wrapUnique(new EmptyDataReader(client));
+    return makeUnique<EmptyDataReader>(client);
   }
   const char* debugName() const override { return "EmptyDataHandle"; }
 };
@@ -171,7 +171,7 @@ DocumentThreadableLoader::DocumentThreadableLoader(
                               ? kMaxCORSRedirects
                               : 0),
       m_redirectMode(WebURLRequest::FetchRedirectModeFollow),
-      m_didRedirect(false) {
+      m_overrideReferrer(false) {
   DCHECK(client);
 }
 
@@ -199,22 +199,10 @@ void DocumentThreadableLoader::start(const ResourceRequest& request) {
 
   m_requestStartedSeconds = monotonicallyIncreasingTime();
 
-  // Save any CORS simple headers on the request here. If this request redirects
+  // Save any headers on the request here. If this request redirects
   // cross-origin, we cancel the old request create a new one, and copy these
   // headers.
-  const HTTPHeaderMap& headerMap = request.httpHeaderFields();
-  for (const auto& header : headerMap) {
-    if (FetchUtils::isSimpleHeader(header.key, header.value)) {
-      m_simpleRequestHeaders.add(header.key, header.value);
-    } else if (equalIgnoringCase(header.key, HTTPNames::Range) &&
-               m_options.crossOriginRequestPolicy == UseAccessControl &&
-               m_options.preflightPolicy == PreventPreflight) {
-      // Allow an exception for the "range" header for when CORS callers request
-      // no preflight, this ensures cross-origin redirects work correctly for
-      // crossOrigin enabled WebURLRequest::RequestContextVideo type requests.
-      m_simpleRequestHeaders.add(header.key, header.value);
-    }
-  }
+  m_requestHeaders = request.httpHeaderFields();
 
   // DocumentThreadableLoader is used by all javascript initiated fetch, so we
   // use this chance to record non-GET fetch script requests. However, this is
@@ -312,6 +300,14 @@ void DocumentThreadableLoader::dispatchInitialRequest(
   makeCrossOriginAccessRequest(request);
 }
 
+void DocumentThreadableLoader::prepareCrossOriginRequest(
+    ResourceRequest& request) {
+  if (getSecurityOrigin())
+    request.setHTTPOrigin(getSecurityOrigin());
+  if (m_overrideReferrer)
+    request.setHTTPReferrer(m_referrerAfterRedirect);
+}
+
 void DocumentThreadableLoader::makeCrossOriginAccessRequest(
     const ResourceRequest& request) {
   DCHECK(m_options.crossOriginRequestPolicy == UseAccessControl ||
@@ -353,6 +349,19 @@ void DocumentThreadableLoader::makeCrossOriginAccessRequest(
   ResourceRequest crossOriginRequest(request);
   ResourceLoaderOptions crossOriginOptions(m_resourceLoaderOptions);
 
+  crossOriginRequest.removeCredentials();
+
+  crossOriginRequest.setAllowStoredCredentials(effectiveAllowCredentials() ==
+                                               AllowStoredCredentials);
+
+  // We update the credentials mode according to effectiveAllowCredentials()
+  // here for backward compatibility. But this is not correct.
+  // FIXME: We should set it in the caller of DocumentThreadableLoader.
+  crossOriginRequest.setFetchCredentialsMode(
+      effectiveAllowCredentials() == AllowStoredCredentials
+          ? WebURLRequest::FetchCredentialsModeInclude
+          : WebURLRequest::FetchCredentialsModeOmit);
+
   // We use isSimpleOrForbiddenRequest() here since |request| may have been
   // modified in the process of loading (not from the user's input). For
   // example, referrer. We need to accept them. For security, we must reject
@@ -362,54 +371,39 @@ void DocumentThreadableLoader::makeCrossOriginAccessRequest(
         FetchUtils::isSimpleOrForbiddenRequest(request.httpMethod(),
                                                request.httpHeaderFields())) ||
        m_options.preflightPolicy == PreventPreflight)) {
-    updateRequestForAccessControl(crossOriginRequest, getSecurityOrigin(),
-                                  effectiveAllowCredentials());
-    // We update the credentials mode according to effectiveAllowCredentials()
-    // here for backward compatibility. But this is not correct.
-    // FIXME: We should set it in the caller of DocumentThreadableLoader.
-    crossOriginRequest.setFetchCredentialsMode(
-        effectiveAllowCredentials() == AllowStoredCredentials
-            ? WebURLRequest::FetchCredentialsModeInclude
-            : WebURLRequest::FetchCredentialsModeOmit);
-    if (m_didRedirect) {
-      crossOriginRequest.setHTTPReferrer(m_referrerAfterRedirect);
-    }
+    prepareCrossOriginRequest(crossOriginRequest);
     loadRequest(crossOriginRequest, crossOriginOptions);
   } else {
     m_crossOriginNonSimpleRequest = true;
-    // Do not set the Origin header for preflight requests.
-    updateRequestForAccessControl(crossOriginRequest, 0,
-                                  effectiveAllowCredentials());
-    // We update the credentials mode according to effectiveAllowCredentials()
-    // here for backward compatibility. But this is not correct.
-    // FIXME: We should set it in the caller of DocumentThreadableLoader.
-    crossOriginRequest.setFetchCredentialsMode(
-        effectiveAllowCredentials() == AllowStoredCredentials
-            ? WebURLRequest::FetchCredentialsModeInclude
-            : WebURLRequest::FetchCredentialsModeOmit);
-    m_actualRequest = crossOriginRequest;
-    m_actualOptions = crossOriginOptions;
-
-    if (m_didRedirect) {
-      m_actualRequest.setHTTPReferrer(m_referrerAfterRedirect);
-    }
 
     bool shouldForcePreflight =
         request.isExternalRequest() ||
         InspectorInstrumentation::shouldForceCORSPreflight(m_document);
     bool canSkipPreflight =
         CrossOriginPreflightResultCache::shared().canSkipPreflight(
-            getSecurityOrigin()->toString(), m_actualRequest.url(),
-            effectiveAllowCredentials(), m_actualRequest.httpMethod(),
-            m_actualRequest.httpHeaderFields());
+            getSecurityOrigin()->toString(), crossOriginRequest.url(),
+            effectiveAllowCredentials(), crossOriginRequest.httpMethod(),
+            crossOriginRequest.httpHeaderFields());
     if (canSkipPreflight && !shouldForcePreflight) {
-      loadActualRequest();
+      if (getSecurityOrigin())
+        crossOriginRequest.setHTTPOrigin(getSecurityOrigin());
+      if (m_overrideReferrer)
+        crossOriginRequest.setHTTPReferrer(m_referrerAfterRedirect);
+
+      prepareCrossOriginRequest(crossOriginRequest);
+      loadRequest(crossOriginRequest, crossOriginOptions);
     } else {
       ResourceRequest preflightRequest = createAccessControlPreflightRequest(
-          m_actualRequest, getSecurityOrigin());
+          crossOriginRequest, getSecurityOrigin());
+
       // Create a ResourceLoaderOptions for preflight.
-      ResourceLoaderOptions preflightOptions = m_actualOptions;
+      ResourceLoaderOptions preflightOptions = crossOriginOptions;
       preflightOptions.allowCredentials = DoNotAllowStoredCredentials;
+
+      m_actualRequest = crossOriginRequest;
+      m_actualOptions = crossOriginOptions;
+
+      prepareCrossOriginRequest(crossOriginRequest);
       loadRequest(preflightRequest, preflightOptions);
     }
   }
@@ -521,8 +515,7 @@ bool DocumentThreadableLoader::redirectReceived(
     // TODO(horo): If we support any API which expose the internal body, we will
     // have to read the body. And also HTTPCache changes will be needed because
     // it doesn't store the body of redirect responses.
-    responseReceived(resource, redirectResponse,
-                     wrapUnique(new EmptyDataHandle()));
+    responseReceived(resource, redirectResponse, makeUnique<EmptyDataHandle>());
 
     if (m_client) {
       DCHECK(m_actualRequest.isNull());
@@ -631,7 +624,7 @@ bool DocumentThreadableLoader::redirectReceived(
     m_forceDoNotAllowStoredCredentials = true;
 
   // Save the referrer to use when following the redirect.
-  m_didRedirect = true;
+  m_overrideReferrer = true;
   m_referrerAfterRedirect =
       Referrer(request.httpReferrer(), request.getReferrerPolicy());
 
@@ -642,9 +635,9 @@ bool DocumentThreadableLoader::redirectReceived(
   crossOriginRequest.clearHTTPReferrer();
   crossOriginRequest.clearHTTPOrigin();
   crossOriginRequest.clearHTTPUserAgent();
-  // Add any CORS simple request headers which we previously saved from the
+  // Add any request headers which we previously saved from the
   // original request.
-  for (const auto& header : m_simpleRequestHeaders)
+  for (const auto& header : m_requestHeaders)
     crossOriginRequest.setHTTPHeaderField(header.key, header.value);
   makeCrossOriginAccessRequest(crossOriginRequest);
 
@@ -762,10 +755,10 @@ void DocumentThreadableLoader::reportResponseReceived(
   DCHECK(frame);
   if (!frame)
     return;
+  TRACE_EVENT1(
+      "devtools.timeline", "ResourceReceiveResponse", "data",
+      InspectorReceiveResponseEvent::data(identifier, frame, response));
   DocumentLoader* loader = frame->loader().documentLoader();
-  TRACE_EVENT_INSTANT1(
-      "devtools.timeline", "ResourceReceiveResponse", TRACE_EVENT_SCOPE_THREAD,
-      "data", InspectorReceiveResponseEvent::data(identifier, frame, response));
   InspectorInstrumentation::didReceiveResourceResponse(
       frame, identifier, loader, response, resource());
   frame->console().reportResourceResponseReceived(loader, identifier, response);
@@ -935,8 +928,6 @@ void DocumentThreadableLoader::loadActualRequest() {
   m_actualRequest = ResourceRequest();
   m_actualOptions = ResourceLoaderOptions();
 
-  actualRequest.setHTTPOrigin(getSecurityOrigin());
-
   clearResource();
 
   // Explicitly set the SkipServiceWorker flag here. Even if the page was not
@@ -945,6 +936,7 @@ void DocumentThreadableLoader::loadActualRequest() {
   // the actual request to the SW. https://crbug.com/604583
   actualRequest.setSkipServiceWorker(WebURLRequest::SkipServiceWorker::All);
 
+  prepareCrossOriginRequest(actualRequest);
   loadRequest(actualRequest, actualOptions);
 }
 

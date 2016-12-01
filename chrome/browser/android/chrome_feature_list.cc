@@ -32,12 +32,14 @@ namespace {
 // in other locations in the code base (e.g. chrome/, components/, etc).
 const base::Feature* kFeaturesExposedToJava[] = {
     &autofill::kAutofillScanCardholderName,
-    &features::kAutoplayMutedVideos,
+    &features::kConsistentOmniboxGeolocation,
     &features::kCredentialManagementAPI,
     &features::kSimplifiedFullscreenUI,
+    &features::kVrShell,
     &features::kWebPayments,
     &kAndroidPayIntegrationV1,
     &kCCTExternalLinkHandling,
+    &kCCTPostMessageAPI,
     &kChromeHomeFeature,
     &kContextualSearchSingleActions,
     &kDownloadsUiFeature,
@@ -52,11 +54,12 @@ const base::Feature* kFeaturesExposedToJava[] = {
     &kTabReparenting,
     &kWebApks,
     &ntp_snippets::kContentSuggestionsFeature,
+    &ntp_snippets::kIncreasedVisibility,
+    &ntp_snippets::kForeignSessionsSuggestionsFeature,
     &ntp_snippets::kOfflineBadgeFeature,
     &ntp_snippets::kSaveToOfflineFeature,
     &ntp_snippets::kSectionDismissalFeature,
     &offline_pages::kBackgroundLoaderForDownloadsFeature,
-    &offline_pages::kOfflinePagesBackgroundLoadingFeature,
     &offline_pages::kOfflinePagesCTFeature,  // See crbug.com/620421.
     &offline_pages::kOfflinePagesSharingFeature,
     &password_manager::features::kViewPasswords,
@@ -70,6 +73,9 @@ const base::Feature kAndroidPayIntegrationV1{"AndroidPayIntegrationV1",
 
 const base::Feature kCCTExternalLinkHandling{"CCTExternalLinkHandling",
                                              base::FEATURE_ENABLED_BY_DEFAULT};
+
+const base::Feature kCCTPostMessageAPI{"CCTPostMessageAPI",
+                                       base::FEATURE_ENABLED_BY_DEFAULT};
 
 const base::Feature kChromeHomeFeature{"ChromeHome",
                                        base::FEATURE_DISABLED_BY_DEFAULT};
@@ -87,7 +93,7 @@ const base::Feature kNoCreditCardAbort{"NoCreditCardAbort",
                                        base::FEATURE_DISABLED_BY_DEFAULT};
 
 const base::Feature kNTPOfflinePagesFeature{"NTPOfflinePages",
-                                            base::FEATURE_DISABLED_BY_DEFAULT};
+                                            base::FEATURE_ENABLED_BY_DEFAULT};
 
 const base::Feature kNTPFakeOmniboxTextFeature{
     "NTPFakeOmniboxText", base::FEATURE_DISABLED_BY_DEFAULT};

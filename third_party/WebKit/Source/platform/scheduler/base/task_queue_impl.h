@@ -133,7 +133,7 @@ class BLINK_PLATFORM_EXPORT TaskQueueImpl final : public TaskQueue {
   void SetTimeDomain(TimeDomain* time_domain) override;
   TimeDomain* GetTimeDomain() const override;
   void SetBlameContext(base::trace_event::BlameContext* blame_context) override;
-  void InsertFence() override;
+  void InsertFence(InsertFencePosition position) override;
   void RemoveFence() override;
   bool BlockedByFence() const override;
 
@@ -151,9 +151,6 @@ class BLINK_PLATFORM_EXPORT TaskQueueImpl final : public TaskQueue {
 
   void NotifyWillProcessTask(const base::PendingTask& pending_task);
   void NotifyDidProcessTask(const base::PendingTask& pending_task);
-
-  // Can be called on any thread.
-  static const char* PriorityToString(TaskQueue::QueuePriority priority);
 
   WorkQueue* delayed_work_queue() {
     return main_thread_only().delayed_work_queue.get();
@@ -195,6 +192,8 @@ class BLINK_PLATFORM_EXPORT TaskQueueImpl final : public TaskQueue {
   void set_heap_handle(HeapHandle heap_handle) {
     main_thread_only().heap_handle = heap_handle;
   }
+
+  EnqueueOrder GetFenceForTest() const;
 
  private:
   friend class WorkQueue;

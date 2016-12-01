@@ -25,12 +25,8 @@
 #include "base/memory/ref_counted.h"
 #include "base/observer_list.h"
 #include "base/time/time.h"
-#include "base/timer/timer.h"
-#include "content/browser/download/save_types.h"
 #include "content/browser/loader/global_routing_id.h"
-#include "content/browser/loader/resource_loader.h"
 #include "content/browser/loader/resource_loader_delegate.h"
-#include "content/browser/loader/resource_scheduler.h"
 #include "content/common/content_export.h"
 #include "content/common/url_loader.mojom.h"
 #include "content/public/browser/global_request_id.h"
@@ -39,17 +35,18 @@
 #include "content/public/common/request_context_type.h"
 #include "content/public/common/resource_type.h"
 #include "ipc/ipc_message.h"
-#include "mojo/public/cpp/system/data_pipe.h"
+#include "net/base/load_states.h"
 #include "net/base/request_priority.h"
-#include "net/cookies/canonical_cookie.h"
-#include "net/url_request/url_request.h"
+#include "url/gurl.h"
 
 namespace base {
 class FilePath;
+class RepeatingTimer;
 }
 
 namespace net {
-class URLRequestJobFactory;
+class URLRequest;
+class HttpRequestHeaders;
 }
 
 namespace storage {
@@ -65,19 +62,16 @@ class NavigationUIData;
 class RenderFrameHostImpl;
 class ResourceContext;
 class ResourceDispatcherHostDelegate;
+class ResourceLoader;
 class ResourceHandler;
 class ResourceMessageDelegate;
 class ResourceMessageFilter;
 class ResourceRequestInfoImpl;
+class ResourceScheduler;
 class ServiceWorkerNavigationHandleCore;
-struct CommonNavigationParams;
 struct NavigationRequestInfo;
 struct Referrer;
 struct ResourceRequest;
-
-namespace mojom {
-class URLLoader;
-}  // namespace mojom
 
 using CreateDownloadHandlerIntercept =
     base::Callback<std::unique_ptr<ResourceHandler>(net::URLRequest*)>;
@@ -304,8 +298,8 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
       int routing_id,
       int request_id,
       const ResourceRequest& request,
-      mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-      mojom::URLLoaderClientPtr url_loader_client,
+      mojom::URLLoaderAssociatedRequest mojo_request,
+      mojom::URLLoaderClientAssociatedPtr url_loader_client,
       ResourceMessageFilter* filter);
 
   void OnSyncLoadWithMojo(int routing_id,
@@ -347,6 +341,12 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
   // of |request_id_| for the details. Must be called on the IO thread.
   int MakeRequestID();
 
+  // Cancels a request as requested by a renderer. This function is called when
+  // a mojo connection is lost.
+  // Note that this cancel is subtly different from the other CancelRequest
+  // methods in this file, which also tear down the loader.
+  void CancelRequestFromRenderer(GlobalRequestID request_id);
+
  private:
   friend class ResourceDispatcherHostTest;
 
@@ -378,6 +378,7 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
     LoadInfo();
     LoadInfo(const LoadInfo& other);
     ~LoadInfo();
+
     ResourceRequestInfo::WebContentsGetter web_contents_getter;
     GURL url;
     net::LoadStateWithParam load_state;
@@ -532,8 +533,8 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
       int routing_id,
       int request_id,
       const ResourceRequest& request_data,
-      mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-      mojom::URLLoaderClientPtr url_loader_client);
+      mojom::URLLoaderAssociatedRequest mojo_request,
+      mojom::URLLoaderClientAssociatedPtr url_loader_client);
 
   void OnSyncLoad(int request_id,
                   const ResourceRequest& request_data,
@@ -543,25 +544,30 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
 
   // Update the ResourceRequestInfo and internal maps when a request is
   // transferred from one process to another.
-  void UpdateRequestForTransfer(int child_id,
-                                int route_id,
-                                int request_id,
-                                const ResourceRequest& request_data,
-                                LoaderMap::iterator iter);
+  void UpdateRequestForTransfer(
+      int child_id,
+      int route_id,
+      int request_id,
+      const ResourceRequest& request_data,
+      LoaderMap::iterator iter,
+      mojom::URLLoaderAssociatedRequest mojo_request,
+      mojom::URLLoaderClientAssociatedPtr url_loader_client);
 
   // If |request_data| is for a request being transferred from another process,
   // then CompleteTransfer method can be used to complete the transfer.
   void CompleteTransfer(int request_id,
                         const ResourceRequest& request_data,
-                        int route_id);
+                        int route_id,
+                        mojom::URLLoaderAssociatedRequest mojo_request,
+                        mojom::URLLoaderClientAssociatedPtr url_loader_client);
 
   void BeginRequest(
       int request_id,
       const ResourceRequest& request_data,
-      const SyncLoadResultCallback& sync_result_handler, // only valid for sync
+      const SyncLoadResultCallback& sync_result_handler,  // only valid for sync
       int route_id,
-      mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-      mojom::URLLoaderClientPtr url_loader_client);
+      mojom::URLLoaderAssociatedRequest mojo_request,
+      mojom::URLLoaderClientAssociatedPtr url_loader_client);
 
   // There are requests which need decisions to be made like the following:
   // Whether the presence of certain HTTP headers like the Origin header are
@@ -575,11 +581,11 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
   void ContinuePendingBeginRequest(
       int request_id,
       const ResourceRequest& request_data,
-      const SyncLoadResultCallback& sync_result_handler, // only valid for sync
+      const SyncLoadResultCallback& sync_result_handler,  // only valid for sync
       int route_id,
       const net::HttpRequestHeaders& headers,
-      mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-      mojom::URLLoaderClientPtr url_loader_client,
+      mojom::URLLoaderAssociatedRequest mojo_request,
+      mojom::URLLoaderClientAssociatedPtr url_loader_client,
       bool continue_request,
       int error_code);
 
@@ -593,8 +599,8 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
       int process_type,
       int child_id,
       ResourceContext* resource_context,
-      mojo::InterfaceRequest<mojom::URLLoader> mojo_request,
-      mojom::URLLoaderClientPtr url_loader_client);
+      mojom::URLLoaderAssociatedRequest mojo_request,
+      mojom::URLLoaderClientAssociatedPtr url_loader_client);
 
   // Wraps |handler| in the standard resource handlers for normal resource
   // loading and navigation requests. This adds MimeTypeResourceHandler and
@@ -609,7 +615,6 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
       int route_id,
       std::unique_ptr<ResourceHandler> handler);
 
-  void OnDataDownloadedACK(int request_id);
   void OnCancelRequest(int request_id);
   void OnReleaseDownloadedFile(int request_id);
   void OnDidChangePriority(int request_id,

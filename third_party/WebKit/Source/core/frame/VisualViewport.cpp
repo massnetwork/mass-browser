@@ -169,14 +169,6 @@ FloatRect VisualViewport::visibleRectInDocument() const {
   return FloatRect(viewLocation, visibleSize());
 }
 
-FloatRect VisualViewport::mainViewToViewportCSSPixels(
-    const FloatRect& rect) const {
-  // Note, this is in CSS Pixels so we don't apply scale.
-  FloatRect rectInViewport = rect;
-  rectInViewport.move(-scrollOffset());
-  return rectInViewport;
-}
-
 FloatPoint VisualViewport::viewportCSSPixelsToRootFrame(
     const FloatPoint& point) const {
   // Note, this is in CSS Pixels so we don't apply scale.
@@ -615,6 +607,21 @@ IntSize VisualViewport::contentsSize() const {
     return IntSize();
 
   return frame->view()->visibleContentRect(IncludeScrollbars).size();
+}
+
+IntRect VisualViewport::visibleContentRect(
+    IncludeScrollbarsInRect scrollbarInclusion) const {
+  // TODO(ymalik): We're losing precision here and below. visibleRect should
+  // be replaced with visibleContentRect.
+  IntRect rect = IntRect(visibleRect());
+  if (scrollbarInclusion == ExcludeScrollbars) {
+    RootFrameViewport* rootFrameViewport =
+        mainFrame()->view()->getRootFrameViewport();
+    DCHECK(rootFrameViewport);
+    rect.contract(rootFrameViewport->verticalScrollbarWidth() / m_scale,
+                  rootFrameViewport->horizontalScrollbarHeight() / m_scale);
+  }
+  return rect;
 }
 
 void VisualViewport::updateScrollOffset(const ScrollOffset& position,

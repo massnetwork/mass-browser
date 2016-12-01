@@ -427,7 +427,7 @@ void LayoutInline::splitInlines(LayoutBlockFlow* fromBlock,
   }
 
   // Create a new clone of the top-most inline in |inlinesToClone|.
-  LayoutInline* topMostInlineToClone = inlinesToClone.last();
+  LayoutInline* topMostInlineToClone = inlinesToClone.back();
   LayoutInline* cloneInline = topMostInlineToClone->clone();
 
   // Now we are at the block level. We need to put the clone into the |toBlock|.
@@ -782,20 +782,18 @@ void LayoutInline::absoluteQuadsForSelf(Vector<FloatQuad>& quads) const {
     context(FloatRect());
 }
 
+LayoutPoint LayoutInline::firstLineBoxTopLeft() const {
+  if (InlineBox* firstBox = firstLineBoxIncludingCulling())
+    return firstBox->topLeft();
+  return LayoutPoint();
+}
+
 LayoutUnit LayoutInline::offsetLeft(const Element* parent) const {
-  LayoutPoint topLeft;
-  if (InlineBox* firstBox = firstLineBoxIncludingCulling()) {
-    topLeft = firstBox->topLeft();
-  }
-  return adjustedPositionRelativeTo(topLeft, parent).x();
+  return adjustedPositionRelativeTo(firstLineBoxTopLeft(), parent).x();
 }
 
 LayoutUnit LayoutInline::offsetTop(const Element* parent) const {
-  LayoutPoint topLeft;
-  if (InlineBox* firstBox = firstLineBoxIncludingCulling()) {
-    topLeft = firstBox->topLeft();
-  }
-  return adjustedPositionRelativeTo(topLeft, parent).y();
+  return adjustedPositionRelativeTo(firstLineBoxTopLeft(), parent).y();
 }
 
 static LayoutUnit computeMargin(const LayoutInline* layoutObject,

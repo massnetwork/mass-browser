@@ -197,7 +197,7 @@ interface ExtendableMessageEvent : ExtendableEvent
 interface FetchEvent : ExtendableEvent
     getter clientId
     getter isReload
-    getter navigationPreload
+    getter preloadResponse
     getter request
     method constructor
     method respondWith
@@ -481,7 +481,7 @@ interface NotificationEvent : ExtendableEvent
     getter notification
     getter reply
     method constructor
-interface OffscreenCanvas
+interface OffscreenCanvas : EventTarget
     getter height
     getter width
     method constructor
@@ -493,6 +493,7 @@ interface OffscreenCanvas
 interface OffscreenCanvasRenderingContext2D
     getter canvas
     getter fillStyle
+    getter globalCompositeOperation
     getter imageSmoothingEnabled
     getter imageSmoothingQuality
     getter lineCap
@@ -541,6 +542,7 @@ interface OffscreenCanvasRenderingContext2D
     method transform
     method translate
     setter fillStyle
+    setter globalCompositeOperation
     setter imageSmoothingEnabled
     setter imageSmoothingQuality
     setter lineCap
@@ -565,6 +567,10 @@ interface Path2D
     method moveTo
     method quadraticCurveTo
     method rect
+interface PaymentRequestEvent : ExtendableEvent
+    getter data
+    method constructor
+    method respondWith
 interface PerformanceObserverEntryList
     method constructor
     method getEntries
@@ -657,6 +663,7 @@ interface ServiceWorkerRegistration : EventTarget
     getter installing
     getter navigationPreload
     getter onupdatefound
+    getter paymentAppManager
     getter pushManager
     getter scope
     getter sync
@@ -1222,7 +1229,6 @@ interface WorkerGlobalScope : EventTarget
     getter onunhandledrejection
     getter performance
     getter self
-    getter webkitIndexedDB
     method atob
     method btoa
     method clearInterval
@@ -1262,113 +1268,11 @@ interface WorkerNavigator
     getter storage
     getter userAgent
     method constructor
-interface webkitIDBCursor
-    getter direction
-    getter key
-    getter primaryKey
-    getter source
-    method advance
-    method constructor
-    method continue
-    method continuePrimaryKey
-    method delete
-    method update
-interface webkitIDBDatabase : EventTarget
-    getter name
-    getter objectStoreNames
-    getter onabort
-    getter onclose
-    getter onerror
-    getter onversionchange
-    getter version
-    method close
-    method constructor
-    method createObjectStore
-    method deleteObjectStore
-    method transaction
-    setter onabort
-    setter onclose
-    setter onerror
-    setter onversionchange
-interface webkitIDBFactory
-    method cmp
-    method constructor
-    method deleteDatabase
-    method open
-    method webkitGetDatabaseNames
-interface webkitIDBIndex
-    getter keyPath
-    getter multiEntry
-    getter name
-    getter objectStore
-    getter unique
-    method constructor
-    method count
-    method get
-    method getAll
-    method getAllKeys
-    method getKey
-    method openCursor
-    method openKeyCursor
-    setter name
-interface webkitIDBKeyRange
-    static method bound
-    static method lowerBound
-    static method only
-    static method upperBound
-    getter lower
-    getter lowerOpen
-    getter upper
-    getter upperOpen
-    method constructor
-    method includes
-interface webkitIDBObjectStore
-    getter autoIncrement
-    getter indexNames
-    getter keyPath
-    getter name
-    getter transaction
-    method add
-    method clear
-    method constructor
-    method count
-    method createIndex
-    method delete
-    method deleteIndex
-    method get
-    method getAll
-    method getAllKeys
-    method getKey
-    method index
-    method openCursor
-    method openKeyCursor
-    method put
-    setter name
-interface webkitIDBRequest : EventTarget
-    getter error
-    getter onerror
-    getter onsuccess
-    getter readyState
-    getter result
-    getter source
-    getter transaction
-    method constructor
-    setter onerror
-    setter onsuccess
-interface webkitIDBTransaction : EventTarget
-    getter db
-    getter error
-    getter mode
-    getter objectStoreNames
-    getter onabort
-    getter oncomplete
-    getter onerror
+interface WritableStream
+    getter locked
     method abort
     method constructor
-    method objectStore
-    setter onabort
-    setter oncomplete
-    setter onerror
+    method getWriter
 global object
     attribute console
     attribute internals
@@ -1380,6 +1284,7 @@ global object
     getter onmessage
     getter onnotificationclick
     getter onnotificationclose
+    getter onpaymentrequest
     getter onpush
     getter onsync
     getter registration
@@ -1393,6 +1298,7 @@ global object
     setter onmessage
     setter onnotificationclick
     setter onnotificationclose
+    setter onpaymentrequest
     setter onpush
     setter onsync
 PASS Verify the interface of ServiceWorkerGlobalScope

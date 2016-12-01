@@ -16,7 +16,7 @@
 #include "services/service_manager/public/cpp/interface_factory.h"
 #include "services/service_manager/public/cpp/service.h"
 
-namespace mojo {
+namespace service_manager {
 class Connection;
 }
 
@@ -32,7 +32,7 @@ class Session : public service_manager::Service,
 
  private:
   // service_manager::Service:
-  void OnStart(const service_manager::ServiceInfo& info) override;
+  void OnStart() override;
   bool OnConnect(const service_manager::ServiceInfo& remote_info,
                  service_manager::InterfaceRegistry* registry) override;
 

@@ -12,9 +12,10 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part_chromeos.h"
 #include "chrome/browser/chrome_notification_types.h"
+#include "chrome/browser/chromeos/app_mode/arc/arc_kiosk_app_manager.h"
 #include "chrome/browser/chromeos/app_mode/kiosk_app_launch_error.h"
 #include "chrome/browser/chromeos/app_mode/kiosk_app_manager.h"
-#include "chrome/browser/chromeos/arc/arc_auth_service.h"
+#include "chrome/browser/chromeos/arc/arc_session_manager.h"
 #include "chrome/browser/chromeos/boot_times_recorder.h"
 #include "chrome/browser/chromeos/login/login_wizard.h"
 #include "chrome/browser/chromeos/login/session/user_session_manager.h"
@@ -117,8 +118,8 @@ void StartRestoreAfterCrashSession(Profile* user_profile,
       arc::ArcServiceManager::Get()->OnPrimaryUserProfilePrepared(
           multi_user_util::GetAccountIdFromProfile(user_profile),
           std::move(arc_enabled_pref));
-      DCHECK(arc::ArcAuthService::Get());
-      arc::ArcAuthService::Get()->OnPrimaryUserProfilePrepared(user_profile);
+      DCHECK(arc::ArcSessionManager::Get());
+      arc::ArcSessionManager::Get()->OnPrimaryUserProfilePrepared(user_profile);
     }
 
     // Send the PROFILE_PREPARED notification and call SessionStarted()
@@ -193,6 +194,7 @@ void ChromeSessionManager::Initialize(
       cryptohome::Identification::FromString(cryptohome_id).GetAccountId());
 
   KioskAppManager::RemoveObsoleteCryptohomes();
+  ArcKioskAppManager::RemoveObsoleteCryptohomes();
 
   if (ShouldAutoLaunchKioskApp(parsed_command_line)) {
     VLOG(1) << "Starting Chrome with kiosk auto launch.";

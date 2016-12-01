@@ -662,6 +662,14 @@ NSError* WKWebViewErrorWithSource(NSError* error, WKWebViewErrorSource source) {
 - (void)loadCompleteWithSuccess:(BOOL)loadSuccess;
 // Called after URL is finished loading and _loadPhase is set to PAGE_LOADED.
 - (void)didFinishWithURL:(const GURL&)currentURL loadSuccess:(BOOL)loadSuccess;
+// Navigates forwards or backwards by |delta| pages. No-op if delta is out of
+// bounds. Reloads if delta is 0.
+// TODO(crbug.com/661316): Move this method to NavigationManager.
+- (void)goDelta:(int)delta;
+// Loads a new URL if the current entry is not from a pushState() navigation.
+// |fromEntry| is the CRWSessionEntry that was the current entry prior to the
+// navigation.
+- (void)finishHistoryNavigationFromEntry:(CRWSessionEntry*)fromEntry;
 // Informs the native controller if web usage is allowed or not.
 - (void)setNativeControllerWebUsageEnabled:(BOOL)webUsageEnabled;
 // Called when web controller receives a new message from the web page.
@@ -1135,6 +1143,8 @@ const NSTimeInterval kSnapshotOverlayTransition = 0.5;
   DCHECK([NSThread isMainThread]);
   DCHECK(_isBeingDestroyed);  // 'close' must have been called already.
   DCHECK(!_webView);
+  // TODO(crbug.com/662860): Don't set the delegate to nil.
+  [_containerView setDelegate:nil];
   _touchTrackingRecognizer.get().touchTrackingDelegate = nil;
   [[_webViewProxy scrollViewProxy] removeObserver:self];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -1371,14 +1381,6 @@ const NSTimeInterval kSnapshotOverlayTransition = 0.5;
         [[result stretchableImageWithLeftCapWidth:1 topCapHeight:1] retain];
   }
   return defaultImage;
-}
-
-- (BOOL)canGoBack {
-  return _webStateImpl->GetNavigationManagerImpl().CanGoBack();
-}
-
-- (BOOL)canGoForward {
-  return _webStateImpl->GetNavigationManagerImpl().CanGoForward();
 }
 
 - (CGPoint)scrollPosition {
@@ -2275,39 +2277,41 @@ const NSTimeInterval kSnapshotOverlayTransition = 0.5;
   }
 }
 
-- (void)goBack {
-  [self goDelta:-1];
-}
+- (void)goToItemAtIndex:(int)index {
+  CRWSessionController* sessionController = self.sessionController;
+  NSArray* entries = sessionController.entries;
+  DCHECK_LT(static_cast<NSUInteger>(index), entries.count);
+  DCHECK_GE(index, 0);
 
-- (void)goForward {
-  [self goDelta:1];
-}
-
-- (void)goDelta:(int)delta {
-  if (delta == 0) {
-    [self reload];
-    return;
-  }
-
-  // Abort if there is nothing next in the history.
-  // Note that it is NOT checked that the history depth is at least |delta|.
-  if ((delta < 0 && ![self canGoBack]) || (delta > 0 && ![self canGoForward])) {
-    return;
-  }
-
-  if (delta >= 0 || !_webStateImpl->IsShowingWebInterstitial()) {
+  if (!_webStateImpl->IsShowingWebInterstitial())
     [self recordStateInHistory];
-  }
+  CRWSessionEntry* fromEntry = self.sessionController.currentEntry;
 
-  CRWSessionController* sessionController =
-      _webStateImpl->GetNavigationManagerImpl().GetSessionController();
-  // fromEntry is retained because it has the potential to be released
-  // by goDelta: if it has not been committed.
-  base::scoped_nsobject<CRWSessionEntry> fromEntry(
-      [[sessionController currentEntry] retain]);
-  [sessionController goDelta:delta];
-  if (fromEntry) {
-    [self finishHistoryNavigationFromEntry:fromEntry];
+  NSUserDefaults* userDefaults = [NSUserDefaults standardUserDefaults];
+  if ([userDefaults boolForKey:@"PendingIndexNavigationEnabled"]) {
+    [_delegate webWillFinishHistoryNavigationFromEntry:fromEntry];
+
+    BOOL sameDocumentNavigation =
+        [sessionController isSameDocumentNavigationBetweenEntry:fromEntry
+                                                       andEntry:entries[index]];
+    if (sameDocumentNavigation) {
+      [self.sessionController goToEntryAtIndex:index];
+      [self updateHTML5HistoryState];
+    } else {
+      [sessionController discardNonCommittedEntries];
+      [sessionController setPendingEntryIndex:index];
+
+      web::NavigationItemImpl* pendingItem =
+          sessionController.pendingEntry.navigationItemImpl;
+      pendingItem->SetTransitionType(ui::PageTransitionFromInt(
+          pendingItem->GetTransitionType() | ui::PAGE_TRANSITION_FORWARD_BACK));
+
+      [self loadCurrentURL];
+    }
+  } else {
+    [self.sessionController goToEntryAtIndex:index];
+    if (fromEntry)
+      [self finishHistoryNavigationFromEntry:fromEntry];
   }
 }
 
@@ -2396,6 +2400,22 @@ const NSTimeInterval kSnapshotOverlayTransition = 0.5;
   _webStateImpl->SetIsLoading(false);
   // Inform the embedder the load completed.
   [_delegate webDidFinishWithURL:currentURL loadSuccess:loadSuccess];
+}
+
+- (void)goDelta:(int)delta {
+  if (_isBeingDestroyed)
+    return;
+
+  if (delta == 0) {
+    [self reload];
+    return;
+  }
+
+  web::NavigationManagerImpl& navigationManager =
+      _webStateImpl->GetNavigationManagerImpl();
+  if (navigationManager.CanGoToOffset(delta)) {
+    [self goToItemAtIndex:navigationManager.GetIndexForOffset(delta)];
+  }
 }
 
 - (void)finishHistoryNavigationFromEntry:(CRWSessionEntry*)fromEntry {
@@ -2665,7 +2685,11 @@ const NSTimeInterval kSnapshotOverlayTransition = 0.5;
 }
 
 - (BOOL)respondToWKScriptMessage:(WKScriptMessage*)scriptMessage {
-  CHECK(scriptMessage.frameInfo.mainFrame);
+  if (!scriptMessage.frameInfo.mainFrame) {
+    // Messages from iframes are not currently supported.
+    return NO;
+  }
+
   int errorCode = 0;
   std::string errorMessage;
   std::unique_ptr<base::Value> inputJSONData(
@@ -3033,13 +3057,13 @@ const NSTimeInterval kSnapshotOverlayTransition = 0.5;
 
 - (BOOL)handleWindowHistoryBackMessage:(base::DictionaryValue*)message
                                context:(NSDictionary*)context {
-  [self goBack];
+  [self goDelta:-1];
   return YES;
 }
 
 - (BOOL)handleWindowHistoryForwardMessage:(base::DictionaryValue*)message
                                   context:(NSDictionary*)context {
-  [self goForward];
+  [self goDelta:1];
   return YES;
 }
 
@@ -3557,6 +3581,15 @@ const NSTimeInterval kSnapshotOverlayTransition = 0.5;
       net::GURLWithNSURL(error.userInfo[NSURLErrorFailingURLErrorKey]);
   if (web::GetWebClient()->IsAppSpecificURL(errorURL))
     return NO;
+
+  if (self.sessionController.pendingEntryIndex != -1 &&
+      ![self isLoadRequestPendingForURL:errorURL]) {
+    // Do not cancel the load if there is a pending back forward navigation for
+    // another URL (Back forward happened in the middle of WKWebView
+    // navigation).
+    return NO;
+  }
+
   // Don't cancel NSURLErrorCancelled errors originating from navigation
   // as the WKWebView will automatically retry these loads.
   WKWebViewErrorSource source = WKWebViewErrorSourceFromError(error);
@@ -4537,16 +4570,11 @@ const NSTimeInterval kSnapshotOverlayTransition = 0.5;
   NSString* host = base::SysUTF8ToNSString(_documentURL.host());
   BOOL hasOnlySecureContent = [_webView hasOnlySecureContent];
   base::ScopedCFTypeRef<SecTrustRef> trust;
-// TODO(crbug.com/628696): Remove these guards after moving to iOS10 SDK.
-#if defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
   if (base::ios::IsRunningOnIOS10OrLater()) {
     trust.reset([_webView serverTrust], base::scoped_policy::RETAIN);
   } else {
     trust = web::CreateServerTrustFromChain([_webView certificateChain], host);
   }
-#else
-  trust = web::CreateServerTrustFromChain([_webView certificateChain], host);
-#endif
 
   [_SSLStatusUpdater updateSSLStatusForNavigationItem:currentNavItem
                                          withCertHost:host
@@ -5384,13 +5412,16 @@ const NSTimeInterval kSnapshotOverlayTransition = 0.5;
   GURL webViewURL = net::GURLWithNSURL([_webView URL]);
 
   // For failed navigations, WKWebView will sometimes revert to the previous URL
-  // before resettings its |isLoading| property to NO.  If this is the first
-  // navigation for the web view, this will result in an empty URL.
-  if (webViewURL.is_empty() || webViewURL == _documentURL)
+  // before committing the current navigation or resetting the web view's
+  // |isLoading| property to NO.  If this is the first navigation for the web
+  // view, this will result in an empty URL.
+  BOOL navigationWasCommitted = _loadPhase != web::LOAD_REQUESTED;
+  if (!navigationWasCommitted &&
+      (webViewURL.is_empty() || webViewURL == _documentURL)) {
     return;
+  }
 
-  if (_loadPhase == web::LOAD_REQUESTED &&
-      ![_pendingNavigationInfo cancelled]) {
+  if (!navigationWasCommitted && ![_pendingNavigationInfo cancelled]) {
     // A fast back/forward within the same origin does not call
     // |didCommitNavigation:|, so signal page change explicitly.
     DCHECK_EQ(_documentURL.GetOrigin(), webViewURL.GetOrigin());

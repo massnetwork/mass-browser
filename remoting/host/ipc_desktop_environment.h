@@ -82,8 +82,8 @@ class IpcDesktopEnvironmentFactory
 
   // DesktopEnvironmentFactory implementation.
   std::unique_ptr<DesktopEnvironment> Create(
-      base::WeakPtr<ClientSessionControl> client_session_control) override;
-  void SetEnableCurtaining(bool enable) override;
+      base::WeakPtr<ClientSessionControl> client_session_control,
+      const DesktopEnvironmentOptions& options) override;
   bool SupportsAudioCapture() const override;
 
   // DesktopSessionConnector implementation.
@@ -95,6 +95,7 @@ class IpcDesktopEnvironmentFactory
                            const ScreenResolution& resolution) override;
   void OnDesktopSessionAgentAttached(
       int terminal_id,
+      int session_id,
       const IPC::ChannelHandle& desktop_pipe) override;
   void OnTerminalDisconnected(int terminal_id) override;
 
@@ -108,9 +109,6 @@ class IpcDesktopEnvironmentFactory
 
   // Task runner used for running background I/O.
   scoped_refptr<base::SingleThreadTaskRunner> io_task_runner_;
-
-  // True if curtain mode is enabled.
-  bool curtain_enabled_ = false;
 
   // IPC channel connected to the daemon process.
   IPC::Sender* daemon_channel_;

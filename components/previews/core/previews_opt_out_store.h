@@ -17,14 +17,13 @@
 #include "components/previews/core/previews_black_list_item.h"
 #include "components/previews/core/previews_experiments.h"
 
-class GURL;
-
 namespace previews {
 
 typedef std::unordered_map<std::string, std::unique_ptr<PreviewsBlackListItem>>
     BlackListItemMap;
 
-typedef base::Callback<void(std::unique_ptr<BlackListItemMap>)>
+typedef base::Callback<void(std::unique_ptr<BlackListItemMap>,
+                            std::unique_ptr<PreviewsBlackListItem>)>
     LoadBlackListCallback;
 
 // PreviewsOptOutStore keeps opt out information for the previews.

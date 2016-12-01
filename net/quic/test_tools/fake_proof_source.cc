@@ -15,7 +15,7 @@ FakeProofSource::FakeProofSource()
 
 FakeProofSource::~FakeProofSource() {}
 
-FakeProofSource::Params::Params(const IPAddress& server_ip,
+FakeProofSource::Params::Params(const QuicIpAddress& server_ip,
                                 std::string hostname,
                                 std::string server_config,
                                 QuicVersion quic_version,
@@ -41,23 +41,22 @@ void FakeProofSource::Activate() {
   active_ = true;
 }
 
-bool FakeProofSource::GetProof(const IPAddress& server_ip,
+bool FakeProofSource::GetProof(const QuicIpAddress& server_ip,
                                const string& hostname,
                                const string& server_config,
                                QuicVersion quic_version,
                                StringPiece chlo_hash,
                                const QuicTagVector& connection_options,
                                scoped_refptr<ProofSource::Chain>* out_chain,
-                               string* out_signature,
-                               string* out_leaf_cert_sct) {
+                               QuicCryptoProof* out_proof) {
   LOG(WARNING) << "Synchronous GetProof called";
   return delegate_->GetProof(server_ip, hostname, server_config, quic_version,
                              chlo_hash, connection_options, out_chain,
-                             out_signature, out_leaf_cert_sct);
+                             out_proof);
 }
 
 void FakeProofSource::GetProof(
-    const IPAddress& server_ip,
+    const QuicIpAddress& server_ip,
     const string& hostname,
     const string& server_config,
     QuicVersion quic_version,
@@ -66,13 +65,10 @@ void FakeProofSource::GetProof(
     std::unique_ptr<ProofSource::Callback> callback) {
   if (!active_) {
     scoped_refptr<Chain> chain;
-    string signature;
-    string leaf_cert_sct;
-    const bool ok =
-        GetProof(server_ip, hostname, server_config, quic_version, chlo_hash,
-                 connection_options, &chain, &signature, &leaf_cert_sct);
-    callback->Run(ok, chain, signature, leaf_cert_sct,
-                  /* details = */ nullptr);
+    QuicCryptoProof proof;
+    const bool ok = GetProof(server_ip, hostname, server_config, quic_version,
+                             chlo_hash, connection_options, &chain, &proof);
+    callback->Run(ok, chain, proof, /* details = */ nullptr);
     return;
   }
 
@@ -92,15 +88,13 @@ void FakeProofSource::InvokePendingCallback(int n) {
   const Params& params = params_[n];
 
   scoped_refptr<ProofSource::Chain> chain;
-  string signature;
-  string leaf_cert_sct;
+  QuicCryptoProof proof;
   const bool ok = delegate_->GetProof(
       params.server_ip, params.hostname, params.server_config,
       params.quic_version, params.chlo_hash, params.connection_options, &chain,
-      &signature, &leaf_cert_sct);
+      &proof);
 
-  params.callback->Run(ok, chain, signature, leaf_cert_sct,
-                       /* details = */ nullptr);
+  params.callback->Run(ok, chain, proof, /* details = */ nullptr);
   auto it = params_.begin() + n;
   params_.erase(it);
 }

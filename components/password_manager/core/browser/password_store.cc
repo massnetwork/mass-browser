@@ -26,18 +26,6 @@ using autofill::PasswordForm;
 
 namespace password_manager {
 
-namespace {
-
-// http://crbug.com/404012. Let's see where the empty fields come from.
-void CheckForEmptyUsernameAndPassword(const PasswordForm& form) {
-  if (form.username_value.empty() &&
-      form.password_value.empty() &&
-      !form.blacklisted_by_user)
-    base::debug::DumpWithoutCrashing();
-}
-
-}  // namespace
-
 PasswordStore::GetLoginsRequest::GetLoginsRequest(
     PasswordStoreConsumer* consumer)
     : consumer_weak_(consumer->GetWeakPtr()) {
@@ -107,19 +95,16 @@ void PasswordStore::SetAffiliatedMatchHelper(
 }
 
 void PasswordStore::AddLogin(const PasswordForm& form) {
-  CheckForEmptyUsernameAndPassword(form);
   ScheduleTask(base::Bind(&PasswordStore::AddLoginInternal, this, form));
 }
 
 void PasswordStore::UpdateLogin(const PasswordForm& form) {
-  CheckForEmptyUsernameAndPassword(form);
   ScheduleTask(base::Bind(&PasswordStore::UpdateLoginInternal, this, form));
 }
 
 void PasswordStore::UpdateLoginWithPrimaryKey(
     const autofill::PasswordForm& new_form,
     const autofill::PasswordForm& old_primary_key) {
-  CheckForEmptyUsernameAndPassword(new_form);
   ScheduleTask(base::Bind(&PasswordStore::UpdateLoginWithPrimaryKeyInternal,
                           this, new_form, old_primary_key));
 }
@@ -507,12 +492,6 @@ void PasswordStore::GetLoginsWithAffiliationsImpl(
         FillMatchingLogins({PasswordForm::SCHEME_HTML, realm, GURL()}));
     for (auto& result : more_results)
       result->is_affiliation_based_match = true;
-    more_results.erase(
-        std::remove_if(more_results.begin(), more_results.end(),
-                       [](const std::unique_ptr<PasswordForm>& result) {
-                         return !result->federation_origin.unique();
-                       }),
-        more_results.end());
     password_manager_util::TrimUsernameOnlyCredentials(&more_results);
     const size_t results_count = results.size();
     results.resize(results_count + more_results.size());

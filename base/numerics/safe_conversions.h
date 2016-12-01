@@ -7,10 +7,10 @@
 
 #include <stddef.h>
 
+#include <cassert>
 #include <limits>
 #include <type_traits>
 
-#include "base/logging.h"
 #include "base/numerics/safe_conversions_impl.h"
 
 namespace base {
@@ -41,28 +41,37 @@ constexpr typename std::enable_if<!std::numeric_limits<T>::is_signed,
   return false;
 }
 
-// checked_cast<> is analogous to static_cast<> for numeric types,
-// except that it CHECKs that the specified numeric conversion will not
-// overflow or underflow. NaN source will always trigger a CHECK.
-template <typename Dst, typename Src>
-inline Dst checked_cast(Src value) {
-  CHECK(IsValueInRangeForNumericType<Dst>(value));
-  return static_cast<Dst>(value);
-}
-
-// HandleNaN will cause this class to CHECK(false).
-struct SaturatedCastNaNBehaviorCheck {
+// Forces a crash, like a CHECK(false). Used for numeric boundary errors.
+struct CheckOnFailure {
   template <typename T>
-  static T HandleNaN() {
-    CHECK(false);
+  static T HandleFailure() {
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin_trap();
+#else
+    ((void)(*(volatile char*)0 = 0));
+#endif
     return T();
   }
 };
 
+// checked_cast<> is analogous to static_cast<> for numeric types,
+// except that it CHECKs that the specified numeric conversion will not
+// overflow or underflow. NaN source will always trigger a CHECK.
+template <typename Dst,
+          class CheckHandler = CheckOnFailure,
+          typename Src>
+constexpr Dst checked_cast(Src value) {
+  // This throws a compile-time error on evaluating the constexpr if it can be
+  // determined at compile-time as failing, otherwise it will CHECK at runtime.
+  return IsValueInRangeForNumericType<Dst>(value)
+             ? static_cast<Dst>(value)
+             : CheckHandler::template HandleFailure<Dst>();
+}
+
 // HandleNaN will return 0 in this case.
 struct SaturatedCastNaNBehaviorReturnZero {
   template <typename T>
-  static constexpr T HandleNaN() {
+  static constexpr T HandleFailure() {
     return T();
   }
 };
@@ -70,6 +79,7 @@ struct SaturatedCastNaNBehaviorReturnZero {
 namespace internal {
 // This wrapper is used for C++11 constexpr support by avoiding the declaration
 // of local variables in the saturated_cast template function.
+// TODO(jschuh): convert this back to a switch once we support C++14.
 template <typename Dst, class NaNHandler, typename Src>
 constexpr Dst saturated_cast_impl(const Src value,
                                   const RangeConstraint constraint) {
@@ -79,9 +89,7 @@ constexpr Dst saturated_cast_impl(const Src value,
                     ? std::numeric_limits<Dst>::min()
                     : (constraint == RANGE_OVERFLOW
                            ? std::numeric_limits<Dst>::max()
-                           : (constraint == RANGE_INVALID
-                                  ? NaNHandler::template HandleNaN<Dst>()
-                                  : (NOTREACHED(), static_cast<Dst>(value)))));
+                           : NaNHandler::template HandleFailure<Dst>()));
 }
 }  // namespace internal
 

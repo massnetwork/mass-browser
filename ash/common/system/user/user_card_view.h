@@ -23,16 +23,19 @@ class UserCardView : public views::View {
   ~UserCardView() override;
 
   // views::View overrides.
-  void GetAccessibleState(ui::AXViewState* state) override;
+  void PaintChildren(const ui::PaintContext& context) override;
+  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
 
  private:
   // Creates the content for the public mode.
   void AddPublicModeUserContent(int max_width);
 
-  void AddUserContent(LoginStatus login_status, int user_index);
+  void AddUserContent(LoginStatus login_status);
+  void AddUserContentMd(LoginStatus login_status);
 
-  // Create a user icon representation.
-  views::View* CreateIcon(LoginStatus login_status, int user_index);
+  bool is_active_user() const { return !user_index_; }
+
+  int user_index_;
 
   DISALLOW_COPY_AND_ASSIGN(UserCardView);
 };

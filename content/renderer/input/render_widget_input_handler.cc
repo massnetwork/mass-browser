@@ -24,6 +24,7 @@
 #include "content/renderer/render_widget.h"
 #include "third_party/WebKit/public/platform/WebFloatPoint.h"
 #include "third_party/WebKit/public/platform/WebFloatSize.h"
+#include "third_party/WebKit/public/platform/WebGestureEvent.h"
 #include "third_party/WebKit/public/platform/scheduler/renderer/renderer_scheduler.h"
 #include "ui/events/blink/web_input_event_traits.h"
 #include "ui/events/latency_info.h"
@@ -405,8 +406,8 @@ void RenderWidgetInputHandler::HandleInputEvent(
   if ((dispatch_type == DISPATCH_TYPE_BLOCKING ||
        dispatch_type == DISPATCH_TYPE_BLOCKING_NOTIFY_MAIN)) {
     std::unique_ptr<InputEventAck> response(new InputEventAck(
-        input_event.type, ack_result, swap_latency_info,
-        std::move(event_overscroll),
+        InputEventAckSource::MAIN_THREAD, input_event.type, ack_result,
+        swap_latency_info, std::move(event_overscroll),
         ui::WebInputEventTraits::GetUniqueTouchEventId(input_event)));
     delegate_->OnInputEventAck(std::move(response));
   } else {

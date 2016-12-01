@@ -32,6 +32,7 @@
 #define TestingPlatformSupport_h
 
 #include "platform/PlatformExport.h"
+#include "platform/WebTaskRunner.h"
 #include "public/platform/Platform.h"
 #include "public/platform/WebCompositorSupport.h"
 #include "public/platform/WebScheduler.h"
@@ -57,7 +58,6 @@ namespace scheduler {
 class RendererScheduler;
 class RendererSchedulerImpl;
 }
-class TestingPlatformMockWebTaskRunner;
 class WebCompositorSupport;
 class WebThread;
 
@@ -91,8 +91,8 @@ class TestingPlatformMockScheduler : public WebScheduler {
   void runAllTasks();
 
   // WebScheduler implementation:
-  WebTaskRunner* loadingTaskRunner() override;
-  WebTaskRunner* timerTaskRunner() override;
+  WebTaskRunner* loadingTaskRunner() override { return nullptr; }
+  WebTaskRunner* timerTaskRunner() override { return nullptr; }
   void shutdown() override {}
   bool shouldYieldForHighPriorityWork() override { return false; }
   bool canExceedIdleDeadlineIfRequired() override { return false; }
@@ -100,7 +100,8 @@ class TestingPlatformMockScheduler : public WebScheduler {
   void postNonNestableIdleTask(const WebTraceLocation&,
                                WebThread::IdleTask*) override {}
   std::unique_ptr<WebViewScheduler> createWebViewScheduler(
-      InterventionReporter*) override {
+      InterventionReporter*,
+      WebViewScheduler::WebViewSchedulerSettings*) override {
     return nullptr;
   }
   void suspendTimerQueue() override {}
@@ -111,7 +112,6 @@ class TestingPlatformMockScheduler : public WebScheduler {
 
  private:
   WTF::Deque<std::unique_ptr<WebTaskRunner::Task>> m_tasks;
-  std::unique_ptr<TestingPlatformMockWebTaskRunner> m_mockWebTaskRunner;
 };
 
 class TestingPlatformSupport : public Platform {
@@ -135,16 +135,18 @@ class TestingPlatformSupport : public Platform {
   WebClipboard* clipboard() override;
   WebFileUtilities* fileUtilities() override;
   WebIDBFactory* idbFactory() override;
-  WebMimeRegistry* mimeRegistry() override;
   WebURLLoaderMockFactory* getURLLoaderMockFactory() override;
   blink::WebURLLoader* createURLLoader() override;
-
   WebData loadResource(const char* name) override;
   WebURLError cancelledError(const WebURL&) const override;
+  InterfaceProvider* interfaceProvider() override;
 
  protected:
+  class TestingInterfaceProvider;
+
   const Config m_config;
   Platform* const m_oldPlatform;
+  std::unique_ptr<TestingInterfaceProvider> m_interfaceProvider;
 };
 
 class TestingPlatformSupportWithMockScheduler : public TestingPlatformSupport {

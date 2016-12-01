@@ -202,12 +202,11 @@ TestWindow WindowDataToTestWindow(const mojom::WindowDataPtr& data) {
   window.parent_id = data->parent_id;
   window.window_id = data->window_id;
   window.visible = data->visible;
-  window.properties =
-      data->properties.To<std::map<std::string, std::vector<uint8_t>>>();
+  window.properties = mojo::UnorderedMapToMap(data->properties);
   return window;
 }
 
-void WindowDatasToTestWindows(const Array<mojom::WindowDataPtr>& data,
+void WindowDatasToTestWindows(const std::vector<mojom::WindowDataPtr>& data,
                               std::vector<TestWindow>* test_windows) {
   for (size_t i = 0; i < data.size(); ++i)
     test_windows->push_back(WindowDataToTestWindow(data[i]));
@@ -428,14 +427,12 @@ void TestChangeTracker::OnTopLevelCreated(uint32_t change_id,
 void TestChangeTracker::OnWindowSurfaceChanged(
     Id window_id,
     const cc::SurfaceId& surface_id,
-    const cc::SurfaceSequence& surface_sequence,
     const gfx::Size& frame_size,
     float device_scale_factor) {
   Change change;
   change.type = CHANGE_TYPE_SURFACE_CHANGED;
   change.window_id = window_id;
   change.surface_id = surface_id;
-  change.surface_sequence = surface_sequence;
   change.frame_size = frame_size;
   change.device_scale_factor = device_scale_factor;
   AddChange(change);

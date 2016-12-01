@@ -168,10 +168,6 @@ class NET_EXPORT_PRIVATE QuicStreamSequencerBuffer {
   // Count how many bytes are in buffer at this moment.
   size_t BytesBuffered() const;
 
-  bool reduce_sequencer_buffer_memory_life_time() const {
-    return reduce_sequencer_buffer_memory_life_time_;
-  }
-
  private:
   friend class test::QuicStreamSequencerBufferPeer;
 
@@ -241,10 +237,6 @@ class NET_EXPORT_PRIVATE QuicStreamSequencerBuffer {
   // Contains Gaps which represents currently missing data.
   std::list<Gap> gaps_;
 
-  // If true, allocate buffer memory upon the first frame arrival and release
-  // the memory when stream is read closed.
-  bool reduce_sequencer_buffer_memory_life_time_;
-
   // An ordered, variable-length list of blocks, with the length limited
   // such that the number of blocks never exceeds blocks_count_.
   // Each list entry can hold up to kBlockSizeBytes bytes.
@@ -255,6 +247,11 @@ class NET_EXPORT_PRIVATE QuicStreamSequencerBuffer {
 
   // Stores all the buffered frames' start offset, length and arrival time.
   std::map<QuicStreamOffset, FrameInfo> frame_arrival_time_map_;
+
+  // For debugging use after free, assigned to 123456 in constructor and 654321
+  // in destructor. As long as it's not 123456, this means either use after free
+  // or memory corruption.
+  int32_t destruction_indicator_;
 
   DISALLOW_COPY_AND_ASSIGN(QuicStreamSequencerBuffer);
 };

@@ -10,11 +10,12 @@
 #include "ash/common/system/tray/fixed_sized_image_view.h"
 #include "ash/common/system/tray/tray_constants.h"
 #include "ash/common/system/tray/tray_popup_item_style.h"
+#include "ash/common/system/tray/tray_popup_utils.h"
 #include "base/i18n/number_formatting.h"
 #include "base/i18n/time_formatting.h"
 #include "base/strings/utf_string_conversions.h"
 #include "grit/ash_strings.h"
-#include "ui/accessibility/ax_view_state.h"
+#include "ui/accessibility/ax_node_data.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/native_theme/native_theme.h"
 #include "ui/views/controls/image_view.h"
@@ -92,8 +93,7 @@ void PowerStatusView::LayoutView() {
   SetLayoutManager(layout);
 
   if (!material_design) {
-    icon_ = new ash::FixedSizedImageView(
-        0, GetTrayConstant(TRAY_POPUP_ITEM_HEIGHT));
+    icon_ = TrayPopupUtils::CreateMainImageView();
     AddChildView(icon_);
   }
 
@@ -157,11 +157,11 @@ void PowerStatusView::ChildPreferredSizeChanged(views::View* child) {
 
 gfx::Size PowerStatusView::GetPreferredSize() const {
   gfx::Size size = views::View::GetPreferredSize();
-  return gfx::Size(size.width(), GetTrayConstant(TRAY_POPUP_ITEM_HEIGHT));
+  return gfx::Size(size.width(), GetTrayConstant(TRAY_POPUP_ITEM_MIN_HEIGHT));
 }
 
 int PowerStatusView::GetHeightForWidth(int width) const {
-  return GetTrayConstant(TRAY_POPUP_ITEM_HEIGHT);
+  return GetTrayConstant(TRAY_POPUP_ITEM_MIN_HEIGHT);
 }
 
 void PowerStatusView::Layout() {
@@ -180,12 +180,12 @@ void PowerStatusView::OnNativeThemeChanged(const ui::NativeTheme* theme) {
   UpdateStyle();
 }
 
-void PowerStatusView::GetAccessibleState(ui::AXViewState* state) {
+void PowerStatusView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
   if (!MaterialDesignController::IsSystemTrayMenuMaterial())
     return;
 
-  state->role = ui::AX_ROLE_LABEL_TEXT;
-  state->name = accessible_name_;
+  node_data->role = ui::AX_ROLE_LABEL_TEXT;
+  node_data->SetName(accessible_name_);
 }
 
 }  // namespace ash

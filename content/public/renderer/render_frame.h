@@ -15,17 +15,15 @@
 #include "content/public/common/console_message_level.h"
 #include "ipc/ipc_listener.h"
 #include "ipc/ipc_sender.h"
+#include "ppapi/features/features.h"
 #include "third_party/WebKit/public/platform/WebPageVisibilityState.h"
 #include "third_party/WebKit/public/web/WebNavigationPolicy.h"
-
-class GURL;
 
 namespace blink {
 class WebFrame;
 class WebLocalFrame;
 class WebPlugin;
 class WebURLRequest;
-class WebURLResponse;
 struct WebPluginParams;
 }
 
@@ -166,7 +164,7 @@ class CONTENT_EXPORT RenderFrame : public IPC::Listener,
   // RenderFrameHost.
   virtual AssociatedInterfaceProvider* GetRemoteAssociatedInterfaces() = 0;
 
-#if defined(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PLUGINS)
   // Registers a plugin that has been marked peripheral. If the origin
   // whitelist is later updated and includes |content_origin|, then
   // |unthrottle_callback| will be called.

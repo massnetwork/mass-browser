@@ -19,8 +19,6 @@ class BrowserContext;
 
 namespace offline_pages {
 
-struct OfflinePageItem;
-
 namespace android {
 
 /**
@@ -62,6 +60,19 @@ class OfflinePageEvaluationBridge : public OfflinePageModel::Observer,
   bool PushRequestProcessing(
       JNIEnv* env,
       const base::android::JavaParamRef<jobject>& obj,
+      const base::android::JavaParamRef<jobject>& j_callback_obj);
+
+  // Gets all the requests in the queue.
+  void GetRequestsInQueue(
+      JNIEnv* env,
+      const base::android::JavaParamRef<jobject>& obj,
+      const base::android::JavaParamRef<jobject>& j_callback_obj);
+
+  // Removes the requests from the queue.
+  void RemoveRequestsFromQueue(
+      JNIEnv* env,
+      const base::android::JavaParamRef<jobject>& obj,
+      const base::android::JavaParamRef<jlongArray>& j_request_ids,
       const base::android::JavaParamRef<jobject>& j_callback_obj);
 
   void SavePageLater(JNIEnv* env,

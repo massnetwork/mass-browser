@@ -101,6 +101,10 @@ void DeviceCloudPolicyInitializer::StartEnrollment(
   DCHECK(!enrollment_handler_);
 
   manager_->core()->Disconnect();
+  // TODO(rsorokin): make proper SetDeviceRequisition
+  if (!enrollment_config.management_realm.empty())
+    manager_->SetDeviceRequisition("chrome_ad");
+
   enrollment_handler_.reset(new EnrollmentHandlerChromeOS(
       device_store_, install_attributes_, state_keys_broker_,
       attestation_flow_.get(), CreateClient(device_management_service),
@@ -147,7 +151,8 @@ EnrollmentConfig DeviceCloudPolicyInitializer::GetPrescribedEnrollmentConfig()
       config.auth_mechanism == EnrollmentConfig::AUTH_MECHANISM_BEST_AVAILABLE)
     config.auth_mechanism = EnrollmentConfig::AUTH_MECHANISM_INTERACTIVE;
   // If OOBE is done and we are enrolled, check for need to recover enrollment.
-  if (oobe_complete && install_attributes_->IsEnterpriseDevice()) {
+  // Enrollment recovery is not implemented for Active Directory.
+  if (oobe_complete && install_attributes_->IsCloudManaged()) {
     // Regardless what mode is applicable, the enrollment domain is fixed.
     config.management_domain = install_attributes_->GetDomain();
 

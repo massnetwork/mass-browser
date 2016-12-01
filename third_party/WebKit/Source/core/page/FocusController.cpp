@@ -51,7 +51,7 @@
 #include "core/html/HTMLPlugInElement.h"
 #include "core/html/HTMLShadowElement.h"
 #include "core/html/HTMLSlotElement.h"
-#include "core/html/HTMLTextFormControlElement.h"
+#include "core/html/TextControlElement.h"
 #include "core/input/EventHandler.h"
 #include "core/page/ChromeClient.h"
 #include "core/page/FrameTree.h"
@@ -346,7 +346,7 @@ inline void dispatchEventsOnWindowAndFocusedElement(Document* document,
   // Do not fire events while modal dialogs are up.  See
   // https://bugs.webkit.org/show_bug.cgi?id=33962
   if (Page* page = document->page()) {
-    if (page->defersLoading())
+    if (page->suspended())
       return;
   }
 
@@ -426,15 +426,16 @@ Element* findElementWithExactTabIndex(ScopedFocusNavigation& scope,
 Element* nextElementWithGreaterTabIndex(ScopedFocusNavigation& scope,
                                         int tabIndex) {
   // Search is inclusive of start
-  int winningTabIndex = std::numeric_limits<short>::max() + 1;
+  int winningTabIndex = std::numeric_limits<int>::max();
   Element* winner = nullptr;
   for (; scope.currentElement(); scope.moveToNext()) {
     Element* current = scope.currentElement();
     int currentTabIndex = adjustedTabIndex(*current);
-    if (shouldVisit(*current) && currentTabIndex > tabIndex &&
-        currentTabIndex < winningTabIndex) {
-      winner = current;
-      winningTabIndex = currentTabIndex;
+    if (shouldVisit(*current) && currentTabIndex > tabIndex) {
+      if (!winner || currentTabIndex < winningTabIndex) {
+        winner = current;
+        winningTabIndex = currentTabIndex;
+      }
     }
   }
   return winner;
@@ -533,8 +534,7 @@ Element* previousFocusableElement(ScopedFocusNavigation& scope) {
   // 1) has the highest non-zero tabindex (that is less than start's tabindex),
   //    and
   // 2) comes last in the scope, if there's a tie.
-  tabIndex =
-      (current && tabIndex) ? tabIndex : std::numeric_limits<short>::max();
+  tabIndex = (current && tabIndex) ? tabIndex : std::numeric_limits<int>::max();
   scope.moveToLast();
   return previousElementWithLowerTabIndex(scope, tabIndex);
 }
@@ -1095,7 +1095,7 @@ static void clearSelectionIfNeeded(LocalFrame* oldFocusedFrame,
       selectionStartNode->isDescendantOf(newFocusedElement))
     return;
 
-  if (!enclosingTextFormControl(selectionStartNode))
+  if (!enclosingTextControl(selectionStartNode))
     return;
 
   if (selectionStartNode->isInShadowTree() &&

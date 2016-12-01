@@ -14,7 +14,7 @@ namespace chromeos {
 
 namespace {
 // Minimum power for a USB power source to be classified as AC.
-const double kUsbMinAcWatts = 24;
+constexpr double kUsbMinAcWatts = 24;
 }
 
 FakePowerManagerClient::FakePowerManagerClient()
@@ -22,11 +22,11 @@ FakePowerManagerClient::FakePowerManagerClient()
       num_request_shutdown_calls_(0),
       num_set_policy_calls_(0),
       num_set_is_projecting_calls_(0),
+      num_set_backlights_forced_off_calls_(0),
       num_pending_suspend_readiness_callbacks_(0),
       is_projecting_(false),
       backlights_forced_off_(false),
-      weak_ptr_factory_(this) {
-}
+      weak_ptr_factory_(this) {}
 
 FakePowerManagerClient::~FakePowerManagerClient() {
 }
@@ -137,6 +137,7 @@ void FakePowerManagerClient::SetPowerSource(const std::string& id) {
 
 void FakePowerManagerClient::SetBacklightsForcedOff(bool forced_off) {
   backlights_forced_off_ = forced_off;
+  ++num_set_backlights_forced_off_calls_;
 }
 
 void FakePowerManagerClient::GetBacklightsForcedOff(
@@ -181,6 +182,12 @@ void FakePowerManagerClient::SendSuspendDone() {
 void FakePowerManagerClient::SendDarkSuspendImminent() {
   for (auto& observer : observers_)
     observer.DarkSuspendImminent();
+}
+
+void FakePowerManagerClient::SendBrightnessChanged(int level,
+                                                   bool user_initiated) {
+  for (auto& observer : observers_)
+    observer.BrightnessChanged(level, user_initiated);
 }
 
 void FakePowerManagerClient::SendPowerButtonEvent(

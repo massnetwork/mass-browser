@@ -159,7 +159,7 @@ void WmWindowAura::SetName(const char* name) {
 }
 
 std::string WmWindowAura::GetName() const {
-  return window_->name();
+  return window_->GetName();
 }
 
 void WmWindowAura::SetTitle(const base::string16& title) {
@@ -167,7 +167,7 @@ void WmWindowAura::SetTitle(const base::string16& title) {
 }
 
 base::string16 WmWindowAura::GetTitle() const {
-  return window_->title();
+  return window_->GetTitle();
 }
 
 void WmWindowAura::SetShellWindowId(int id) {
@@ -292,6 +292,9 @@ bool WmWindowAura::IsSystemModal() const {
 
 bool WmWindowAura::GetBoolProperty(WmWindowProperty key) {
   switch (key) {
+    case WmWindowProperty::DRAW_ATTENTION:
+      return window_->GetProperty(aura::client::kDrawAttentionKey);
+
     case WmWindowProperty::SNAP_CHILDREN_TO_PIXEL_BOUNDARY:
       return window_->GetProperty(kSnapChildrenToPixelBoundary);
 
@@ -330,9 +333,6 @@ int WmWindowAura::GetIntProperty(WmWindowProperty key) {
   if (key == WmWindowProperty::MODAL_TYPE)
     return window_->GetProperty(aura::client::kModalKey);
 
-  if (key == WmWindowProperty::SHELF_ICON_RESOURCE_ID)
-    return window_->GetProperty(kShelfIconResourceIdKey);
-
   if (key == WmWindowProperty::SHELF_ID)
     return window_->GetProperty(kShelfIDKey);
 
@@ -347,10 +347,6 @@ int WmWindowAura::GetIntProperty(WmWindowProperty key) {
 }
 
 void WmWindowAura::SetIntProperty(WmWindowProperty key, int value) {
-  if (key == WmWindowProperty::SHELF_ICON_RESOURCE_ID) {
-    window_->SetProperty(kShelfIconResourceIdKey, value);
-    return;
-  }
   if (key == WmWindowProperty::SHELF_ID) {
     window_->SetProperty(kShelfIDKey, value);
     return;
@@ -365,6 +361,36 @@ void WmWindowAura::SetIntProperty(WmWindowProperty key, int value) {
   }
 
   NOTREACHED();
+}
+
+std::string WmWindowAura::GetStringProperty(WmWindowProperty key) {
+  if (key == WmWindowProperty::APP_ID) {
+    std::string* value = window_->GetProperty(aura::client::kAppIdKey);
+    return value ? *value : std::string();
+  }
+
+  NOTREACHED();
+  return std::string();
+}
+
+void WmWindowAura::SetStringProperty(WmWindowProperty key,
+                                     const std::string& value) {
+  if (key == WmWindowProperty::APP_ID) {
+    window_->SetProperty(aura::client::kAppIdKey, new std::string(value));
+    return;
+  }
+
+  NOTREACHED();
+}
+
+gfx::ImageSkia WmWindowAura::GetWindowIcon() {
+  gfx::ImageSkia* image = window_->GetProperty(aura::client::kWindowIconKey);
+  return image ? *image : gfx::ImageSkia();
+}
+
+gfx::ImageSkia WmWindowAura::GetAppIcon() {
+  gfx::ImageSkia* image = window_->GetProperty(aura::client::kAppIconKey);
+  return image ? *image : gfx::ImageSkia();
 }
 
 const wm::WindowState* WmWindowAura::GetWindowState() const {
@@ -403,6 +429,10 @@ const WmWindow* WmWindowAura::GetTransientParent() const {
 
 std::vector<WmWindow*> WmWindowAura::GetTransientChildren() {
   return FromAuraWindows(::wm::GetTransientChildren(window_));
+}
+
+bool WmWindowAura::MoveToEventRoot(const ui::Event& event) {
+  return ash::wm::MoveWindowToEventRoot(window_, event);
 }
 
 void WmWindowAura::SetLayoutManager(
@@ -839,12 +869,14 @@ void WmWindowAura::OnWindowPropertyChanged(aura::Window* window,
   WmWindowProperty wm_property;
   if (key == aura::client::kAlwaysOnTopKey) {
     wm_property = WmWindowProperty::ALWAYS_ON_TOP;
+  } else if (key == aura::client::kAppIconKey) {
+    wm_property = WmWindowProperty::APP_ICON;
+  } else if (key == aura::client::kDrawAttentionKey) {
+    wm_property = WmWindowProperty::DRAW_ATTENTION;
   } else if (key == aura::client::kExcludeFromMruKey) {
     wm_property = WmWindowProperty::EXCLUDE_FROM_MRU;
   } else if (key == aura::client::kModalKey) {
     wm_property = WmWindowProperty::MODAL_TYPE;
-  } else if (key == kShelfIconResourceIdKey) {
-    wm_property = WmWindowProperty::SHELF_ICON_RESOURCE_ID;
   } else if (key == kShelfIDKey) {
     wm_property = WmWindowProperty::SHELF_ID;
   } else if (key == kShelfItemTypeKey) {
@@ -853,6 +885,8 @@ void WmWindowAura::OnWindowPropertyChanged(aura::Window* window,
     wm_property = WmWindowProperty::SNAP_CHILDREN_TO_PIXEL_BOUNDARY;
   } else if (key == aura::client::kTopViewInset) {
     wm_property = WmWindowProperty::TOP_VIEW_INSET;
+  } else if (key == aura::client::kWindowIconKey) {
+    wm_property = WmWindowProperty::WINDOW_ICON;
   } else {
     return;
   }

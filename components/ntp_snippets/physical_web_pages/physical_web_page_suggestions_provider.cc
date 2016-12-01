@@ -4,6 +4,8 @@
 
 #include "components/ntp_snippets/physical_web_pages/physical_web_page_suggestions_provider.h"
 
+#include <utility>
+
 #include "base/bind.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
@@ -45,7 +47,9 @@ void PhysicalWebPageSuggestionsProvider::OnDisplayableUrlsChanged(
   std::vector<ContentSuggestion> suggestions;
 
   for (const UrlInfo& url_info : urls) {
-    if (suggestions.size() >= kMaxSuggestionsCount) break;
+    if (suggestions.size() >= kMaxSuggestionsCount) {
+      break;
+    }
 
     ContentSuggestion suggestion(provided_category_, url_info.site_url.spec(),
                                  url_info.site_url);
@@ -72,8 +76,10 @@ CategoryInfo PhysicalWebPageSuggestionsProvider::GetCategoryInfo(
   return CategoryInfo(
       base::ASCIIToUTF16("Physical web pages"),
       ContentSuggestionsCardLayout::MINIMAL_CARD,
-      /* has_more_button */ true,
-      /* show_if_empty */ false,
+      /*has_more_action=*/false,
+      /*has_reload_action=*/false,
+      /*has_view_all_action=*/false,
+      /*show_if_empty=*/false,
       l10n_util::GetStringUTF16(IDS_NTP_SUGGESTIONS_SECTION_EMPTY));
 }
 
@@ -89,6 +95,20 @@ void PhysicalWebPageSuggestionsProvider::FetchSuggestionImage(
   // TODO(vitaliii): Implement.
   base::ThreadTaskRunnerHandle::Get()->PostTask(
       FROM_HERE, base::Bind(callback, gfx::Image()));
+}
+
+void PhysicalWebPageSuggestionsProvider::Fetch(
+    const Category& category,
+    const std::set<std::string>& known_suggestion_ids,
+    const FetchDoneCallback& callback) {
+  LOG(DFATAL)
+      << "PhysicalWebPageSuggestionsProvider has no |Fetch| functionality!";
+  base::ThreadTaskRunnerHandle::Get()->PostTask(
+      FROM_HERE,
+      base::Bind(callback, Status(StatusCode::PERMANENT_ERROR,
+                                  "PhysicalWebPageSuggestionsProvider "
+                                  "has no |Fetch| functionality!"),
+                 base::Passed(std::vector<ContentSuggestion>())));
 }
 
 void PhysicalWebPageSuggestionsProvider::ClearHistory(
@@ -121,7 +141,9 @@ void PhysicalWebPageSuggestionsProvider::ClearDismissedSuggestionsForDebugging(
 // Updates the |category_status_| and notifies the |observer_|, if necessary.
 void PhysicalWebPageSuggestionsProvider::NotifyStatusChanged(
     CategoryStatus new_status) {
-  if (category_status_ == new_status) return;
+  if (category_status_ == new_status) {
+    return;
+  }
   category_status_ = new_status;
   observer()->OnCategoryStatusChanged(this, provided_category_, new_status);
 }

@@ -21,10 +21,10 @@
 #include "components/ntp_snippets/content_suggestions_service.h"
 #include "components/ntp_snippets/features.h"
 #include "components/ntp_snippets/ntp_snippets_constants.h"
-#include "components/ntp_snippets/remote/ntp_snippets_database.h"
 #include "components/ntp_snippets/remote/ntp_snippets_fetcher.h"
-#include "components/ntp_snippets/remote/ntp_snippets_service.h"
-#include "components/ntp_snippets/remote/ntp_snippets_status_service.h"
+#include "components/ntp_snippets/remote/remote_suggestions_database.h"
+#include "components/ntp_snippets/remote/remote_suggestions_provider.h"
+#include "components/ntp_snippets/remote/remote_suggestions_status_service.h"
 #include "components/signin/core/browser/signin_manager.h"
 #include "components/version_info/version_info.h"
 #include "google_apis/google_api_keys.h"
@@ -46,11 +46,11 @@ using history::HistoryService;
 using ios::BookmarkModelFactory;
 using ntp_snippets::BookmarkSuggestionsProvider;
 using ntp_snippets::ContentSuggestionsService;
-using ntp_snippets::NTPSnippetsDatabase;
 using ntp_snippets::NTPSnippetsFetcher;
 using ntp_snippets::NTPSnippetsScheduler;
-using ntp_snippets::NTPSnippetsService;
-using ntp_snippets::NTPSnippetsStatusService;
+using ntp_snippets::RemoteSuggestionsDatabase;
+using ntp_snippets::RemoteSuggestionsProvider;
+using ntp_snippets::RemoteSuggestionsStatusService;
 using suggestions::CreateIOSImageDecoder;
 using suggestions::ImageFetcherImpl;
 
@@ -115,12 +115,14 @@ IOSChromeContentSuggestionsServiceFactory::BuildServiceInstanceFor(
       base::FeatureList::IsEnabled(ntp_snippets::kContentSuggestionsFeature)
           ? State::ENABLED
           : State::DISABLED;
+  SigninManager* signin_manager =
+      ios::SigninManagerFactory::GetForBrowserState(chrome_browser_state);
   HistoryService* history_service =
       ios::HistoryServiceFactory::GetForBrowserState(
           chrome_browser_state, ServiceAccessType::EXPLICIT_ACCESS);
   std::unique_ptr<ContentSuggestionsService> service =
-      base::MakeUnique<ContentSuggestionsService>(state, history_service,
-                                                  prefs);
+      base::MakeUnique<ContentSuggestionsService>(state, signin_manager,
+                                                  history_service, prefs);
   if (state == State::DISABLED)
     return std::move(service);
 
@@ -135,9 +137,7 @@ IOSChromeContentSuggestionsServiceFactory::BuildServiceInstanceFor(
   }
 
   if (base::FeatureList::IsEnabled(ntp_snippets::kArticleSuggestionsFeature)) {
-    // Create the NTPSnippetsService (articles provider).
-    SigninManager* signin_manager =
-        ios::SigninManagerFactory::GetForBrowserState(chrome_browser_state);
+    // Create the RemoteSuggestionsProvider (articles provider).
     OAuth2TokenService* token_service =
         OAuth2TokenServiceFactory::GetForBrowserState(chrome_browser_state);
     scoped_refptr<net::URLRequestContextGetter> request_context =
@@ -150,8 +150,8 @@ IOSChromeContentSuggestionsServiceFactory::BuildServiceInstanceFor(
             ->GetSequencedTaskRunnerWithShutdownBehavior(
                 base::SequencedWorkerPool::GetSequenceToken(),
                 base::SequencedWorkerPool::CONTINUE_ON_SHUTDOWN);
-    std::unique_ptr<NTPSnippetsService> ntp_snippets_service =
-        base::MakeUnique<NTPSnippetsService>(
+    std::unique_ptr<RemoteSuggestionsProvider> ntp_snippets_service =
+        base::MakeUnique<RemoteSuggestionsProvider>(
             service.get(), service->category_factory(), prefs,
             GetApplicationContext()->GetApplicationLocale(),
             service->user_classifier(), scheduler,
@@ -165,8 +165,10 @@ IOSChromeContentSuggestionsServiceFactory::BuildServiceInstanceFor(
             base::MakeUnique<ImageFetcherImpl>(
                 request_context.get(), web::WebThread::GetBlockingPool()),
             CreateIOSImageDecoder(task_runner),
-            base::MakeUnique<NTPSnippetsDatabase>(database_dir, task_runner),
-            base::MakeUnique<NTPSnippetsStatusService>(signin_manager, prefs));
+            base::MakeUnique<RemoteSuggestionsDatabase>(database_dir,
+                                                        task_runner),
+            base::MakeUnique<RemoteSuggestionsStatusService>(signin_manager,
+                                                             prefs));
     service->set_ntp_snippets_service(ntp_snippets_service.get());
     service->RegisterProvider(std::move(ntp_snippets_service));
   }

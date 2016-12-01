@@ -74,7 +74,7 @@ void AddPublicSessionDetailsToUserDictionaryEntry(
   policy::BrowserPolicyConnectorChromeOS* policy_connector =
       g_browser_process->platform_part()->browser_policy_connector_chromeos();
 
-  if (policy_connector->IsEnterpriseManaged()) {
+  if (policy_connector->IsCloudManaged()) {
     user_dict->SetString(kKeyEnterpriseDomain,
                          policy_connector->GetEnterpriseDomain());
   }
@@ -204,7 +204,7 @@ void UserSelectionScreen::FillMultiProfileUserPrefs(
     user_manager::User* user,
     base::DictionaryValue* user_dict,
     bool is_signin_to_add) {
-  const std::string& user_id = user->email();
+  const std::string& user_id = user->GetAccountId().GetUserEmail();
 
   if (is_signin_to_add) {
     MultiProfileUserController* multi_profile_user_controller =

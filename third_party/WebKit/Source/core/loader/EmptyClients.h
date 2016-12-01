@@ -258,7 +258,7 @@ class CORE_EXPORT EmptyFrameLoaderClient : public FrameLoaderClient {
   void dispatchDidHandleOnloadEvents() override {}
   void dispatchDidReceiveServerRedirectForProvisionalLoad() override {}
   void dispatchWillCommitProvisionalLoad() override {}
-  void dispatchDidStartProvisionalLoad(double triggeringEventTime) override {}
+  void dispatchDidStartProvisionalLoad() override {}
   void dispatchDidReceiveTitle(const String&) override {}
   void dispatchDidChangeIcons(IconType) override {}
   void dispatchDidCommitLoad(HistoryItem*, HistoryCommitType) override {}
@@ -274,7 +274,8 @@ class CORE_EXPORT EmptyFrameLoaderClient : public FrameLoaderClient {
                                              NavigationType,
                                              NavigationPolicy,
                                              bool,
-                                             bool) override;
+                                             bool,
+                                             HTMLFormElement*) override;
 
   void dispatchWillSendSubmitEvent(HTMLFormElement*) override;
   void dispatchWillSubmitForm(HTMLFormElement*) override;
@@ -287,6 +288,7 @@ class CORE_EXPORT EmptyFrameLoaderClient : public FrameLoaderClient {
                          NavigationPolicy,
                          const String&,
                          bool) override {}
+  void loadErrorPage(int reason) override {}
 
   DocumentLoader* createDocumentLoader(LocalFrame*,
                                        const ResourceRequest&,
@@ -325,6 +327,8 @@ class CORE_EXPORT EmptyFrameLoaderClient : public FrameLoaderClient {
       HTMLMediaElement&,
       const WebMediaPlayerSource&,
       WebMediaPlayerClient*) override;
+  WebRemotePlaybackClient* createWebRemotePlaybackClient(
+      HTMLMediaElement&) override;
 
   ObjectContentType getObjectContentType(const KURL&,
                                          const String&,

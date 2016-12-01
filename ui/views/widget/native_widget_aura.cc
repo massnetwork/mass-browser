@@ -74,6 +74,15 @@ void SetRestoreBounds(aura::Window* window, const gfx::Rect& bounds) {
   window->SetProperty(aura::client::kRestoreBoundsKey, new gfx::Rect(bounds));
 }
 
+void SetIcon(aura::Window* window,
+             const aura::WindowProperty<gfx::ImageSkia*>* key,
+             const gfx::ImageSkia& value) {
+  if (value.isNull())
+    window->ClearProperty(key);
+  else
+    window->SetProperty(key, new gfx::ImageSkia(value));
+}
+
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,17 +111,10 @@ void NativeWidgetAura::RegisterNativeWidgetForWindow(
 void NativeWidgetAura::AssignIconToAuraWindow(aura::Window* window,
                                               const gfx::ImageSkia& window_icon,
                                               const gfx::ImageSkia& app_icon) {
-  if (!window)
-    return;
-
-  if (window_icon.isNull() && app_icon.isNull()) {
-    window->ClearProperty(aura::client::kWindowIconKey);
-    return;
+  if (window) {
+    SetIcon(window, aura::client::kWindowIconKey, window_icon);
+    SetIcon(window, aura::client::kAppIconKey, app_icon);
   }
-
-  window->SetProperty(
-      aura::client::kWindowIconKey,
-      new gfx::ImageSkia(!window_icon.isNull() ? window_icon : app_icon));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -370,7 +372,7 @@ void NativeWidgetAura::GetWindowPlacement(
 bool NativeWidgetAura::SetWindowTitle(const base::string16& title) {
   if (!window_)
     return false;
-  if (window_->title() == title)
+  if (window_->GetTitle() == title)
     return false;
   window_->SetTitle(title);
   return true;
@@ -751,9 +753,6 @@ ui::NativeTheme* NativeWidgetAura::GetNativeTheme() const {
 #endif
 }
 
-void NativeWidgetAura::OnRootViewLayout() {
-}
-
 bool NativeWidgetAura::IsTranslucentWindowOpacitySupported() const {
   return true;
 }
@@ -772,7 +771,7 @@ void NativeWidgetAura::RepostNativeEvent(gfx::NativeEvent native_event) {
 }
 
 std::string NativeWidgetAura::GetName() const {
-  return window_ ? window_->name() : std::string();
+  return window_ ? window_->GetName() : std::string();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

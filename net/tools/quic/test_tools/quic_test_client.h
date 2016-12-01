@@ -13,13 +13,10 @@
 #include <string>
 
 #include "base/macros.h"
-#include "net/base/ip_address.h"
-#include "net/base/ip_endpoint.h"
 #include "net/quic/core/proto/cached_network_parameters.pb.h"
 #include "net/quic/core/quic_framer.h"
 #include "net/quic/core/quic_packet_creator.h"
 #include "net/quic/core/quic_protocol.h"
-#include "net/tools/balsa/balsa_frame.h"
 #include "net/tools/epoll_server/epoll_server.h"
 #include "net/tools/quic/quic_client.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -41,18 +38,18 @@ class MockableQuicClient;
 // A quic client which allows mocking out reads and writes.
 class MockableQuicClient : public QuicClient {
  public:
-  MockableQuicClient(IPEndPoint server_address,
+  MockableQuicClient(QuicSocketAddress server_address,
                      const QuicServerId& server_id,
                      const QuicVersionVector& supported_versions,
                      EpollServer* epoll_server);
 
-  MockableQuicClient(IPEndPoint server_address,
+  MockableQuicClient(QuicSocketAddress server_address,
                      const QuicServerId& server_id,
                      const QuicConfig& config,
                      const QuicVersionVector& supported_versions,
                      EpollServer* epoll_server);
 
-  MockableQuicClient(IPEndPoint server_address,
+  MockableQuicClient(QuicSocketAddress server_address,
                      const QuicServerId& server_id,
                      const QuicConfig& config,
                      const QuicVersionVector& supported_versions,
@@ -61,8 +58,8 @@ class MockableQuicClient : public QuicClient {
 
   ~MockableQuicClient() override;
 
-  void ProcessPacket(const IPEndPoint& self_address,
-                     const IPEndPoint& peer_address,
+  void ProcessPacket(const QuicSocketAddress& self_address,
+                     const QuicSocketAddress& peer_address,
                      const QuicReceivedPacket& packet) override;
 
   QuicPacketWriter* CreateQuicPacketWriter() override;
@@ -96,14 +93,14 @@ class MockableQuicClient : public QuicClient {
 class QuicTestClient : public QuicSpdyStream::Visitor,
                        public QuicClientPushPromiseIndex::Delegate {
  public:
-  QuicTestClient(IPEndPoint server_address,
+  QuicTestClient(QuicSocketAddress server_address,
                  const std::string& server_hostname,
                  const QuicVersionVector& supported_versions);
-  QuicTestClient(IPEndPoint server_address,
+  QuicTestClient(QuicSocketAddress server_address,
                  const std::string& server_hostname,
                  const QuicConfig& config,
                  const QuicVersionVector& supported_versions);
-  QuicTestClient(IPEndPoint server_address,
+  QuicTestClient(QuicSocketAddress server_address,
                  const std::string& server_hostname,
                  const QuicConfig& config,
                  const QuicVersionVector& supported_versions,
@@ -129,13 +126,26 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
   // set the response_listener on the client().
   void SendRequestsAndWaitForResponses(
       const std::vector<std::string>& url_list);
-  ssize_t SendMessage(const HTTPMessage& message);
-  std::string SendCustomSynchronousRequest(const HTTPMessage& message);
+  // Sends a request containing |headers| and |body| and returns the number of
+  // bytes sent (the size of the serialized request headers and body).
+  ssize_t SendMessage(const SpdyHeaderBlock& headers, base::StringPiece body);
+  // Sends a request containing |headers| and |body| with the fin bit set to
+  // |fin| and returns the number of bytes sent (the size of the serialized
+  // request headers and body).
+  ssize_t SendMessage(const SpdyHeaderBlock& headers,
+                      base::StringPiece body,
+                      bool fin);
+  // Sends a request containing |headers| and |body|, waits for the response,
+  // and returns the response body.
+  std::string SendCustomSynchronousRequest(const SpdyHeaderBlock& headers,
+                                           const std::string& body);
+  // Sends a GET request for |uri|, waits for the response, and returns the
+  // response body.
   std::string SendSynchronousRequest(const std::string& uri);
   void Connect();
   void ResetConnection();
   void Disconnect();
-  IPEndPoint local_address() const;
+  QuicSocketAddress local_address() const;
   void ClearPerRequestState();
   bool WaitUntil(int timeout_ms, std::function<bool()> trigger);
   ssize_t Send(const void* buffer, size_t size);
@@ -174,10 +184,10 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
     WaitUntil(timeout_ms, [this]() { return response_size() != 0; });
   }
 
-  void MigrateSocket(const IPAddress& new_host);
-  IPAddress bind_to_address() const;
-  void set_bind_to_address(IPAddress address);
-  const IPEndPoint& address() const;
+  void MigrateSocket(const QuicIpAddress& new_host);
+  QuicIpAddress bind_to_address() const;
+  void set_bind_to_address(QuicIpAddress address);
+  const QuicSocketAddress& address() const;
 
   // Returns the response trailers as received by the |stream_|.
   const SpdyHeaderBlock& response_trailers() const;
@@ -206,8 +216,8 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
   // Calls GetOrCreateStream(), sends the request on the stream, and
   // stores the request in case it needs to be resent.  If |headers| is
   // null, only the body will be sent on the stream.
-  ssize_t GetOrCreateStreamAndSendRequest(const BalsaHeaders* headers,
-                                          StringPiece body,
+  ssize_t GetOrCreateStreamAndSendRequest(const SpdyHeaderBlock* headers,
+                                          base::StringPiece body,
                                           bool fin,
                                           QuicAckListenerInterface* delegate);
 
@@ -245,7 +255,7 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
 
   size_t num_responses() const { return num_responses_; }
 
-  void set_server_address(const IPEndPoint& server_address) {
+  void set_server_address(const QuicSocketAddress& server_address) {
     client_->set_server_address(server_address);
   }
 
@@ -284,8 +294,11 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
     QuicAckListenerInterface* delegate_;
   };
 
-  // Given a uri, creates a simple HTTPMessage request message for testing.
-  static void FillInRequest(const std::string& uri, HTTPMessage* message);
+  // Given |uri|, populates the fields in |headers| for a simple GET
+  // request. If |uri| is a relative URL, the QuicServerId will be
+  // use to specify the authority.
+  bool PopulateHeaderBlockFromUrl(const std::string& uri,
+                                  SpdyHeaderBlock* headers);
 
   bool HaveActiveStream();
 

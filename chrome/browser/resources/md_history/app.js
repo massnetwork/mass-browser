@@ -24,7 +24,6 @@ Polymer({
 
   behaviors: [
     Polymer.IronScrollTargetBehavior,
-    WebUIListenerBehavior,
   ],
 
   properties: {
@@ -108,19 +107,28 @@ Polymer({
     'unselect-all': 'unselectAll',
   },
 
-  /** @override */
-  ready: function() {
-    this.grouped_ = loadTimeData.getBoolean('groupByDomain');
+  /** @private {?function(!Event)} */
+  boundOnCanExecute_: null,
 
-    cr.ui.decorate('command', cr.ui.Command);
-    document.addEventListener('canExecute', this.onCanExecute_.bind(this));
-    document.addEventListener('command', this.onCommand_.bind(this));
-  },
+  /** @private {?function(!Event)} */
+  boundOnCommand_: null,
 
   /** @override */
   attached: function() {
-    this.addWebUIListener('sign-in-state-updated',
-                          this.updateSignInState.bind(this));
+    this.grouped_ = loadTimeData.getBoolean('groupByDomain');
+
+    cr.ui.decorate('command', cr.ui.Command);
+    this.boundOnCanExecute_ = this.onCanExecute_.bind(this);
+    this.boundOnCommand_ = this.onCommand_.bind(this);
+
+    document.addEventListener('canExecute', this.boundOnCanExecute_);
+    document.addEventListener('command', this.boundOnCommand_);
+  },
+
+  /** @override */
+  detached: function() {
+    document.removeEventListener('canExecute', this.boundOnCanExecute_);
+    document.removeEventListener('command', this.boundOnCommand_);
   },
 
   onFirstRender: function() {
@@ -139,7 +147,11 @@ Polymer({
     }
 
     // Lazily load the remainder of the UI.
-    md_history.ensureLazyLoaded();
+    md_history.ensureLazyLoaded().then(function() {
+      window.requestIdleCallback(function() {
+        document.fonts.load('bold 12px Roboto');
+      });
+    });
   },
 
   /** Overridden from IronScrollTargetBehavior */
@@ -259,8 +271,11 @@ Polymer({
       var syncedDeviceManagerElem =
       /** @type {HistorySyncedDeviceManagerElement} */this
           .$$('history-synced-device-manager');
-      if (syncedDeviceManagerElem)
-        syncedDeviceManagerElem.tabSyncDisabled();
+      if (syncedDeviceManagerElem) {
+        md_history.ensureLazyLoaded().then(function() {
+          syncedDeviceManagerElem.tabSyncDisabled();
+        });
+      }
       return;
     }
 
@@ -326,13 +341,15 @@ Polymer({
     // This allows the synced-device-manager to render so that it can be set as
     // the scroll target.
     requestAnimationFrame(function() {
-      // <iron-pages> can occasionally end up with no item selected during
-      // tests.
-      if (!this.$.content.selectedItem)
-        return;
-      this.scrollTarget =
-          this.$.content.selectedItem.getContentScrollTarget();
-      this._scrollHandler();
+      md_history.ensureLazyLoaded().then(function() {
+        // <iron-pages> can occasionally end up with no item selected during
+        // tests.
+        if (!this.$.content.selectedItem)
+          return;
+        this.scrollTarget =
+            this.$.content.selectedItem.getContentScrollTarget();
+        this._scrollHandler();
+      }.bind(this));
     }.bind(this));
     this.recordHistoryPageView_();
   },

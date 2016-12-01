@@ -33,7 +33,6 @@ class WebUI;
 
 namespace chromeos {
 
-class OobeUI;
 class ScreenLocker;
 class WebUILoginDisplay;
 
@@ -101,12 +100,13 @@ class WebUIScreenLocker : public WebUILoginView,
              const SigninSpecifics& specifics) override;
   void MigrateUserData(const std::string& old_password) override;
   void OnSigninScreenReady() override;
+  void OnGaiaScreenReady() override;
   void OnStartEnterpriseEnrollment() override;
   void OnStartEnableDebuggingScreen() override;
   void OnStartKioskEnableScreen() override;
   void OnStartKioskAutolaunchScreen() override;
   void ShowWrongHWIDScreen() override;
-  void ResetPublicSessionAutoLoginTimer() override;
+  void ResetAutoLoginTimer() override;
   void ResyncUserData() override;
   void SetDisplayEmail(const std::string& email) override;
   void Signout() override;

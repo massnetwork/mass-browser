@@ -7,17 +7,20 @@
 #include <stdint.h>
 
 #include "base/macros.h"
+#include "base/memory/ptr_util.h"
 #include "base/message_loop/message_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/platform_thread.h"
+#include "mash/session/public/interfaces/constants.mojom.h"
 #include "mash/session/public/interfaces/session.mojom.h"
 #include "services/service_manager/public/c/main.h"
 #include "services/service_manager/public/cpp/connection.h"
 #include "services/service_manager/public/cpp/connector.h"
+#include "services/service_manager/public/cpp/interface_registry.h"
 #include "services/service_manager/public/cpp/service.h"
+#include "services/service_manager/public/cpp/service_context.h"
 #include "services/service_manager/public/cpp/service_runner.h"
-#include "services/ui/public/cpp/property_type_converters.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_event_dispatcher.h"
 #include "ui/compositor/layer.h"
@@ -32,7 +35,6 @@
 #include "ui/views/controls/textfield/textfield.h"
 #include "ui/views/layout/grid_layout.h"
 #include "ui/views/mus/aura_init.h"
-#include "ui/views/mus/window_manager_connection.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 
@@ -70,9 +72,12 @@ class WindowDelegateView : public views::WidgetDelegateView {
         (traits & PANEL) != 0 ? views::Widget::InitParams::TYPE_PANEL
                               : views::Widget::InitParams::TYPE_WINDOW);
     if ((traits & PANEL) != 0) {
+      // TODO(sky): make this work with aura-mus.
+      /*
       params.mus_properties[ui::mojom::WindowManager::kInitialBounds_Property] =
           mojo::TypeConverter<std::vector<uint8_t>, gfx::Rect>::Convert(
               gfx::Rect(100, 100, 300, 300));
+      */
     }
     params.keep_on_top = (traits & ALWAYS_ON_TOP) != 0;
     // WidgetDelegateView deletes itself when Widget is destroyed.
@@ -368,15 +373,18 @@ class WindowTypeLauncherView : public views::WidgetDelegateView,
       NOTIMPLEMENTED();
     } else if (sender == lock_button_) {
       mash::session::mojom::SessionPtr session;
-      connector_->ConnectToInterface("service:mash_session", &session);
+      connector_->ConnectToInterface(mash::session::mojom::kServiceName,
+                                     &session);
       session->LockScreen();
     } else if (sender == logout_button_) {
       mash::session::mojom::SessionPtr session;
-      connector_->ConnectToInterface("service:mash_session", &session);
+      connector_->ConnectToInterface(mash::session::mojom::kServiceName,
+                                     &session);
       session->Logout();
     } else if (sender == switch_user_button_) {
       mash::session::mojom::SessionPtr session;
-      connector_->ConnectToInterface("service:mash_session", &session);
+      connector_->ConnectToInterface(mash::session::mojom::kServiceName,
+                                     &session);
       session->SwitchUser();
     } else if (sender == widgets_button_) {
       NOTIMPLEMENTED();
@@ -469,11 +477,10 @@ void WindowTypeLauncher::RemoveWindow(views::Widget* window) {
     base::MessageLoop::current()->QuitWhenIdle();
 }
 
-void WindowTypeLauncher::OnStart(const service_manager::ServiceInfo& info) {
-  aura_init_.reset(
-      new views::AuraInit(connector(), "views_mus_resources.pak"));
-  window_manager_connection_ =
-      views::WindowManagerConnection::Create(connector(), info.identity);
+void WindowTypeLauncher::OnStart() {
+  aura_init_ = base::MakeUnique<views::AuraInit>(
+      context()->connector(), context()->identity(), "views_mus_resources.pak",
+      std::string(), nullptr, views::AuraInit::Mode::AURA_MUS);
 }
 
 bool WindowTypeLauncher::OnConnect(
@@ -492,7 +499,7 @@ void WindowTypeLauncher::Launch(uint32_t what, mash::mojom::LaunchMode how) {
   }
   views::Widget* window = new views::Widget;
   views::Widget::InitParams params(views::Widget::InitParams::TYPE_WINDOW);
-  params.delegate = new WindowTypeLauncherView(this, connector());
+  params.delegate = new WindowTypeLauncherView(this, context()->connector());
   window->Init(params);
   window->Show();
   windows_.push_back(window);

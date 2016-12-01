@@ -4,8 +4,10 @@
 
 import("//build/config/android/config.gni")
 import("//build/config/chrome_build.gni")
+import("//build/config/chromecast_build.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/nacl/config.gni")
+import("//build/config/sanitizers/sanitizers.gni")
 import("//build/toolchain/cc_wrapper.gni")
 import("//build/toolchain/toolchain.gni")
 import("//build_overrides/build.gni")
@@ -372,10 +374,13 @@ config("compiler") {
     # Additionally, on cast Android x86, --icf=all causes issues.
     if (is_android && current_cpu == "x86") {
       ldflags += [ "-Wl,--icf=none" ]
-    } else if (is_clang || is_chromeos ||
+    } else if ((is_clang && !is_android) || is_chromeos ||
                (current_cpu != "x86" && current_cpu != "x64")) {
+      # TODO(thakis): Remove `!is_android` above once our gold has been rolled
+      # with the fix for https://sourceware.org/bugzilla/show_bug.cgi?id=17704
+      # merged.  See also https://crbug.com/663886
       ldflags += [ "-Wl,--icf=all" ]
-    } else if (!is_android) {
+    } else if (!is_android || is_clang) {
       ldflags += [ "-Wl,--icf=safe" ]
     }
   }
@@ -534,13 +539,6 @@ config("compiler_cpu_abi") {
           "-march=$arm_arch",
           "-mfloat-abi=$arm_float_abi",
         ]
-        if (arm_use_thumb) {
-          cflags += [ "-mthumb" ]
-          if (is_android && !is_clang) {
-            # Clang doesn't support this option.
-            cflags += [ "-mthumb-interwork" ]
-          }
-        }
       }
       if (arm_tune != "") {
         cflags += [ "-mtune=$arm_tune" ]
@@ -765,6 +763,17 @@ config("compiler_arm_fpu") {
   }
 }
 
+config("compiler_arm_thumb") {
+  if (current_cpu == "arm" && arm_use_thumb && is_posix &&
+      !(is_mac || is_ios || is_nacl)) {
+    cflags = [ "-mthumb" ]
+    if (is_android && !is_clang) {
+      # Clang doesn't support this option.
+      cflags += [ "-mthumb-interwork" ]
+    }
+  }
+}
+
 # runtime_library -------------------------------------------------------------
 #
 # Sets the runtime library and associated options.
@@ -905,12 +914,6 @@ config("default_warnings") {
       # C4312 is a VS 2015 64-bit warning for integer to larger pointer.
       # TODO(brucedawson): fix warnings, crbug.com/554200
       "/wd4312",
-
-      # TODO(brucedawson): http://crbug.com/593448 - C4595 is an 'illegal
-      # inline operator new' warning that is new in VS 2015 Update 2.
-      # This is equivalent to clang's no-inline-new-delete warning.
-      # See http://bugs.icu-project.org/trac/ticket/11122
-      "/wd4595",
     ]
 
     if (current_cpu == "x86") {
@@ -1054,10 +1057,22 @@ config("default_warnings") {
 config("chromium_code") {
   if (is_win) {
     cflags = [ "/W4" ]  # Warning level 4.
+
+    # Assume UTF-8 by default to avoid code page dependencies.
+    cflags += [ "/utf-8" ]
   } else {
     cflags = [ "-Wall" ]
     if (treat_warnings_as_errors) {
       cflags += [ "-Werror" ]
+
+      # The compiler driver can sometimes (rarely) emit warnings before calling
+      # the actual linker.  Make sure these warnings are treated as errors as
+      # well.
+      # TODO(thakis): Enable this in use_custom_libcxx (asan) builds.
+      # TODO(thakis): Enable this in chromecast builds.
+      if (!use_custom_libcxx && !is_chromecast) {
+        ldflags = [ "-Werror" ]
+      }
     }
     if (is_clang) {
       # Enable -Wextra for chromium_code when we control the compiler.
@@ -1114,6 +1129,12 @@ config("no_chromium_code") {
     # code. crbug.com/589724
     if (treat_warnings_as_errors && is_clang) {
       cflags += [ "-Werror" ]
+
+      # TODO(thakis): Enable this in use_custom_libcxx (asan) builds.
+      # TODO(thakis): Enable this in chromecast builds.
+      if (!use_custom_libcxx && !is_chromecast) {
+        ldflags = [ "-Werror" ]
+      }
     }
     if (is_clang && !is_nacl) {
       # TODO(thakis): Remove !is_nacl once
@@ -1246,15 +1267,23 @@ if (is_win) {
     common_optimize_on_ldflags += [ "/OPT:REF" ]  # Remove unreferenced data.
     if (!use_lld) {
       common_optimize_on_ldflags += [
-        "/LTCG",  # Link-time code generation.
-
         # Set the number of LTCG code-gen threads to eight. The default is four.
         # This gives a 5-10% link speedup.
         "/cgthreads:8",
       ]
+      if (use_incremental_wpo) {
+        # Incremental Link-time code generation.
+        common_optimize_on_ldflags += [ "/LTCG:INCREMENTAL" ]
+      } else {
+        common_optimize_on_ldflags += [ "/LTCG" ]  # Link-time code generation.
+      }
     }
     if (full_wpo_on_official) {
-      arflags = [ "/LTCG" ]
+      if (use_incremental_wpo) {
+        arflags = [ "/LTCG:INCREMENTAL" ]
+      } else {
+        arflags = [ "/LTCG" ]
+      }
     }
   }
 } else {
@@ -1561,14 +1590,7 @@ config("minimal_symbols") {
   if (is_win) {
     # Linker symbols for backtraces only.
     cflags = []
-    if (is_win_fastlink) {
-      # Tell VS 2015+ to create a PDB that references debug
-      # information in .obj and .lib files instead of copying
-      # it all. This flag is incompatible with /PROFILE
-      ldflags = [ "/DEBUG:FASTLINK" ]
-    } else {
-      ldflags = [ "/DEBUG" ]
-    }
+    ldflags = [ "/DEBUG" ]
   } else {
     if (is_android) {
       # Breakpad can't handle DWARF 4 symbols properly yet, so use DWARF 3

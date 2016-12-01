@@ -25,6 +25,7 @@ class WebGestureEvent;
 
 namespace content {
 class RenderWidgetHost;
+struct FormFieldData;
 }
 
 namespace blimp {
@@ -93,7 +94,7 @@ class EngineRenderWidgetFeature : public BlimpMessageProcessor,
   // Notifies the client to show/hide IME.
   void SendShowImeRequest(const int tab_id,
                           content::RenderWidgetHost* render_widget_host,
-                          const ui::TextInputClient* client);
+                          const content::FormFieldData& field);
   void SendHideImeRequest(const int tab_id,
                           content::RenderWidgetHost* render_widget_host);
 
@@ -181,6 +182,8 @@ class EngineRenderWidgetFeature : public BlimpMessageProcessor,
   std::unique_ptr<BlimpMessageProcessor> compositor_message_sender_;
   std::unique_ptr<BlimpMessageProcessor> input_message_sender_;
   std::unique_ptr<BlimpMessageProcessor> ime_message_sender_;
+
+  base::WeakPtrFactory<EngineRenderWidgetFeature> weak_factory_;
 
   DISALLOW_COPY_AND_ASSIGN(EngineRenderWidgetFeature);
 };

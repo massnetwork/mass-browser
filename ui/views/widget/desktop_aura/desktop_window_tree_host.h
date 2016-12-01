@@ -128,6 +128,8 @@ class VIEWS_EXPORT DesktopWindowTreeHost {
 
   virtual void SetVisibilityChangedAnimationsEnabled(bool value) = 0;
 
+  virtual NonClientFrameView* CreateNonClientFrameView() = 0;
+
   // Determines whether the window should use native title bar and borders.
   virtual bool ShouldUseNativeFrame() const = 0;
   // Determines whether the window contents should be rendered transparently
@@ -146,8 +148,6 @@ class VIEWS_EXPORT DesktopWindowTreeHost {
   virtual void InitModalType(ui::ModalType modal_type) = 0;
 
   virtual void FlashFrame(bool flash_frame) = 0;
-
-  virtual void OnRootViewLayout() = 0;
 
   // Returns true if the Widget was closed but is still showing because of
   // animations.

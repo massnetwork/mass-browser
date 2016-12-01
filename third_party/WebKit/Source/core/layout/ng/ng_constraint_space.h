@@ -15,6 +15,7 @@
 
 namespace blink {
 
+class ComputedStyle;
 class LayoutBox;
 class NGFragment;
 class NGLayoutOpportunityIterator;
@@ -28,11 +29,12 @@ class CORE_EXPORT NGConstraintSpace final
  public:
   // Constructs a constraint space based on an existing backing
   // NGPhysicalConstraintSpace. Sets this constraint space's size to the
-  // physical constraint space's container size, converted to logical
+  // physical constraint space's available size, converted to logical
   // coordinates.
-  NGConstraintSpace(NGWritingMode, NGDirection, NGPhysicalConstraintSpace*);
+  NGConstraintSpace(NGWritingMode, TextDirection, NGPhysicalConstraintSpace*);
 
-  // This should live on NGBox or another layout bridge and probably take a root
+  // This should live on NGBlockNode or another layout bridge and probably take
+  // a root
   // NGConstraintSpace or a NGPhysicalConstraintSpace.
   static NGConstraintSpace* CreateFromLayoutObject(const LayoutBox&);
 
@@ -47,47 +49,42 @@ class CORE_EXPORT NGConstraintSpace final
     return physical_space_;
   }
 
-  const Vector<std::unique_ptr<const NGLogicalRect>>& Exclusions() const {
+  const Vector<std::unique_ptr<const NGExclusion>>& Exclusions() const {
     WRITING_MODE_IGNORED(
         "Exclusions are stored directly in physical constraint space.");
     return PhysicalSpace()->Exclusions();
   }
 
-  NGDirection Direction() const { return static_cast<NGDirection>(direction_); }
+  TextDirection Direction() const {
+    return static_cast<TextDirection>(direction_);
+  }
 
   NGWritingMode WritingMode() const {
     return static_cast<NGWritingMode>(writing_mode_);
   }
 
   // Adds the exclusion in the physical constraint space.
-  // Passing the exclusion ignoring the writing mode is fine here since the
-  // exclusion is set in physical coordinates.
-  void AddExclusion(const NGLogicalRect& exclusion) const;
+  void AddExclusion(const NGExclusion& exclusion) const;
+  const NGExclusion* LastLeftFloatExclusion() const;
+  const NGExclusion* LastRightFloatExclusion() const;
 
-  // Size of the container. Used for the following three cases:
-  // 1) Percentage resolution.
-  // 2) Resolving absolute positions of children.
-  // 3) Defining the threshold that triggers the presence of a scrollbar. Only
-  //    applies if the corresponding scrollbarTrigger flag has been set for the
-  //    direction.
-  NGLogicalSize ContainerSize() const;
+  // The size to use for percentage resolution.
+  // See: https://drafts.csswg.org/css-sizing/#percentage-sizing
+  NGLogicalSize PercentageResolutionSize() const;
+
+  // The available space size.
+  // See: https://drafts.csswg.org/css-sizing/#available
+  NGLogicalSize AvailableSize() const;
 
   // Offset relative to the root constraint space.
   NGLogicalOffset Offset() const { return offset_; }
-
-  // Returns the effective size of the constraint space. Equal to the
-  // ContainerSize() for the root constraint space but derived constraint spaces
-  // return the size of the layout opportunity.
-  virtual NGLogicalSize Size() const { return size_; }
-
-  // Sets the effective size of the constraint space.
-  void SetSize(NGLogicalSize);
+  void SetOffset(const NGLogicalOffset& offset) { offset_ = offset; }
 
   // Whether the current constraint space is for the newly established
   // Formatting Context.
   bool IsNewFormattingContext() const;
 
-  // Whether exceeding the containerSize triggers the presence of a scrollbar
+  // Whether exceeding the AvailableSize() triggers the presence of a scrollbar
   // for the indicated direction.
   // If exceeded the current layout should be aborted and invoked again with a
   // constraint space modified to reserve space for a scrollbar.
@@ -116,19 +113,13 @@ class CORE_EXPORT NGConstraintSpace final
 
   DEFINE_INLINE_VIRTUAL_TRACE() { visitor->trace(physical_space_); }
 
-  // The setters for the NGConstraintSpace should only be used when constructing
-  // a derived NGConstraintSpace.
-  void SetOverflowTriggersScrollbar(bool inlineTriggers, bool blockTriggers);
-  void SetFixedSize(bool inlineFixed, bool blockFixed);
-  void SetFragmentationType(NGFragmentationType);
-  void SetIsNewFormattingContext(bool is_new_fc);
+  NGConstraintSpace* ChildSpace(const ComputedStyle* style) const;
 
   String ToString() const;
 
  private:
   Member<NGPhysicalConstraintSpace> physical_space_;
   NGLogicalOffset offset_;
-  NGLogicalSize size_;
   unsigned writing_mode_ : 3;
   unsigned direction_ : 1;
 };

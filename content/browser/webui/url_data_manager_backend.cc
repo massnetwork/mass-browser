@@ -560,13 +560,13 @@ class ChromeProtocolHandler
 
     // Next check for chrome://histograms/, which uses its own job type.
     if (request->url().SchemeIs(kChromeUIScheme) &&
-        request->url().host() == kChromeUIHistogramHost) {
+        request->url().host_piece() == kChromeUIHistogramHost) {
       return new HistogramInternalsRequestJob(request, network_delegate);
     }
 
     // Check for chrome://network-error/, which uses its own job type.
     if (request->url().SchemeIs(kChromeUIScheme) &&
-        request->url().host() == kChromeUINetworkErrorHost) {
+        request->url().host_piece() == kChromeUINetworkErrorHost) {
       // Get the error code passed in via the request URL path.
       std::basic_string<char> error_code_string =
           request->url().path().substr(1);
@@ -580,6 +580,13 @@ class ChromeProtocolHandler
                                              error_code);
         }
       }
+    }
+
+    // Check for chrome://dino which is an alias for chrome://network-error/-106
+    if (request->url().SchemeIs(kChromeUIScheme) &&
+        request->url().host() == kChromeUIDinoHost) {
+      return new net::URLRequestErrorJob(request, network_delegate,
+                                         net::Error::ERR_INTERNET_DISCONNECTED);
     }
 
     // Fall back to using a custom handler
@@ -711,9 +718,9 @@ bool URLDataManagerBackend::StartRequest(const net::URLRequest* request,
   }
 
   // Forward along the request to the data source.
-  base::MessageLoop* target_message_loop =
-      source->source()->MessageLoopForRequestPath(path);
-  if (!target_message_loop) {
+  scoped_refptr<base::SingleThreadTaskRunner> target_runner =
+      source->source()->TaskRunnerForRequestPath(path);
+  if (!target_runner) {
     job->MimeTypeAvailable(source->source()->GetMimeType(path));
     // Eliminate potentially dangling pointer to avoid future use.
     job = nullptr;
@@ -729,13 +736,13 @@ bool URLDataManagerBackend::StartRequest(const net::URLRequest* request,
     // is guaranteed because request for mime type is placed in the
     // message loop before request for data. And correspondingly their
     // replies are put on the IO thread in the same order.
-    target_message_loop->task_runner()->PostTask(
+    target_runner->PostTask(
         FROM_HERE, base::Bind(&GetMimeTypeOnUI, base::RetainedRef(source), path,
                               job->AsWeakPtr()));
 
     // The DataSource wants StartDataRequest to be called on a specific thread,
     // usually the UI thread, for this path.
-    target_message_loop->task_runner()->PostTask(
+    target_runner->PostTask(
         FROM_HERE, base::Bind(&URLDataManagerBackend::CallStartRequest,
                               base::RetainedRef(source), path, child_id,
                               wc_getter, request_id));
