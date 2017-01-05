@@ -36,6 +36,7 @@ import org.chromium.chrome.browser.IntentHandler.TabOpenType;
 import org.chromium.chrome.browser.ShortcutHelper;
 import org.chromium.chrome.browser.UrlConstants;
 import org.chromium.chrome.browser.WarmupManager;
+import org.chromium.chrome.browser.coins.CoinsSingleton;
 import org.chromium.chrome.browser.customtabs.CustomTabActivity;
 import org.chromium.chrome.browser.customtabs.CustomTabIntentDataProvider;
 import org.chromium.chrome.browser.customtabs.SeparateTaskCustomTabActivity;
@@ -133,6 +134,7 @@ public class ChromeLauncherActivity extends Activity
                 .core(new CrashlyticsCore.Builder().build())
                 .build();
         Fabric.with(this, crashlyticsKit);
+        CoinsSingleton.getInstance().init(this);
     }
 
     private final void doOnCreate(Bundle savedInstanceState) {

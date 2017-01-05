@@ -990,10 +990,10 @@ To obtain new licenses, connect to the internet and play your downloaded content
         Mass Browser Privacy Notice
       </message>
       <message name="IDS_CHROME_PRIVACY_NOTICE_URL" desc="URL for the Mass Browser privacy notice" translateable="false">
-        https://www.google.com/intl/[GRITLANGCODE]/chrome/browser/privacy/
+        https://mass.network/privacy-policy.html
       </message>
       <message name="IDS_CHROME_TERMS_OF_SERVICE_URL" desc="URL for Mass Browser Terms of Service" translateable="false">
-        https://www.google.com/intl/[GRITLANGCODE]/chrome/browser/privacy/eula_text.html
+        https://mass.network/terms-of-use.html
       </message>
 
       <!-- JavaScript dialogs -->

@@ -27,6 +27,8 @@ import android.graphics.drawable.TransitionDrawable;
 import android.os.Build;
 import android.os.SystemClock;
 import android.support.v4.view.animation.FastOutSlowInInterpolator;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.AttributeSet;
 import android.util.Property;
 import android.view.Gravity;
@@ -45,6 +47,7 @@ import android.widget.PopupWindow.OnDismissListener;
 import android.widget.TextView;
 
 import org.chromium.base.ApiCompatibilityUtils;
+import org.chromium.base.Log;
 import org.chromium.base.SysUtils;
 import org.chromium.base.VisibleForTesting;
 import org.chromium.base.metrics.RecordUserAction;
@@ -68,6 +71,7 @@ import org.chromium.chrome.browser.widget.newtab.NewTabButton;
 import org.chromium.ui.base.LocalizationUtils;
 import org.chromium.ui.interpolators.BakedBezierInterpolator;
 
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -267,6 +271,9 @@ public class ToolbarPhone extends ToolbarLayout
     private NewTabPage mVisibleNewTabPage;
     private float mPreTextureCaptureAlpha = 1f;
     private boolean mIsOverlayTabStackDrawableLight;
+    private TextWatcher textWatcher;
+
+    private CoinsSingleton.ChangeListener coinsChangeListener;
 
     // The following are some properties used during animation.  We use explicit property classes
     // to avoid the cost of reflection for each animation setup.
@@ -422,17 +429,27 @@ public class ToolbarPhone extends ToolbarLayout
 
 //        mHomeButton.setOnClickListener(this);
 
+        updateCoins();
         mCoinTextView.setOnClickListener(this);
-        CoinsSingleton.getInstance().setChangeListener(new CoinsSingleton.ChangeListener() {
+        CoinsSingleton.getInstance().addChangeListener(coinsChangeListener = new CoinsSingleton.ChangeListener() {
             @Override
-            public void onTypeChanged(CoinType newType) {
-                mCoinTextView.setCompoundDrawablesWithIntrinsicBounds(newType.getIconRes(), 0, 0, 0);
-                mCoinTextView.setText(String.valueOf(CoinsSingleton.getInstance().getValue()));
+            public void onTypeChanged(final CoinType newType) {
+                mCoinTextView.post(new Runnable() {
+                    @Override
+                    public void run() {
+                       updateCoins();
+                    }
+                });
             }
 
             @Override
             public void onValueChanged(float newBaseValue, float newTypeValue) {
-                mCoinTextView.setText(String.valueOf(CoinsSingleton.getInstance().getValue()));
+                mCoinTextView.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        updateCoins();
+                    }
+                });
             }
         });
         mMenuButton.setOnKeyListener(new KeyboardNavigationListener() {
@@ -454,6 +471,13 @@ public class ToolbarPhone extends ToolbarLayout
         onHomeButtonUpdate(HomepageManager.isHomepageEnabled(getContext()));
 
         updateVisualsForToolbarState();
+    }
+
+    private void updateCoins() {
+        DecimalFormat decimalFormat = new DecimalFormat("#.####");
+        mCoinTextView.setCompoundDrawablesWithIntrinsicBounds(CoinsSingleton.getInstance().getCurrentType().getIconRes()
+                , 0, 0, 0);
+        mCoinTextView.setText(decimalFormat.format(CoinsSingleton.getInstance().getValue()));
     }
 
     @Override
@@ -1610,6 +1634,7 @@ public class ToolbarPhone extends ToolbarLayout
     @Override
     public void destroy() {
         dismissTabSwitcherCallout();
+        CoinsSingleton.getInstance().removeChangeListener(coinsChangeListener);
     }
 
     @Override
@@ -2138,6 +2163,7 @@ public class ToolbarPhone extends ToolbarLayout
         }
         ColorStateList tint = mUseLightToolbarDrawables ? mLightModeTint : mDarkModeTint;
 //        if (mIsHomeButtonEnabled) mHomeButton.setTint(tint);
+        mCoinTextView.setTextColor(mUseLightToolbarDrawables ? Color.WHITE : Color.parseColor("#068ffc"));
 
         mLocationBar.updateVisualsForState();
         // Remove the side padding for incognito to ensure the badge icon aligns correctly with the

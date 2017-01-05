@@ -19,6 +19,7 @@ import android.view.View.OnClickListener;
 import android.widget.FrameLayout;
 
 import org.chromium.base.ApiCompatibilityUtils;
+import org.chromium.base.Log;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.RecordUserAction;
@@ -33,6 +34,7 @@ import org.chromium.chrome.browser.appmenu.AppMenuHandler;
 import org.chromium.chrome.browser.appmenu.AppMenuObserver;
 import org.chromium.chrome.browser.appmenu.AppMenuPropertiesDelegate;
 import org.chromium.chrome.browser.bookmarks.BookmarkBridge;
+import org.chromium.chrome.browser.coins.CoinsSingleton;
 import org.chromium.chrome.browser.compositor.Invalidator;
 import org.chromium.chrome.browser.compositor.layouts.EmptyOverviewModeObserver;
 import org.chromium.chrome.browser.compositor.layouts.Layout;
@@ -362,6 +364,9 @@ public class ToolbarManager implements ToolbarTabController, UrlFocusChangeListe
                     updateLoadProgress(100);
                 }
                 finishLoadProgress(true);
+
+                Log.e("!!!!", "onLoadStopped");
+                CoinsSingleton.getInstance().surfing();
             }
 
             @Override

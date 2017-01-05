@@ -44,11 +44,4 @@ public class IntroPagerAdapter extends PagerAdapter {
     public boolean isViewFromObject(View view, Object object) {
         return view == object;
     }
-
-    public void updateView(int position, float positionOffset) {
-        views[position].findViewById(R.id.image).setAlpha((1 -  positionOffset) * (1 -  positionOffset));
-        if(position + 1 < views.length && views[position + 1] != null) {
-            views[position + 1].findViewById(R.id.image).setAlpha(positionOffset * positionOffset);
-        }
-    }
 }

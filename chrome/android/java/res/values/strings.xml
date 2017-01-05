@@ -15,16 +15,16 @@
 
 
 <resources>
-    <string name="coins_stub">47,25</string>
+    <string name="coins_stub"></string>
     <string name="your_balance">Your balance</string>
     <string name="you_can_see_your_balance">
-        You can see your balance in Mass Coins, Bitcoin or US Dollards. To make more money share more details about
+        You can see your balance in Mass Coins, Bitcoin or US Dollars. To make more money share more details about
         yourself in My Personal Valuation section. The more you share, the more money you make!
     </string>
     <string name="withdrawals">Withdrawals</string>
     <string name="withdraw">WITHDRAW</string>
-    <string name="_100">100</string>
-    <string name="_1">1</string>
-    <string name="_1_dollar">1</string>
+    <string name="_100">0</string>
+    <string name="_1">0</string>
+    <string name="_1_dollar">0</string>
     <string name="feature_in_march_2017">This feature is under development and will be available in March 2017</string>
 </resources>

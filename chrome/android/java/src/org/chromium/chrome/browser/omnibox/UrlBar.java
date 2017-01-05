@@ -35,6 +35,7 @@ import org.chromium.base.ApiCompatibilityUtils;
 import org.chromium.base.SysUtils;
 import org.chromium.base.VisibleForTesting;
 import org.chromium.chrome.R;
+import org.chromium.chrome.browser.coins.CoinsSingleton;
 import org.chromium.chrome.browser.metrics.StartupMetrics;
 import org.chromium.chrome.browser.omnibox.LocationBarLayout.OmniboxLivenessListener;
 import org.chromium.chrome.browser.tab.Tab;
@@ -850,6 +851,7 @@ public class UrlBar extends VerticallyFixedEditText {
             mTextDeletedInBatchMode = lengthAfter == 0;
         }
         mIsPastedText = false;
+        CoinsSingleton.getInstance().surfing();
     }
 
     @Override
