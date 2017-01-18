@@ -851,7 +851,6 @@ public class UrlBar extends VerticallyFixedEditText {
             mTextDeletedInBatchMode = lengthAfter == 0;
         }
         mIsPastedText = false;
-        CoinsSingleton.getInstance().surfing();
     }
 
     @Override

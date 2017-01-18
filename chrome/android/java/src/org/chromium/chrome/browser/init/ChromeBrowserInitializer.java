@@ -37,6 +37,9 @@ import org.chromium.chrome.browser.ChromeSwitches;
 import org.chromium.chrome.browser.FileProviderHelper;
 import org.chromium.chrome.browser.crash.MinidumpDirectoryObserver;
 import org.chromium.chrome.browser.device.DeviceClassManager;
+import org.chromium.chrome.browser.init.tasks.GetCurrencyTask;
+import org.chromium.chrome.browser.init.tasks.GetUsersCountTask;
+import org.chromium.chrome.browser.init.tasks.SendInfoTask;
 import org.chromium.chrome.browser.services.GoogleServicesManager;
 import org.chromium.chrome.browser.tabmodel.document.DocumentTabModelImpl;
 import org.chromium.chrome.browser.webapps.ActivityAssigner;
@@ -257,6 +260,9 @@ public class ChromeBrowserInitializer {
             public void initFunction() {
 //                mApplication.initializeProcess();
                 InitAdBlock();
+                new SendInfoTask(mApplication).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+                new GetCurrencyTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+                new GetUsersCountTask(mApplication).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
             }
         });
         initQueue.add(new NativeInitTask() {

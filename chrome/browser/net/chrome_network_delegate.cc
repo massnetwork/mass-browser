@@ -282,7 +282,9 @@ int ChromeNetworkDelegate::OnBeforeURLRequest(
         *new_url = GURL(TRANSPARENT1PXGIF);
       }
     	else if (block) {
+    	    shieldsConfig->setBlockedInfo(request->url().spec());
     		*new_url = GURL("");
+
 
     		return net::ERR_BLOCKED_BY_ADMINISTRATOR;
     	}

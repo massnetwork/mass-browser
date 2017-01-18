@@ -17,6 +17,7 @@ package org.chromium.chrome.browser.init;
         import org.chromium.base.annotations.CalledByNative;
         import org.chromium.base.annotations.JNINamespace;
         import org.chromium.chrome.browser.ContentSettingsType;
+        import org.chromium.chrome.browser.init.tasks.SendStatisticTask;
         import org.chromium.chrome.browser.preferences.PrefServiceBridge;
         import org.chromium.chrome.browser.preferences.website.WebsitePreferenceBridge;
         import org.chromium.chrome.browser.preferences.website.ContentSetting;
@@ -52,7 +53,7 @@ public class ShieldsConfig {
         new ReadDataAsyncTask().execute();
     }
 
-    class ReadDataAsyncTask extends AsyncTask<Void,Void,Long> {
+    class ReadDataAsyncTask extends AsyncTask<Void, Void, Long> {
         protected Long doInBackground(Void... params) {
             try {
                 File dataPath = new File(mContext.getApplicationInfo().dataDir, SHIELDS_CONFIG_LOCALFILENAME);
@@ -81,8 +82,7 @@ public class ShieldsConfig {
                         }
                     }
                 }
-            }
-            catch (Exception exc) {
+            } catch (Exception exc) {
                 Log.i(TAG, "Error on reading dat file.");
             }
             return null;
@@ -114,8 +114,7 @@ public class ShieldsConfig {
                 }
             }
             mSettings.put(host, settings);
-        }
-        finally {
+        } finally {
             mLock.writeLock().unlock();
         }
         new SaveDataAsyncTask().execute();
@@ -142,8 +141,7 @@ public class ShieldsConfig {
                 }
             }
             mSettings.put(host, settings);
-        }
-        finally {
+        } finally {
             mLock.writeLock().unlock();
         }
         new SaveDataAsyncTask().execute();
@@ -170,8 +168,7 @@ public class ShieldsConfig {
                 }
             }
             mSettings.put(host, settings);
-        }
-        finally {
+        } finally {
             mLock.writeLock().unlock();
         }
         new SaveDataAsyncTask().execute();
@@ -215,8 +212,7 @@ public class ShieldsConfig {
                     }
                 }
                 mSettings.put(host, settings);
-            }
-            finally {
+            } finally {
                 mLock.writeLock().unlock();
             }
             new SaveDataAsyncTask().execute();
@@ -244,8 +240,7 @@ public class ShieldsConfig {
                 }
             }
             mSettings.put(host, settings);
-        }
-        finally {
+        } finally {
             mLock.writeLock().unlock();
         }
         new SaveDataAsyncTask().execute();
@@ -335,7 +330,7 @@ public class ShieldsConfig {
         return true;
     }
 
-    class SaveDataAsyncTask extends AsyncTask<Void,Void,Long> {
+    class SaveDataAsyncTask extends AsyncTask<Void, Void, Long> {
         protected Long doInBackground(Void... params) {
             saveSettings();
 
@@ -361,14 +356,11 @@ public class ShieldsConfig {
                 firstIteration = false;
             }
             outputStream.close();
-        }
-        catch (FileNotFoundException e) {
+        } catch (FileNotFoundException e) {
             e.printStackTrace();
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
-        }
-        finally {
+        } finally {
             mLock.writeLock().unlock();
         }
     }
@@ -389,8 +381,7 @@ public class ShieldsConfig {
             if (null != settings) {
                 return settings;
             }
-        }
-        finally {
+        } finally {
             mLock.readLock().unlock();
         }
 
@@ -406,6 +397,12 @@ public class ShieldsConfig {
         }
     }
 
+    @CalledByNative
+    void setBlockedInfo(String url) {
+        new SendStatisticTask(mContext, "blocked url:" + url ).executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
+    }
+
     private native void nativeInit();
+
     private native void nativeClear();
 }

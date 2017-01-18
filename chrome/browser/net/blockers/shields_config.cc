@@ -31,6 +31,12 @@ void ShieldsConfig::setBlockedCountInfo(const std::string& url, int adsAndTracke
     jurl.obj(), adsAndTrackers, httpsUpgrades, scriptsBlocked);
 }
 
+void ShieldsConfig::setBlockedInfo(const std::string& url) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  base::android::ScopedJavaLocalRef<jstring> jurl(base::android::ConvertUTF8ToJavaString(env, url));
+  Java_ShieldsConfig_setBlockedInfo(env, weak_java_shields_config_.get(env).obj(),jurl.obj());
+}
+
 ShieldsConfig* ShieldsConfig::getShieldsConfig() {
     return gShieldsConfig;
 }

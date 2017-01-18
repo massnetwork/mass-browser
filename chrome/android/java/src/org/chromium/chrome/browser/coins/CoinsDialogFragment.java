@@ -81,11 +81,11 @@ public class CoinsDialogFragment extends DialogFragment {
         masscoin.setText(decimalFormat.format(CoinsSingleton.getInstance().getValue(CoinType.MASS_COIN)));
         masscoin.setChecked(CoinsSingleton.getInstance().getCurrentType() == CoinType.MASS_COIN);
 
-//        bitcoin.setText(decimalFormat.format(CoinsSingleton.getInstance().getValue(CoinType.BIT_COIN)));
-//        bitcoin.setChecked(CoinsSingleton.getInstance().getCurrentType() == CoinType.BIT_COIN);
-//
-//        dollar.setText(decimalFormat.format(CoinsSingleton.getInstance().getValue(CoinType.DOLLAR)));
-//        dollar.setChecked(CoinsSingleton.getInstance().getCurrentType() == CoinType.DOLLAR);
+        bitcoin.setText(decimalFormat.format(CoinsSingleton.getInstance().getValue(CoinType.BIT_COIN)));
+        bitcoin.setChecked(CoinsSingleton.getInstance().getCurrentType() == CoinType.BIT_COIN);
+
+        dollar.setText(decimalFormat.format(CoinsSingleton.getInstance().getValue(CoinType.DOLLAR)));
+        dollar.setChecked(CoinsSingleton.getInstance().getCurrentType() == CoinType.DOLLAR);
     }
 
     @Override

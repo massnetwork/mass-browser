@@ -16,6 +16,9 @@ public:
     void setBlockedCountInfo(const std::string& url, int adsAndTrackers, int httpsUpgrades,
             int scriptsBlocked);
 
+    void setBlockedInfo(const std::string& url);
+
+
     static ShieldsConfig* getShieldsConfig();
     // Register the ShieldsConfig's native methods through JNI.
     static bool RegisterShieldsConfig(JNIEnv* env);
