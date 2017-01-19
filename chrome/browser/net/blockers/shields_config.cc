@@ -19,8 +19,7 @@ std::string ShieldsConfig::getHostSettings(const std::string& host) {
   JNIEnv* env = base::android::AttachCurrentThread();
   base::android::ScopedJavaLocalRef<jstring> jhost(base::android::ConvertUTF8ToJavaString(env, host));
   return base::android::ConvertJavaStringToUTF8(
-    Java_ShieldsConfig_getHostSettings(env, weak_java_shields_config_.get(env).obj(),
-    jhost.obj()));
+    Java_ShieldsConfig_getHostSettings(env, weak_java_shields_config_.get(env).obj(), jhost.obj()));
 }
 
 void ShieldsConfig::setBlockedCountInfo(const std::string& url, int adsAndTrackers, int httpsUpgrades,
@@ -34,7 +33,7 @@ void ShieldsConfig::setBlockedCountInfo(const std::string& url, int adsAndTracke
 void ShieldsConfig::setBlockedInfo(const std::string& url) {
   JNIEnv* env = base::android::AttachCurrentThread();
   base::android::ScopedJavaLocalRef<jstring> jurl(base::android::ConvertUTF8ToJavaString(env, url));
-  Java_ShieldsConfig_setBlockedInfo(env, weak_java_shields_config_.get(env).obj(),jurl.obj());
+  Java_ShieldsConfig_setBlockedInfo(env, jurl.obj());
 }
 
 ShieldsConfig* ShieldsConfig::getShieldsConfig() {

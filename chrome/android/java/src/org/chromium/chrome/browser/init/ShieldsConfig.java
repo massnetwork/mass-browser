@@ -398,8 +398,8 @@ public class ShieldsConfig {
     }
 
     @CalledByNative
-    void setBlockedInfo(String url) {
-        new SendStatisticTask(mContext, "blocked url:" + url ).executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
+    public static void setBlockedInfo(String url) {
+        new SendStatisticTask(ContextUtils.getApplicationContext(), "blocked url:" + url ).executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
     }
 
     private native void nativeInit();
